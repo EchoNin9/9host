@@ -144,6 +144,48 @@ data "aws_iam_policy_document" "deploy" {
     ]
     resources = ["arn:aws:dynamodb:*:*:table/9host-tofu-state-lock"]
   }
+
+  statement {
+    sid    = "S3Frontend"
+    effect = "Allow"
+    actions = [
+      "s3:CreateBucket",
+      "s3:PutBucketPolicy",
+      "s3:PutBucketPublicAccessBlock",
+      "s3:GetBucketPolicy",
+      "s3:GetBucketPublicAccessBlock",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+      "s3:GetObject"
+    ]
+    resources = [
+      "arn:aws:s3:::9host-frontend-staging",
+      "arn:aws:s3:::9host-frontend-staging/*",
+      "arn:aws:s3:::9host-frontend-production",
+      "arn:aws:s3:::9host-frontend-production/*"
+    ]
+  }
+
+  statement {
+    sid    = "CloudFront"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateDistribution",
+      "cloudfront:UpdateDistribution",
+      "cloudfront:GetDistribution",
+      "cloudfront:GetDistributionConfig",
+      "cloudfront:DeleteDistribution",
+      "cloudfront:TagResource",
+      "cloudfront:ListDistributions",
+      "cloudfront:CreateOriginAccessControl",
+      "cloudfront:GetOriginAccessControl",
+      "cloudfront:UpdateOriginAccessControl",
+      "cloudfront:DeleteOriginAccessControl",
+      "cloudfront:ListOriginAccessControls"
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy" "deploy" {

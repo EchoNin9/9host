@@ -21,12 +21,15 @@
 | 1.5 | Set up CI/CD: push to `develop` → stage.echo9.net, merge to `main` → prod.echo9.net | DONE | Workflows pass vars. develop→staging, main→prod. |
 | 1.6 | Integrate Roborev post-commit hooks for PR reviews | DONE | `roborev init` — post-commit hook installed, repo registered. |
 | 1.7 | OpenTofu remote state: create state bucket + lock table, deploy, configure local + CI/CD | DONE | infra/bootstrap/, scripts/init-backend.sh, docs/BACKEND.md. CI uses backend-config. |
+| 1.8 | CloudFront + S3: distribution for stage/prod.echo9.net, S3 origin for frontend build | DONE | 9host-frontend-staging, 9host-frontend-production. OAC. Add CNAME in CloudNS: stage→d327su5s05gt98.cloudfront.net, prod→d1y8o0nam8q0rq.cloudfront.net |
+| 1.9 | Cognito User Pool (9host-user-pool) for auth | TODO | App client for frontend. |
+| 1.10 | API Gateway + Lambda: wire api/ handlers, deploy via CI | TODO | 9host-api. Use tenant middleware. |
 
 ### Agent 2 — Frontend / UI
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
-| 2.0 | Scaffold Shadcn/UI (components.json, base components) | TODO | `npx shadcn@latest init` |
+| 2.0 | Scaffold Shadcn/UI (components.json, base components) | DONE | frontend/ with Vite, Tailwind v4, Shadcn new-york. Button, Card, Sidebar. |
 | 2.1 | Design Tenant Admin Sidebar | TODO | Multi-tenant navigation; use Shadcn/UI |
 | 2.2 | Create FeatureFlag utility (Free, Pro, Business tiers) | TODO | Pro unlocks: Custom Domains, Advanced Analytics |
 | 2.3 | Create HOC `withFeatureGate` to wrap restricted UI elements | TODO | Align with saas-architecture.mdc `<FeatureGate>` |
@@ -49,9 +52,9 @@
 
 ### ~~Save Point: SSL certificates created (Phase 1)~~ ✅ Complete
 
-**Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added.
+**Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added. Tasks 1.1–1.7 complete (schema, DynamoDB, middleware, CI/CD, Roborev, remote state).
 
-**Next:** Task 1.5 (CI/CD) or CloudFront setup.
+**Next:** Task 1.9 (Cognito User Pool) or Agent 2 frontend tasks (2.0–2.5).
 
 ---
 
