@@ -4,6 +4,12 @@ variable "domain" {
   default     = "echo9.net"
 }
 
+variable "aws_region" {
+  description = "AWS region (for remote state)."
+  type        = string
+  default     = "us-east-1"
+}
+
 variable "cloudns_auth_id" {
   description = "ClouDNS API auth-id (from Account Settings > API)."
   type        = number
