@@ -98,6 +98,7 @@ data "aws_iam_policy_document" "deploy" {
       "dynamodb:CreateTable",
       "dynamodb:DescribeTable",
       "dynamodb:DescribeContinuousBackups",
+      "dynamodb:DescribeTimeToLive",
       "dynamodb:UpdateTable",
       "dynamodb:DeleteTable",
       "dynamodb:ListTables"
