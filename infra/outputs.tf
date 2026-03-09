@@ -38,3 +38,46 @@ output "dynamodb_table_arn" {
   description = "9host-main DynamoDB table ARN"
   value       = aws_dynamodb_table.main.arn
 }
+
+# ------------------------------------------------------------------------------
+# CloudFront + S3 (Task 1.8)
+# ------------------------------------------------------------------------------
+output "cloudfront_staging_distribution_id" {
+  description = "CloudFront staging distribution ID (for cache invalidation)"
+  value       = aws_cloudfront_distribution.staging.id
+}
+
+output "cloudfront_staging_domain" {
+  description = "CloudFront staging distribution domain (add CNAME stage.echo9.net -> this in CloudNS)"
+  value       = aws_cloudfront_distribution.staging.domain_name
+}
+
+output "cloudfront_staging_url" {
+  description = "Staging frontend URL (after DNS)"
+  value       = "https://stage.${var.domain}"
+}
+
+output "cloudfront_production_distribution_id" {
+  description = "CloudFront production distribution ID (for cache invalidation)"
+  value       = aws_cloudfront_distribution.production.id
+}
+
+output "cloudfront_production_domain" {
+  description = "CloudFront production distribution domain (add CNAME prod.echo9.net -> this in CloudNS)"
+  value       = aws_cloudfront_distribution.production.domain_name
+}
+
+output "cloudfront_production_url" {
+  description = "Production frontend URL (after DNS)"
+  value       = "https://prod.${var.domain}"
+}
+
+output "s3_frontend_staging_bucket" {
+  description = "S3 bucket for staging frontend (aws s3 sync dist/ s3://this-bucket/)"
+  value       = aws_s3_bucket.frontend_staging.id
+}
+
+output "s3_frontend_production_bucket" {
+  description = "S3 bucket for production frontend"
+  value       = aws_s3_bucket.frontend_production.id
+}

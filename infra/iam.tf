@@ -144,6 +144,66 @@ data "aws_iam_policy_document" "deploy" {
     ]
     resources = ["arn:aws:dynamodb:*:*:table/9host-tofu-state-lock"]
   }
+
+  statement {
+    sid    = "S3Frontend"
+    effect = "Allow"
+    actions = [
+      "s3:CreateBucket",
+      "s3:GetBucketAcl",
+      "s3:GetAccelerateConfiguration",
+      "s3:GetBucketOwnershipControls",
+      "s3:GetBucketPolicy",
+      "s3:GetBucketPublicAccessBlock",
+      "s3:GetBucketVersioning",
+      "s3:GetBucketCors",
+      "s3:GetBucketWebsite",
+      "s3:GetBucketRequestPayment",
+      "s3:GetBucketTagging",
+      "s3:GetBucketLocation",
+      "s3:GetBucketLogging",
+      "s3:GetLifecycleConfiguration",
+      "s3:GetReplicationConfiguration",
+      "s3:GetBucketObjectLockConfiguration",
+      "s3:GetEncryptionConfiguration",
+      "s3:PutBucketOwnershipControls",
+      "s3:PutBucketPolicy",
+      "s3:PutBucketPublicAccessBlock",
+      "s3:PutBucketVersioning",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+      "s3:GetObject"
+    ]
+    resources = [
+      "arn:aws:s3:::9host-frontend-staging",
+      "arn:aws:s3:::9host-frontend-staging/*",
+      "arn:aws:s3:::9host-frontend-production",
+      "arn:aws:s3:::9host-frontend-production/*"
+    ]
+  }
+
+  statement {
+    sid    = "CloudFront"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateDistribution",
+      "cloudfront:UpdateDistribution",
+      "cloudfront:GetDistribution",
+      "cloudfront:GetDistributionConfig",
+      "cloudfront:DeleteDistribution",
+      "cloudfront:TagResource",
+      "cloudfront:ListTagsForResource",
+      "cloudfront:ListDistributions",
+      "cloudfront:CreateOriginAccessControl",
+      "cloudfront:GetOriginAccessControl",
+      "cloudfront:UpdateOriginAccessControl",
+      "cloudfront:DeleteOriginAccessControl",
+      "cloudfront:ListOriginAccessControls",
+      "cloudfront:CreateInvalidation"
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy" "deploy" {
