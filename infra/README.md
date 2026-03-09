@@ -2,7 +2,7 @@
 
 Infrastructure as Code uses **OpenTofu** (open-source Terraform fork).
 
-**DNS:** CloudNS.net hosts echo9.net. **prod.echo9.net** & **stage.echo9.net** = 9host app. **www.echo9.net** & **echo9.net** = separate (main site).
+**DNS:** CloudNS.net hosts echo9.net. **prod.echo9.net** & **stage.echo9.net** = 9host app. **www.echo9.net** & **echo9.net** = separate (main site). CloudNS zone managed via `infra/cloudns/` (see docs/CLOUDNS.md).
 
 ## Prerequisites
 
