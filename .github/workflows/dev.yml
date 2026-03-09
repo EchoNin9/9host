@@ -33,8 +33,8 @@ jobs:
 
       - name: OpenTofu plan
         working-directory: infra
-        run: tofu plan -no-color
+        run: tofu plan -no-color -var="github_org_repo=${{ github.repository }}" -var="domain=${{ vars.DOMAIN || 'echo9.net' }}"
 
       - name: OpenTofu apply
         working-directory: infra
-        run: tofu apply -auto-approve -no-color
+        run: tofu apply -auto-approve -no-color -var="github_org_repo=${{ github.repository }}" -var="domain=${{ vars.DOMAIN || 'echo9.net' }}"

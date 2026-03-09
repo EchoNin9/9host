@@ -88,6 +88,19 @@ data "aws_iam_policy_document" "deploy" {
     actions   = ["sts:GetCallerIdentity"]
     resources = ["*"]
   }
+
+  statement {
+    sid    = "DynamoDB"
+    effect = "Allow"
+    actions = [
+      "dynamodb:CreateTable",
+      "dynamodb:DescribeTable",
+      "dynamodb:UpdateTable",
+      "dynamodb:DeleteTable",
+      "dynamodb:ListTables"
+    ]
+    resources = ["arn:aws:dynamodb:*:*:table/9host-*"]
+  }
 }
 
 resource "aws_iam_policy" "deploy" {

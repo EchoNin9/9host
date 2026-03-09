@@ -28,3 +28,13 @@ output "github_var_aws_role_arn_production" {
   description = "Set as GitHub repo variable AWS_ROLE_ARN_PRODUCTION"
   value       = aws_iam_role.github_production.arn
 }
+
+output "dynamodb_table_name" {
+  description = "9host-main DynamoDB table name"
+  value       = aws_dynamodb_table.main.name
+}
+
+output "dynamodb_table_arn" {
+  description = "9host-main DynamoDB table ARN"
+  value       = aws_dynamodb_table.main.arn
+}

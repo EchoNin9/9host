@@ -14,12 +14,12 @@
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
 | 1.0 | Create SSL certificates (ACM for stage/prod) | DONE | Certs validated. GitHub repo vars added. |
-| 1.1 | Analyze orangewhip schema (User, Profile) and design Tenant model for DynamoDB | TODO | Reference: `../orangewhip.surf` (USER#sub, PROFILE). Add TENANT#{slug} prefix to all PKs |
-| 1.2 | Extend DynamoDB single-table: TENANT#{slug}, TENANT#{slug}#USER#{sub}#PROFILE, etc. | TODO | Table name: `9host-main`. Every item MUST have PK starting with TENANT# |
-| 1.3 | Implement middleware: extract `tenant_slug` from URL (e.g. `{tenant}.echo9.net`) and inject into Lambda context | TODO | Pass tenant_slug to handler; use in all DynamoDB queries |
-| 1.4 | Add GSIs for tenant-scoped queries (byTenant, byTenantEntity, etc.) | TODO | Tenant isolation via PK prefix |
-| 1.5 | Set up CI/CD: push to `develop` → stage.echo9.net, merge to `main` → prod.echo9.net | TODO | Similar to orangewhip dev.yml / main.yml. All AWS resources prefixed `9host` |
-| 1.6 | Integrate Roborev post-commit hooks for PR reviews | TODO | `roborev init` in repo |
+| 1.1 | Analyze orangewhip schema (User, Profile) and design Tenant model for DynamoDB | DONE | docs/SCHEMA.md. Tenant, User, Site, Domain entities. |
+| 1.2 | Extend DynamoDB single-table: TENANT#{slug}, TENANT#{slug}#USER#{sub}#PROFILE, etc. | DONE | infra/dynamodb.tf. Table 9host-main with pk/sk. |
+| 1.3 | Implement middleware: extract `tenant_slug` from URL (e.g. `{tenant}.echo9.net`) and inject into Lambda context | DONE | api/middleware.py, api/handler_example.py. |
+| 1.4 | Add GSIs for tenant-scoped queries (byTenant, byTenantEntity, etc.) | DONE | byUser, byDomain in dynamodb.tf. See docs/SCHEMA.md. |
+| 1.5 | Set up CI/CD: push to `develop` → stage.echo9.net, merge to `main` → prod.echo9.net | DONE | Workflows pass vars. develop→staging, main→prod. |
+| 1.6 | Integrate Roborev post-commit hooks for PR reviews | DONE | `roborev init` — post-commit hook installed, repo registered. |
 
 ### Agent 2 — Frontend / UI
 
