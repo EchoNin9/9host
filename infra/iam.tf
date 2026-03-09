@@ -91,6 +91,20 @@ data "aws_iam_policy_document" "deploy" {
     resources = ["*"]
   }
 
+  # Allow deploy role to update the deploy policy (self-update for IAM permission changes)
+  statement {
+    sid    = "IAMDeployPolicy"
+    effect = "Allow"
+    actions = [
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:CreatePolicyVersion",
+      "iam:DeletePolicyVersion"
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/9host-deploy"]
+  }
+
   statement {
     sid       = "DynamoDB"
     effect    = "Allow"
@@ -181,6 +195,36 @@ data "aws_iam_policy_document" "deploy" {
       "arn:aws:s3:::9host-frontend-production",
       "arn:aws:s3:::9host-frontend-production/*"
     ]
+  }
+
+  statement {
+    sid    = "Cognito"
+    effect = "Allow"
+    actions = [
+      "cognito-idp:CreateUserPool",
+      "cognito-idp:UpdateUserPool",
+      "cognito-idp:DeleteUserPool",
+      "cognito-idp:DescribeUserPool",
+      "cognito-idp:GetUserPoolMfaConfig",
+      "cognito-idp:SetUserPoolMfaConfig",
+      "cognito-idp:CreateUserPoolClient",
+      "cognito-idp:UpdateUserPoolClient",
+      "cognito-idp:DeleteUserPoolClient",
+      "cognito-idp:DescribeUserPoolClient",
+      "cognito-idp:CreateUserPoolDomain",
+      "cognito-idp:UpdateUserPoolDomain",
+      "cognito-idp:DeleteUserPoolDomain",
+      "cognito-idp:DescribeUserPoolDomain",
+      "cognito-idp:CreateGroup",
+      "cognito-idp:UpdateGroup",
+      "cognito-idp:DeleteGroup",
+      "cognito-idp:GetGroup",
+      "cognito-idp:ListGroups",
+      "cognito-idp:TagResource",
+      "cognito-idp:UntagResource",
+      "cognito-idp:ListTagsForResource"
+    ]
+    resources = ["*"]
   }
 
   statement {

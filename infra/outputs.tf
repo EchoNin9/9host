@@ -81,3 +81,31 @@ output "s3_frontend_production_bucket" {
   description = "S3 bucket for production frontend"
   value       = aws_s3_bucket.frontend_production.id
 }
+
+# ------------------------------------------------------------------------------
+# Cognito (Task 1.9) — for frontend auth config
+# ------------------------------------------------------------------------------
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID (9host-user-pool)"
+  value       = aws_cognito_user_pool.main.id
+}
+
+output "cognito_user_pool_arn" {
+  description = "Cognito User Pool ARN"
+  value       = aws_cognito_user_pool.main.arn
+}
+
+output "cognito_client_id" {
+  description = "Cognito App Client ID for frontend"
+  value       = aws_cognito_user_pool_client.frontend.id
+}
+
+output "cognito_domain" {
+  description = "Cognito hosted UI domain (e.g. 9host-auth.auth.us-east-1.amazoncognito.com)"
+  value       = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+}
+
+output "cognito_issuer_url" {
+  description = "Cognito issuer URL for OIDC"
+  value       = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
+}

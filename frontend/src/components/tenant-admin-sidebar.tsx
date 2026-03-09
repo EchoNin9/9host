@@ -1,0 +1,98 @@
+"use client"
+
+import { Link, useLocation } from "react-router-dom"
+import {
+  LayoutDashboard,
+  Globe,
+  GlobeLock,
+  Settings,
+  type LucideIcon,
+} from "lucide-react"
+
+import { useTenant } from "@/hooks/use-tenant"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@/components/ui/sidebar"
+import { Separator } from "@/components/ui/separator"
+
+interface NavItem {
+  title: string
+  href: string
+  icon: LucideIcon
+}
+
+function TenantAdminSidebar() {
+  const { tenantSlug, tenantBasePath } = useTenant()
+  const location = useLocation()
+  const base = tenantBasePath || `/${tenantSlug}`
+
+  const mainNav: NavItem[] = [
+    { title: "Dashboard", href: `${base}`, icon: LayoutDashboard },
+    { title: "Sites", href: `${base}/sites`, icon: Globe },
+    { title: "Domains", href: `${base}/domains`, icon: GlobeLock },
+    { title: "Settings", href: `${base}/settings`, icon: Settings },
+  ]
+
+  return (
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader className="border-b border-sidebar-border">
+        <div className="flex items-center gap-2 px-2 py-2">
+          <span className="font-semibold text-sidebar-foreground">
+            {tenantSlug}
+          </span>
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Admin</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {mainNav.map((item) => {
+                const isActive =
+                  location.pathname === item.href ||
+                  (item.href !== base &&
+                    location.pathname.startsWith(item.href))
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton asChild isActive={isActive}>
+                      <Link to={item.href}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <Separator className="mx-2" />
+
+      <SidebarFooter className="border-t border-sidebar-border p-2">
+        <Link
+          to="/"
+          className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+        >
+          ← Back to platform
+        </Link>
+      </SidebarFooter>
+
+      <SidebarRail />
+    </Sidebar>
+  )
+}
+
+export { TenantAdminSidebar }

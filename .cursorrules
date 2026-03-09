@@ -1,4 +1,5 @@
 - Always reference `TASKS.md` before starting work. When completing a task, update its status in `TASKS.md` (TODO → DONE).
+- Commit and PR messages: use format `agent{N} task {X.Y}: description` (e.g. agent1 task 1.11: Wire CloudNS provider).
 - Use AWS SDK v3 for all Lambda functions.
 - Every DynamoDB query MUST include a Partition Key starting with 'TENANT#'.
 - All AWS resources MUST use the prefix `9host` (e.g. 9host-main, 9host-api, 9host-user-pool).
