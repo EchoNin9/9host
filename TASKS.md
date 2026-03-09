@@ -93,5 +93,5 @@
 
 ## Blocked / Notes
 
-- **CI S3 permissions:** Added `s3:GetAccelerateConfiguration` to deploy policy (fixes plan/apply AccessDenied during S3 bucket refresh).
+- **CI permissions:** Deploy policy includes S3 bucket read (GetAccelerateConfiguration, GetBucketRequestPayment, GetEncryptionConfiguration, etc.) and CloudFront ListTagsForResource for OpenTofu plan/refresh.
 - **DynamoDB:** Table-level `hash_key`/`range_key` deprecated (provider does not support table-level `key_schema`). GSI blocks migrated to `key_schema`.
