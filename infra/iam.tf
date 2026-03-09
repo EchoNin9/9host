@@ -1,3 +1,5 @@
+data "aws_caller_identity" "current" {}
+
 # ------------------------------------------------------------------------------
 # GitHub OIDC provider (for Actions to assume IAM roles without long-lived keys)
 # One per AWS account. If you already have one (e.g. from another project), import it:
@@ -95,11 +97,31 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "dynamodb:CreateTable",
       "dynamodb:DescribeTable",
+      "dynamodb:DescribeContinuousBackups",
       "dynamodb:UpdateTable",
       "dynamodb:DeleteTable",
       "dynamodb:ListTables"
     ]
     resources = ["arn:aws:dynamodb:*:*:table/9host-*"]
+  }
+
+  statement {
+    sid    = "IAMRead"
+    effect = "Allow"
+    actions = [
+      "iam:GetOpenIDConnectProvider",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies"
+    ]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/9host-*",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/9host-*"
+    ]
   }
 
   statement {
