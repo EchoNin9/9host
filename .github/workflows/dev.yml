@@ -27,9 +27,11 @@ jobs:
         with:
           tofu_wrapper: false
 
-      - name: OpenTofu init
+      - name: OpenTofu init (remote state)
         working-directory: infra
-        run: tofu init
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          tofu init -reconfigure -backend-config="bucket=9host-tofu-state-${ACCOUNT_ID}" -backend-config="key=9host/terraform.tfstate" -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" -backend-config="dynamodb_table=9host-tofu-state-lock"
 
       - name: OpenTofu plan
         working-directory: infra

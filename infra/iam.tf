@@ -101,6 +101,34 @@ data "aws_iam_policy_document" "deploy" {
     ]
     resources = ["arn:aws:dynamodb:*:*:table/9host-*"]
   }
+
+  statement {
+    sid    = "S3State"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket"
+    ]
+    resources = [
+      "arn:aws:s3:::9host-tofu-state-*",
+      "arn:aws:s3:::9host-tofu-state-*/*"
+    ]
+  }
+
+  statement {
+    sid    = "DynamoDBStateLock"
+    effect = "Allow"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:ConditionCheckItem",
+      "dynamodb:BatchGetItem"
+    ]
+    resources = ["arn:aws:dynamodb:*:*:table/9host-tofu-state-lock"]
+  }
 }
 
 resource "aws_iam_policy" "deploy" {
