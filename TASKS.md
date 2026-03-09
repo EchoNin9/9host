@@ -22,18 +22,22 @@
 | 1.6 | Integrate Roborev post-commit hooks for PR reviews | DONE | `roborev init` — post-commit hook installed, repo registered. |
 | 1.7 | OpenTofu remote state: create state bucket + lock table, deploy, configure local + CI/CD | DONE | infra/bootstrap/, scripts/init-backend.sh, docs/BACKEND.md. CI uses backend-config. |
 | 1.8 | CloudFront + S3: distribution for stage/prod.echo9.net, S3 origin for frontend build | DONE | 9host-frontend-staging, 9host-frontend-production. OAC, BucketOwnerEnforced. CI: -refresh=false workaround for GetBucketAcl. CNAMEs in CloudNS. |
-| 1.9 | Cognito User Pool (9host-user-pool) for auth | TODO | App client for frontend. |
+| 1.9 | Cognito User Pool (9host-user-pool) for auth | DONE | 9host-user-pool, app client 9host-frontend, groups admin/manager/editor/member. |
 | 1.10 | API Gateway + Lambda: wire api/ handlers, deploy via CI | TODO | 9host-api. Use tenant middleware. |
+| 1.11 | Wire CloudNS via API: add provider (ClouDNS/cloudns), auth-id + password vars, echo9.net zone | TODO | Terraform Registry provider. API access on Premium/DDoS/GeoDNS plans. |
+| 1.12 | Add required DNS records in CloudNS (OpenTofu): ACM validation CNAMEs, stage/prod CNAMEs → CloudFront | TODO | Depends on 1.11. Eliminates manual CloudNS edits. |
+| 1.13 | Add echo9.ca for stage/prod: refactor domain→domains list, ACM SANs, CloudFront aliases | TODO | domains = [echo9.net, echo9.ca]. Same S3/CloudFront; 4 hostnames total. |
+| 1.14 | Extend CloudNS (1.11–1.12) for echo9.ca zone: CNAMEs for stage/prod, ACM validation | TODO | Depends on 1.11, 1.13. |
 
 ### Agent 2 — Frontend / UI
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
 | 2.0 | Scaffold Shadcn/UI (components.json, base components) | DONE | frontend/ with Vite, Tailwind v4, Shadcn new-york. Button, Card, Sidebar. |
-| 2.1 | Design Tenant Admin Sidebar | TODO | Multi-tenant navigation; use Shadcn/UI |
+| 2.1 | Design Tenant Admin Sidebar | DONE | tenant-admin-sidebar.tsx, tenant-admin-layout.tsx; Dashboard, Sites, Domains, Settings |
 | 2.2 | Create FeatureFlag utility (Free, Pro, Business tiers) | TODO | Pro unlocks: Custom Domains, Advanced Analytics |
 | 2.3 | Create HOC `withFeatureGate` to wrap restricted UI elements | TODO | Align with saas-architecture.mdc `<FeatureGate>` |
-| 2.4 | Implement tenant context provider (tenant_slug from URL) | TODO | For use in components |
+| 2.4 | Implement tenant context provider (tenant_slug from URL) | DONE | contexts/tenant-context.ts, tenant-provider.tsx; hooks/use-tenant.ts |
 | 2.5 | Migrate single-user UI to multi-tenant (tenant switcher, routing) | TODO | |
 
 ### Agent 3 — Payments
@@ -93,5 +97,6 @@
 
 ## Blocked / Notes
 
+- **CloudNS vs Route 53:** CloudNS is manageable — official Terraform provider (ClouDNS/cloudns) exists. Tasks 1.11–1.12 automate DNS. **Alternate:** migrate echo9.net to Route 53 for native ACM auto-validation and CloudFront integration; larger migration, no third-party API.
 - **CI permissions:** Deploy policy includes S3 bucket read (GetAccelerateConfiguration, GetBucketRequestPayment, GetEncryptionConfiguration, etc.) and CloudFront ListTagsForResource for OpenTofu plan/refresh.
 - **DynamoDB:** Table-level `hash_key`/`range_key` deprecated (provider does not support table-level `key_schema`). GSI blocks migrated to `key_schema`.
