@@ -25,7 +25,7 @@
 | 1.8 | CloudFront + S3: distribution for stage/prod.echo9.net, S3 origin for frontend build | DONE | 9host-frontend-staging, 9host-frontend-production. OAC, BucketOwnerEnforced. CI: -refresh=false workaround for GetBucketAcl. CNAMEs in CloudNS. |
 | 1.9 | Cognito User Pool (9host-user-pool) for auth | DONE | 9host-user-pool, app client 9host-frontend, groups admin/manager/editor/member. |
 | 1.10 | API Gateway + Lambda: wire api/ handlers, deploy via CI | DONE | 9host-api. HTTP API + Lambda proxy. /api/health, /api/tenant. |
-| 1.11 | Wire CloudNS via API: add provider (ClouDNS/cloudns), auth-id + password vars, echo9.net zone | TODO | Terraform Registry provider. API access on Premium/DDoS/GeoDNS plans. |
+| 1.11 | Wire CloudNS via API: add provider (ClouDNS/cloudns), auth-id + password vars, echo9.net zone | DONE | infra/cloudns/ standalone config. docs/CLOUDNS.md. |
 | 1.12 | Add required DNS records in CloudNS (OpenTofu): ACM validation CNAMEs, stage/prod CNAMEs → CloudFront | TODO | Depends on 1.11. Eliminates manual CloudNS edits. |
 | 1.13 | Add echo9.ca for stage/prod: refactor domain→domains list, ACM SANs, CloudFront aliases | TODO | domains = [echo9.net, echo9.ca]. Same S3/CloudFront; 4 hostnames total. |
 | 1.14 | Extend CloudNS (1.11–1.12) for echo9.ca zone: CNAMEs for stage/prod, ACM validation | TODO | Depends on 1.11, 1.13. |

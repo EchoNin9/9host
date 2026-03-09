@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars and fill in. Run: tofu apply -var-file=terraform.tfvars
+domain          = "echo9.net"
+cloudns_auth_id  = 12345
+cloudns_password = "your-auth-password"

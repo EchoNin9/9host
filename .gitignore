@@ -6,6 +6,9 @@ infra/.terraform/
 infra/api.zip
 infra/*.tfstate
 infra/*.tfstate.*
+infra/cloudns/.terraform/
+infra/cloudns/*.tfstate
+infra/cloudns/*.tfstate.*
 infra/backend-config.hcl
 infra/bootstrap/.terraform/
 infra/bootstrap/*.tfstate
