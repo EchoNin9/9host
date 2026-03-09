@@ -1,0 +1,40 @@
+# Deploy to Production on push to main
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: OpenTofu init
+        working-directory: infra
+        run: tofu init
+
+      - name: OpenTofu plan
+        working-directory: infra
+        run: tofu plan -no-color
+
+      - name: OpenTofu apply
+        working-directory: infra
+        run: tofu apply -auto-approve -no-color
