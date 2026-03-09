@@ -238,6 +238,7 @@ data "aws_iam_policy_document" "deploy" {
     resources = ["arn:aws:logs:*:*:log-group:/aws/lambda/9host-*"]
   }
 
+  # Lambda: deploy + read for OpenTofu state refresh (GetFunction, GetPolicy, etc.)
   statement {
     sid    = "Lambda"
     effect = "Allow"
@@ -247,6 +248,7 @@ data "aws_iam_policy_document" "deploy" {
       "lambda:GetFunction",
       "lambda:GetFunctionCodeSigningConfig",
       "lambda:GetFunctionConfiguration",
+      "lambda:GetPolicy",
       "lambda:ListVersionsByFunction",
       "lambda:UpdateFunctionCode",
       "lambda:UpdateFunctionConfiguration",
