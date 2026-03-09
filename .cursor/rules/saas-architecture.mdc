@@ -1,0 +1,10 @@
+---
+description: Standards for multi-tenant SaaS development
+globs: ["**/*.ts", "**/*.tsx", "**/*.py", "infra/*.tf"]
+---
+# SaaS Standards
+- **IaC:** Use OpenTofu (`tofu` CLI). Terraform OSS is no longer updated.
+- **Tenant Isolation:** Every DynamoDB query MUST use a Partition Key starting with `TENANT#`. Never perform cross-tenant lookups without explicit admin bypass.
+- **AWS Naming:** All AWS resources (DynamoDB tables, Lambda functions, Cognito pools, S3 buckets, etc.) MUST use the prefix `9host`.
+- **Feature Gating:** Wrap premium components in `<FeatureGate feature="custom_domains">` or `<FeatureGate feature="advanced_analytics">` (Pro+ tier).
+- **Lambda:** Use AWS SDK v3 (boto3). Validate inputs; return structured JSON responses.
