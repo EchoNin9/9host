@@ -21,7 +21,7 @@
 | 1.5 | Set up CI/CD: push to `develop` → stage.echo9.net, merge to `main` → prod.echo9.net | DONE | Workflows pass vars. develop→staging, main→prod. |
 | 1.6 | Integrate Roborev post-commit hooks for PR reviews | DONE | `roborev init` — post-commit hook installed, repo registered. |
 | 1.7 | OpenTofu remote state: create state bucket + lock table, deploy, configure local + CI/CD | DONE | infra/bootstrap/, scripts/init-backend.sh, docs/BACKEND.md. CI uses backend-config. |
-| 1.8 | CloudFront + S3: distribution for stage/prod.echo9.net, S3 origin for frontend build | DONE | 9host-frontend-staging, 9host-frontend-production. OAC. Add CNAME in CloudNS: stage→d327su5s05gt98.cloudfront.net, prod→d1y8o0nam8q0rq.cloudfront.net |
+| 1.8 | CloudFront + S3: distribution for stage/prod.echo9.net, S3 origin for frontend build | DONE | 9host-frontend-staging, 9host-frontend-production. OAC, BucketOwnerEnforced. CI: -refresh=false workaround for GetBucketAcl. CNAMEs in CloudNS. |
 | 1.9 | Cognito User Pool (9host-user-pool) for auth | TODO | App client for frontend. |
 | 1.10 | API Gateway + Lambda: wire api/ handlers, deploy via CI | TODO | 9host-api. Use tenant middleware. |
 
@@ -54,7 +54,7 @@
 
 **Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added. Tasks 1.1–1.7 complete (schema, DynamoDB, middleware, CI/CD, Roborev, remote state).
 
-**Next:** Task 1.9 (Cognito User Pool) or Agent 2 frontend tasks (2.0–2.5).
+**Next:** Task 1.9 (Cognito User Pool) or Agent 2 tasks (2.1–2.5). Task 2.0 (Shadcn scaffold) done.
 
 ---
 
@@ -93,4 +93,5 @@
 
 ## Blocked / Notes
 
-_Add blockers here._
+- **CI -refresh=false:** GHA deploy uses `-refresh=false` on tofu plan/apply to avoid GetBucketAcl AccessDenied. Policy grants it; simulator allows it; GHA still fails. Revisit root cause when investigating drift detection.
+- **DynamoDB:** `hash_key`/`range_key` deprecated; migrate to `key_schema` (dynamodb.tf).

@@ -16,6 +16,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -40,3 +55,12 @@ jobs:
       - name: OpenTofu apply
         working-directory: infra
         run: tofu apply -auto-approve -no-color -var="github_org_repo=${{ github.repository }}" -var="domain=${{ vars.DOMAIN || 'echo9.net' }}"
+
+      - name: Sync frontend to S3 (production)
+        run: |
+          aws s3 sync frontend/dist/ s3://9host-frontend-production/ --delete
+
+      - name: Invalidate CloudFront cache (production)
+        run: |
+          DIST_ID=$(cd infra && tofu output -raw cloudfront_production_distribution_id)
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"

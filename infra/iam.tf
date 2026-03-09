@@ -187,7 +187,8 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:GetOriginAccessControl",
       "cloudfront:UpdateOriginAccessControl",
       "cloudfront:DeleteOriginAccessControl",
-      "cloudfront:ListOriginAccessControls"
+      "cloudfront:ListOriginAccessControls",
+      "cloudfront:CreateInvalidation"
     ]
     resources = ["*"]
   }
