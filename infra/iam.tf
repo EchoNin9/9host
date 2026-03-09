@@ -151,6 +151,8 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "s3:CreateBucket",
       "s3:GetBucketAcl",
+      "s3:GetBucketOwnershipControls",
+      "s3:PutBucketOwnershipControls",
       "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketVersioning",

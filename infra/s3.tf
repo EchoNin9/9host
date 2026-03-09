@@ -11,6 +11,15 @@ resource "aws_s3_bucket" "frontend_staging" {
   }
 }
 
+# Disable ACLs (AWS best practice) — avoids GetBucketAcl during plan/refresh
+resource "aws_s3_bucket_ownership_controls" "frontend_staging" {
+  bucket = aws_s3_bucket.frontend_staging.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
 resource "aws_s3_bucket_public_access_block" "frontend_staging" {
   bucket = aws_s3_bucket.frontend_staging.id
 
@@ -33,6 +42,14 @@ resource "aws_s3_bucket" "frontend_production" {
 
   tags = {
     Name = "9host-frontend-production"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "frontend_production" {
+  bucket = aws_s3_bucket.frontend_production.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
   }
 }
 
