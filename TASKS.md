@@ -3,7 +3,8 @@
 > **Branch strategy:** `main` = prod (prod.echo9.net) | `develop` = dev (stage.echo9.net)  
 > **Agent roles:** agent1 (backend/infra) | agent2 (frontend/ui) | agent3 (payments)  
 > **AWS naming:** All AWS resources MUST use prefix `9host` (e.g. 9host-main, 9host-api, 9host-user-pool, 9host-media)  
-> **Agent workflow:** Update task status (TODO → DONE) in this file when completing work.
+> **Agent workflow:** Update task status (TODO → DONE) in this file when completing work.  
+> **Parallel work:** See [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) for branch strategy, tofu state rules, and 3–4 task batches per session.
 
 ---
 
@@ -98,5 +99,5 @@
 ## Blocked / Notes
 
 - **CloudNS vs Route 53:** CloudNS is manageable — official Terraform provider (ClouDNS/cloudns) exists. Tasks 1.11–1.12 automate DNS. **Alternate:** migrate echo9.net to Route 53 for native ACM auto-validation and CloudFront integration; larger migration, no third-party API.
-- **CI permissions:** Deploy policy includes S3 bucket read (GetAccelerateConfiguration, GetBucketRequestPayment, GetEncryptionConfiguration, etc.), CloudFront ListTagsForResource, and Cognito GetUserPoolMfaConfig for OpenTofu plan/refresh.
+- **CI permissions:** Deploy policy includes S3 bucket read (GetAccelerateConfiguration, GetBucketRequestPayment, GetEncryptionConfiguration, etc.), CloudFront ListTagsForResource, Cognito GetUserPoolMfaConfig/SetUserPoolMfaConfig for OpenTofu plan/apply, and IAM self-update (ListPolicyVersions, CreatePolicyVersion, etc.) for deploy policy changes.
 - **DynamoDB:** Table-level `hash_key`/`range_key` deprecated (provider does not support table-level `key_schema`). GSI blocks migrated to `key_schema`.
