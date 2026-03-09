@@ -245,6 +245,7 @@ data "aws_iam_policy_document" "deploy" {
       "lambda:CreateFunction",
       "lambda:DeleteFunction",
       "lambda:GetFunction",
+      "lambda:GetFunctionCodeSigningConfig",
       "lambda:GetFunctionConfiguration",
       "lambda:ListVersionsByFunction",
       "lambda:UpdateFunctionCode",
