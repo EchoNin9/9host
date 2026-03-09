@@ -192,6 +192,7 @@ data "aws_iam_policy_document" "deploy" {
       "cognito-idp:DeleteUserPool",
       "cognito-idp:DescribeUserPool",
       "cognito-idp:GetUserPoolMfaConfig",
+      "cognito-idp:SetUserPoolMfaConfig",
       "cognito-idp:CreateUserPoolClient",
       "cognito-idp:UpdateUserPoolClient",
       "cognito-idp:DeleteUserPoolClient",
