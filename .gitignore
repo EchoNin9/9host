@@ -3,6 +3,7 @@ node_modules/
 
 # OpenTofu (Terraform-compatible)
 infra/.terraform/
+infra/api.zip
 infra/*.tfstate
 infra/*.tfstate.*
 infra/backend-config.hcl

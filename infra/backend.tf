@@ -5,4 +5,11 @@ terraform {
   backend "s3" {
     key = "9host/terraform.tfstate"
   }
+
+  required_providers {
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
+  }
 }
