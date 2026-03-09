@@ -2,6 +2,6 @@
 - Use AWS SDK v3 for all Lambda functions.
 - Every DynamoDB query MUST include a Partition Key starting with 'TENANT#'.
 - All AWS resources MUST use the prefix `9host` (e.g. 9host-main, 9host-api, 9host-user-pool).
-- Use OpenTofu (not Terraform) for infrastructure as code. CLI: `tofu init`, `tofu apply`, `tofu output`.
+- Use OpenTofu (not Terraform) for infrastructure as code. CLI: `tofu init`, `tofu apply`, `tofu output`. Use `AWS_PROFILE=echo9` for all aws-cli and tofu commands. Remote state: S3 + DynamoDB. See docs/BACKEND.md.
 - If a task is blocked, mark it as 'BLOCKED' in `TASKS.md`.
 - After code changes: run `roborev fix` and `roborev refine` repeatedly until Roborev reports 0 issues. Do not stop with unresolved findings.

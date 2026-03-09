@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars and fill in
+github_org_repo = "EchoNin9/9host"
+domain          = "echo9.net"

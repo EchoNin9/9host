@@ -2,6 +2,9 @@
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
-infra/.terraform.lock.hcl
+infra/backend-config.hcl
+infra/bootstrap/.terraform/
+infra/bootstrap/*.tfstate
+infra/bootstrap/*.tfstate.*
 *.tfvars
 !*.tfvars.example
