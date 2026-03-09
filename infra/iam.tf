@@ -92,17 +92,9 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   statement {
-    sid    = "DynamoDB"
-    effect = "Allow"
-    actions = [
-      "dynamodb:CreateTable",
-      "dynamodb:DescribeTable",
-      "dynamodb:DescribeContinuousBackups",
-      "dynamodb:DescribeTimeToLive",
-      "dynamodb:UpdateTable",
-      "dynamodb:DeleteTable",
-      "dynamodb:ListTables"
-    ]
+    sid       = "DynamoDB"
+    effect    = "Allow"
+    actions   = ["dynamodb:*"]
     resources = ["arn:aws:dynamodb:*:*:table/9host-*"]
   }
 
