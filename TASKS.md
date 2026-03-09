@@ -93,5 +93,5 @@
 
 ## Blocked / Notes
 
-- **CI -refresh=false:** GHA deploy uses `-refresh=false` on tofu plan/apply to avoid GetBucketAcl AccessDenied. Policy grants it; simulator allows it; GHA still fails. Revisit root cause when investigating drift detection.
-- **DynamoDB:** `hash_key`/`range_key` deprecated; migrate to `key_schema` (dynamodb.tf).
+- **CI S3 permissions:** Added `s3:GetAccelerateConfiguration` to deploy policy (fixes plan/apply AccessDenied during S3 bucket refresh).
+- **DynamoDB:** Table-level `hash_key`/`range_key` deprecated (provider does not support table-level `key_schema`). GSI blocks migrated to `key_schema`.
