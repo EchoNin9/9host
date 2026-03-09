@@ -193,6 +193,7 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:GetDistributionConfig",
       "cloudfront:DeleteDistribution",
       "cloudfront:TagResource",
+      "cloudfront:ListTagsForResource",
       "cloudfront:ListDistributions",
       "cloudfront:CreateOriginAccessControl",
       "cloudfront:GetOriginAccessControl",
