@@ -13,7 +13,7 @@
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
-| 1.0 | Create SSL certificates (ACM + Route 53 DNS validation) | TODO | `infra/` OpenTofu. **STOP after apply.** DNS validation takes 5–30 min (up to 72h). See Save Point below |
+| 1.0 | Create SSL certificates (ACM for stage/prod) | DONE | Certs validated. GitHub repo vars added. |
 | 1.1 | Analyze orangewhip schema (User, Profile) and design Tenant model for DynamoDB | TODO | Reference: `../orangewhip.surf` (USER#sub, PROFILE). Add TENANT#{slug} prefix to all PKs |
 | 1.2 | Extend DynamoDB single-table: TENANT#{slug}, TENANT#{slug}#USER#{sub}#PROFILE, etc. | TODO | Table name: `9host-main`. Every item MUST have PK starting with TENANT# |
 | 1.3 | Implement middleware: extract `tenant_slug` from URL (e.g. `{tenant}.echo9.net`) and inject into Lambda context | TODO | Pass tenant_slug to handler; use in all DynamoDB queries |
@@ -46,17 +46,11 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Save Point: SSL certificates created (Phase 1)
+### ~~Save Point: SSL certificates created (Phase 1)~~ ✅ Complete
 
-**When:** After running `tofu apply` in `infra/` and cert + DNS validation records are created.
+**Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added.
 
-**Status:** Cert is in "Pending validation". DNS records must propagate before ACM issues the cert.
-
-**Do NOT proceed** until:
-1. You have delegated the domain to Route 53 (add NS records from `tofu output route53_name_servers` at your registrar).
-2. ACM certificate status shows "Issued" in AWS Console (Certificate Manager, us-east-1).
-
-**Next step:** Once cert is Issued, continue with task 1.5 (CI/CD) or CloudFront setup. Add `aws_acm_certificate_validation` resource when building CloudFront.
+**Next:** Task 1.5 (CI/CD) or CloudFront setup.
 
 ---
 
