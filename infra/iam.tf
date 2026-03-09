@@ -150,6 +150,7 @@ data "aws_iam_policy_document" "deploy" {
     effect = "Allow"
     actions = [
       "s3:CreateBucket",
+      "s3:GetBucketAcl",
       "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketVersioning",
