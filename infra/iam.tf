@@ -91,6 +91,20 @@ data "aws_iam_policy_document" "deploy" {
     resources = ["*"]
   }
 
+  # Allow deploy role to update the deploy policy (self-update for IAM permission changes)
+  statement {
+    sid    = "IAMDeployPolicy"
+    effect = "Allow"
+    actions = [
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:CreatePolicyVersion",
+      "iam:DeletePolicyVersion"
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/9host-deploy"]
+  }
+
   statement {
     sid       = "DynamoDB"
     effect    = "Allow"
