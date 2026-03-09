@@ -165,6 +165,7 @@ data "aws_iam_policy_document" "deploy" {
       "s3:GetLifecycleConfiguration",
       "s3:GetReplicationConfiguration",
       "s3:GetBucketObjectLockConfiguration",
+      "s3:GetEncryptionConfiguration",
       "s3:PutBucketOwnershipControls",
       "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
