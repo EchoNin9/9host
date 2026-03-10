@@ -282,6 +282,7 @@ data "aws_iam_policy_document" "deploy" {
       "secretsmanager:DeleteSecret",
       "secretsmanager:DescribeSecret",
       "secretsmanager:GetSecretValue",
+      "secretsmanager:GetResourcePolicy",
       "secretsmanager:PutSecretValue",
       "secretsmanager:TagResource"
     ]
