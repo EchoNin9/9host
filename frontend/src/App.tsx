@@ -1,4 +1,4 @@
-import { Navigate, Route, BrowserRouter, Routes } from "react-router-dom"
+import { Link, Navigate, Route, BrowserRouter, Routes } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -13,8 +13,10 @@ import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
 import { useTenant } from "@/hooks/use-tenant"
+import { getDemoTenants } from "@/lib/tenant-list"
 
 function Landing() {
+  const tenants = getDemoTenants()
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
       <Card className="w-full max-w-md">
@@ -29,9 +31,13 @@ function Landing() {
             Visit a tenant subdomain (e.g. acme.echo9.net) or path (e.g.
             /acme) to access the admin.
           </p>
-          <Button asChild>
-            <a href="/acme">Open demo tenant (acme)</a>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {tenants.map((slug) => (
+              <Button key={slug} asChild variant="secondary">
+                <Link to={`/${slug}`}>{slug}</Link>
+              </Button>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

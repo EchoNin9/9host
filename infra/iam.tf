@@ -228,6 +228,68 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   statement {
+    sid    = "LambdaLogs"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:DescribeLogGroups",
+      "logs:DeleteLogGroup"
+    ]
+    resources = ["arn:aws:logs:*:*:log-group:/aws/lambda/9host-*"]
+  }
+
+  # Lambda: deploy + read for OpenTofu state refresh (GetFunction, GetPolicy, etc.)
+  statement {
+    sid    = "Lambda"
+    effect = "Allow"
+    actions = [
+      "lambda:CreateFunction",
+      "lambda:DeleteFunction",
+      "lambda:GetFunction",
+      "lambda:GetFunctionCodeSigningConfig",
+      "lambda:GetFunctionConfiguration",
+      "lambda:GetPolicy",
+      "lambda:ListVersionsByFunction",
+      "lambda:UpdateFunctionCode",
+      "lambda:UpdateFunctionConfiguration",
+      "lambda:AddPermission",
+      "lambda:RemovePermission",
+      "lambda:TagResource",
+      "lambda:UntagResource",
+      "lambda:ListTags"
+    ]
+    resources = ["arn:aws:lambda:*:*:function:9host-*"]
+  }
+
+  statement {
+    sid    = "APIGateway"
+    effect = "Allow"
+    actions = [
+      "apigateway:GET",
+      "apigateway:POST",
+      "apigateway:PUT",
+      "apigateway:PATCH",
+      "apigateway:DELETE"
+    ]
+    resources = ["arn:aws:apigateway:*::/apis/*", "arn:aws:apigateway:*::/apis/*/*"]
+  }
+
+  statement {
+    sid    = "SecretsManager"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:DeleteSecret",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:GetResourcePolicy",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:TagResource"
+    ]
+    resources = ["arn:aws:secretsmanager:*:*:secret:9host-*"]
+  }
+
+  statement {
     sid    = "CloudFront"
     effect = "Allow"
     actions = [

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   TenantContext,
   extractTenantWithBasePath,
+  getSwitchTenantUrl,
   type TenantContextValue,
 } from "./tenant-context";
 
@@ -35,14 +36,20 @@ export function TenantProvider({
     );
   }, [extract]);
 
+  const getSwitchUrl = useCallback(
+    (newSlug: string) => getSwitchTenantUrl(newSlug, tenantData.basePath, domain),
+    [tenantData.basePath, domain]
+  );
+
   const value = useMemo<TenantContextValue>(
     () => ({
       tenantSlug: tenantData.slug,
       hasTenant: tenantData.slug !== null,
       tenantBasePath: tenantData.basePath,
       refresh,
+      getSwitchTenantUrl: getSwitchUrl,
     }),
-    [tenantData, refresh]
+    [tenantData, refresh, getSwitchUrl]
   );
 
   return (

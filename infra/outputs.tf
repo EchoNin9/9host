@@ -109,3 +109,24 @@ output "cognito_issuer_url" {
   description = "Cognito issuer URL for OIDC"
   value       = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
 }
+
+# ------------------------------------------------------------------------------
+# API Gateway (Task 1.10)
+# ------------------------------------------------------------------------------
+output "api_gateway_invoke_url" {
+  description = "API Gateway HTTP API invoke URL (e.g. https://xxx.execute-api.us-east-1.amazonaws.com)"
+  value       = aws_apigatewayv2_stage.default.invoke_url
+}
+
+output "api_gateway_id" {
+  description = "API Gateway HTTP API ID"
+  value       = aws_apigatewayv2_api.main.id
+}
+
+# ------------------------------------------------------------------------------
+# CloudNS credentials (Secrets Manager)
+# ------------------------------------------------------------------------------
+output "cloudns_secret_arn" {
+  description = "ARN of Secrets Manager secret for CloudNS credentials. Set value via: aws secretsmanager put-secret-value --secret-id 9host-cloudns --secret-string '{\"auth_id\":12345,\"password\":\"xxx\"}'"
+  value       = aws_secretsmanager_secret.cloudns.arn
+}
