@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
 import type { Site } from "@/lib/api"
 
@@ -117,6 +118,7 @@ function SiteForm({
 
 function TenantSites() {
   const { tenantSlug } = useTenant()
+  const { canEdit } = useTenantRole()
   const { sites, loading, error, create, update, remove } = useSites(tenantSlug)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingSite, setEditingSite] = useState<Site | null>(null)
@@ -161,7 +163,9 @@ function TenantSites() {
             Manage websites for {tenantSlug}
           </p>
         </div>
-        <Button onClick={handleCreate}>Add site</Button>
+        {canEdit && (
+          <Button onClick={handleCreate}>Add site</Button>
+        )}
       </div>
 
       <Sheet
@@ -220,27 +224,29 @@ function TenantSites() {
                   <CardTitle className="text-base">{site.name}</CardTitle>
                   <CardDescription>{site.slug || site.id}</CardDescription>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8">
-                      <MoreHorizontal className="size-4" />
-                      <span className="sr-only">Actions</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleEdit(site)}>
-                      <Pencil className="mr-2 size-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => handleDelete(site)}
-                    >
-                      <Trash2 className="mr-2 size-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-8">
+                        <MoreHorizontal className="size-4" />
+                        <span className="sr-only">Actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleEdit(site)}>
+                        <Pencil className="mr-2 size-4" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => handleDelete(site)}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </CardHeader>
               <CardContent>
                 <span

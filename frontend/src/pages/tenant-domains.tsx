@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { FeatureGate } from "@/components/feature-gate"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useDomains } from "@/hooks/use-domains"
 import { useSites } from "@/hooks/use-sites"
 import type { Domain } from "@/lib/api"
@@ -112,6 +113,7 @@ function DomainForm({
 
 function DomainsContent() {
   const { tenantSlug } = useTenant()
+  const { canEdit } = useTenantRole()
   const { domains, loading, error, add, remove } = useDomains(tenantSlug)
   const { sites } = useSites(tenantSlug)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -158,13 +160,15 @@ function DomainsContent() {
             Add custom domains to your sites. Requires Pro or Business tier.
           </p>
         </div>
-        <Button
-          onClick={() => setSheetOpen(true)}
-          disabled={sites.length === 0}
-          title={sites.length === 0 ? "Create a site first" : undefined}
-        >
-          Add domain
-        </Button>
+        {canEdit && (
+          <Button
+            onClick={() => setSheetOpen(true)}
+            disabled={sites.length === 0}
+            title={sites.length === 0 ? "Create a site first" : undefined}
+          >
+            Add domain
+          </Button>
+        )}
       </div>
 
       <Sheet
@@ -204,23 +208,25 @@ function DomainsContent() {
                     Site: {sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}
                   </CardDescription>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-8">
-                      <MoreHorizontal className="size-4" />
-                      <span className="sr-only">Actions</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => handleDelete(d)}
-                    >
-                      <Trash2 className="mr-2 size-4" />
-                      Remove
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {canEdit && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="size-8">
+                        <MoreHorizontal className="size-4" />
+                        <span className="sr-only">Actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => handleDelete(d)}
+                      >
+                        <Trash2 className="mr-2 size-4" />
+                        Remove
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </CardHeader>
               <CardContent className="pt-0">
                 <span

@@ -6,9 +6,11 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantRole } from "@/hooks/use-tenant-role"
 
 function TenantSettings() {
   const { tenantSlug } = useTenant()
+  const { role, canEdit } = useTenantRole()
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -22,7 +24,11 @@ function TenantSettings() {
       <Card>
         <CardHeader>
           <CardTitle>Tenant settings</CardTitle>
-          <CardDescription>Manage your tenant configuration</CardDescription>
+          <CardDescription>
+            {canEdit
+              ? "Manage your tenant configuration"
+              : `View-only access (${role})`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">

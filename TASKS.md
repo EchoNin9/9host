@@ -64,7 +64,7 @@
 | 2.13 | Superadmin UI: all tenants list, impersonate tenant | DONE | /admin page, ImpersonationContext, X-Impersonate-Tenant in API client. Stop impersonating in sidebar. |
 | 2.14 | Tenantadmin UI: users list, role management | TODO | Tenantadmin sees all tenantadmins & tenantusers. Depends on 1.24, 1.27. |
 | 2.15 | Module access UI: tenantadmin configures per-user permissions | TODO | Tenantuser sees only what tenantadmin allows. Depends on 1.25. |
-| 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | TODO | Depends on 1.24. Use role from tenant context or API. |
+| 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | DONE | useTenantRole hook, canEdit for admin/manager. editor/member see view-only. |
 | 2.17 | Tenant Settings: show owner, transfer owner (if owner) | TODO | Depends on 1.26. owner_sub on tenant. |
 
 ### Agent 3 — Payments
