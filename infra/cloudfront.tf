@@ -25,7 +25,7 @@ resource "aws_cloudfront_distribution" "staging" {
   price_class         = "PriceClass_100"
   wait_for_deployment = false
 
-  aliases = ["stage.${var.domain}"]
+  aliases = [for d in var.domains : "stage.${d}"]
 
   origin {
     domain_name              = aws_s3_bucket.frontend_staging.bucket_regional_domain_name
@@ -124,7 +124,7 @@ resource "aws_cloudfront_distribution" "production" {
   price_class         = "PriceClass_100"
   wait_for_deployment = false
 
-  aliases = ["prod.${var.domain}"]
+  aliases = [for d in var.domains : "prod.${d}"]
 
   origin {
     domain_name              = aws_s3_bucket.frontend_production.bucket_regional_domain_name

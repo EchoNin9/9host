@@ -9,8 +9,8 @@ variable "github_org_repo" {
   type        = string
 }
 
-variable "domain" {
-  description = "Primary domain (e.g. echo9.net)."
-  type        = string
-  default     = "echo9.net"
+variable "domains" {
+  description = "List of base domains for stage/prod. Add echo9.ca after CloudNS zone + validation records exist."
+  type        = list(string)
+  default     = ["echo9.net"]
 }

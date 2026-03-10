@@ -62,17 +62,16 @@ resource "aws_cognito_user_pool_client" "frontend" {
 
   generate_secret                      = false
   supported_identity_providers         = ["COGNITO"]
-  callback_urls = [
-    "https://stage.${var.domain}",
-    "https://prod.${var.domain}",
-    "http://localhost:5173",
-    "http://localhost:5173/auth/callback"
-  ]
-  logout_urls = [
-    "https://stage.${var.domain}",
-    "https://prod.${var.domain}",
-    "http://localhost:5173"
-  ]
+  callback_urls = concat(
+    [for d in var.domains : "https://stage.${d}"],
+    [for d in var.domains : "https://prod.${d}"],
+    ["http://localhost:5173", "http://localhost:5173/auth/callback"]
+  )
+  logout_urls = concat(
+    [for d in var.domains : "https://stage.${d}"],
+    [for d in var.domains : "https://prod.${d}"],
+    ["http://localhost:5173"]
+  )
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]

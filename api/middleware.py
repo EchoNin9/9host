@@ -9,6 +9,7 @@ Sources (in order of precedence):
 Use with: event["tenant_slug"] in handlers. All DynamoDB queries MUST use TENANT#{tenant_slug}.
 """
 
+import os
 import re
 from typing import Any, Callable
 
@@ -16,17 +17,22 @@ from typing import Any, Callable
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 
 
-def extract_tenant_slug(event: dict[str, Any], domain: str = "echo9.net") -> str | None:
+def extract_tenant_slug(
+    event: dict[str, Any],
+    domains: str | list[str] | None = None,
+) -> str | None:
     """
     Extract tenant_slug from API Gateway / Lambda event.
 
     Args:
         event: Lambda event (API Gateway HTTP API or REST API format)
-        domain: Base domain for subdomain parsing (e.g. echo9.net)
+        domains: Comma-separated base domains or list (e.g. "echo9.net,echo9.ca")
 
     Returns:
         tenant_slug or None if not found
     """
+    domain_list = _parse_domains(domains)
+
     # 1. X-Tenant-Slug header
     headers = event.get("headers") or {}
     if isinstance(headers, dict):
@@ -50,16 +56,20 @@ def extract_tenant_slug(event: dict[str, Any], domain: str = "echo9.net") -> str
         host = host[0] if host else ""
     host = str(host).lower()
 
-    # stage.echo9.net, prod.echo9.net -> no tenant (platform domains)
-    if host in (f"stage.{domain}", f"prod.{domain}", f"www.{domain}", domain):
+    # stage.echo9.net, prod.echo9.net, stage.echo9.ca, etc. -> no tenant (platform domains)
+    platform_hosts = set()
+    for d in domain_list:
+        platform_hosts.update((f"stage.{d}", f"prod.{d}", f"www.{d}", d))
+    if host in platform_hosts:
         return None
 
-    # acme.echo9.net -> acme
-    suffix = f".{domain}"
-    if host.endswith(suffix):
-        subdomain = host[: -len(suffix)]
-        if subdomain and _valid_slug(subdomain):
-            return subdomain
+    # acme.echo9.net or acme.echo9.ca -> acme
+    for d in domain_list:
+        suffix = f".{d}"
+        if host.endswith(suffix):
+            subdomain = host[: -len(suffix)]
+            if subdomain and _valid_slug(subdomain):
+                return subdomain
 
     # 3. Path parameter: /{tenant}/... or /api/{tenant}/...
     path = event.get("path") or event.get("rawPath") or ""
@@ -72,6 +82,15 @@ def extract_tenant_slug(event: dict[str, Any], domain: str = "echo9.net") -> str
     return None
 
 
+def _parse_domains(domains: str | list[str] | None) -> list[str]:
+    """Parse DOMAINS env (comma-separated or list) to list of domain strings."""
+    if not domains:
+        return ["echo9.net"]
+    if isinstance(domains, list):
+        return [d.strip() for d in domains if d and isinstance(d, str)]
+    return [d.strip() for d in str(domains).split(",") if d.strip()]
+
+
 def _valid_slug(slug: str) -> bool:
     """Validate slug format: lowercase alphanumeric + hyphen."""
     if not slug or not isinstance(slug, str):
@@ -82,7 +101,7 @@ def _valid_slug(slug: str) -> bool:
 
 def with_tenant(
     handler: Callable[[dict, dict], Any],
-    domain: str = "echo9.net",
+    domains: str | list[str] | None = None,
 ) -> Callable[[dict, dict], Any]:
     """
     Decorator/wrapper that injects tenant_slug into the event before calling the handler.
@@ -97,7 +116,8 @@ def with_tenant(
     """
 
     def wrapped(event: dict, context: dict) -> Any:
-        tenant_slug = extract_tenant_slug(event, domain=domain)
+        domains_val = domains or os.environ.get("DOMAINS")
+        tenant_slug = extract_tenant_slug(event, domains=domains_val)
         event["tenant_slug"] = tenant_slug
         return handler(event, context)
 

@@ -25,10 +25,11 @@
 | 1.8 | CloudFront + S3: distribution for stage/prod.echo9.net, S3 origin for frontend build | DONE | 9host-frontend-staging, 9host-frontend-production. OAC, BucketOwnerEnforced. CI: -refresh=false workaround for GetBucketAcl. CNAMEs in CloudNS. |
 | 1.9 | Cognito User Pool (9host-user-pool) for auth | DONE | 9host-user-pool, app client 9host-frontend, groups admin/manager/editor/member. |
 | 1.10 | API Gateway + Lambda: wire api/ handlers, deploy via CI | DONE | 9host-api. HTTP API + Lambda proxy. /api/health, /api/tenant. |
-| 1.11 | Wire CloudNS via API: add provider (ClouDNS/cloudns), auth-id + password vars, echo9.net zone | DONE | infra/cloudns/ standalone config. docs/CLOUDNS.md. |
-| 1.12 | Add required DNS records in CloudNS (OpenTofu): ACM validation CNAMEs, stage/prod CNAMEs → CloudFront | DONE | infra/cloudns/ reads remote state, creates CNAMEs. |
-| 1.13 | Add echo9.ca for stage/prod: refactor domain→domains list, ACM SANs, CloudFront aliases | TODO | domains = [echo9.net, echo9.ca]. Same S3/CloudFront; 4 hostnames total. |
-| 1.14 | Extend CloudNS (1.11–1.12) for echo9.ca zone: CNAMEs for stage/prod, ACM validation | TODO | Depends on 1.11, 1.13. |
+| 1.11 | Wire CloudNS via API: add provider (ClouDNS/cloudns), auth-id + password vars, echo9.net zone | DONE | infra/cloudns/ standalone config. Credentials in Secrets Manager. manage_records for zone-only mode. docs/CLOUDNS.md. |
+| 1.12 | Add required DNS records in CloudNS (OpenTofu): ACM validation CNAMEs, stage/prod CNAMEs → CloudFront | DONE | infra/cloudns/ reads remote state, creates CNAMEs. Use manage_records=false when records exist (provider priority-field import bug). |
+| 1.13 | Add echo9.ca for stage/prod: refactor domain→domains list, ACM SANs, CloudFront aliases | DONE | domains = [echo9.net, echo9.ca]. Same S3/CloudFront; 4 hostnames total. |
+| 1.14 | Extend CloudNS (1.11–1.12) for echo9.ca zone: CNAMEs for stage/prod, ACM validation | DONE | Zones per domain, ACM validation + stage/prod CNAMEs per zone. |
+| 1.15 | Add GET /api/tenants endpoint (user's tenants via GSI byUser, Cognito auth) | DONE | api/tenants_handler.py, auth_helpers.py. Unblocks 2.7. |
 
 ### Agent 2 — Frontend / UI
 
@@ -40,6 +41,10 @@
 | 2.3 | Create HOC `withFeatureGate` to wrap restricted UI elements | DONE | FeatureGate component, hocs/with-feature-gate.tsx |
 | 2.4 | Implement tenant context provider (tenant_slug from URL) | DONE | contexts/tenant-context.ts, tenant-provider.tsx; hooks/use-tenant.ts |
 | 2.5 | Migrate single-user UI to multi-tenant (tenant switcher, routing) | DONE | TenantSwitcher in sidebar, getSwitchTenantUrl, Landing tenant links |
+| 2.6 | Auth UI: login/signup with Cognito | DONE | Custom Shadcn forms, Amplify Auth, AuthProvider, /login, /signup, /auth/confirm |
+| 2.6a | CI: pass VITE_COGNITO_* vars to frontend build | DONE | dev.yml, main.yml. Add vars in repo Settings → Actions. |
+| 2.7 | Tenant list from API: replace getDemoTenants() with /api/tenants | TODO | API endpoint exists (1.15). Frontend integration. |
+| 2.8 | Advanced Analytics UI (FeatureGate advanced_analytics) | TODO | Pro+ tier. Charts, metrics placeholder |
 
 ### Agent 3 — Payments
 
@@ -59,7 +64,7 @@
 
 **Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added. Tasks 1.1–1.7 complete (schema, DynamoDB, middleware, CI/CD, Roborev, remote state).
 
-**Next:** Task 1.9 (Cognito User Pool) or Agent 2 tasks (2.1–2.5). Task 2.0 (Shadcn scaffold) done.
+**Next:** Tasks 1.13–1.14 (echo9.ca) or Agent 3 (Stripe). Tasks 1.9–1.12, 2.0–2.5 complete.
 
 ---
 
@@ -99,5 +104,5 @@
 ## Blocked / Notes
 
 - **CloudNS vs Route 53:** CloudNS is manageable — official Terraform provider (ClouDNS/cloudns) exists. Tasks 1.11–1.12 automate DNS. **Alternate:** migrate echo9.net to Route 53 for native ACM auto-validation and CloudFront integration; larger migration, no third-party API.
-- **CI permissions:** Deploy policy includes S3 bucket read (GetAccelerateConfiguration, GetBucketRequestPayment, GetEncryptionConfiguration, etc.), CloudFront ListTagsForResource, Cognito GetUserPoolMfaConfig/SetUserPoolMfaConfig for OpenTofu plan/apply, and IAM self-update (ListPolicyVersions, CreatePolicyVersion, etc.) for deploy policy changes.
+- **CI permissions:** Deploy policy includes S3 bucket read (GetAccelerateConfiguration, GetBucketRequestPayment, GetEncryptionConfiguration, etc.), CloudFront ListTagsForResource, Cognito GetUserPoolMfaConfig/SetUserPoolMfaConfig, Secrets Manager GetResourcePolicy for OpenTofu plan/apply, and IAM self-update (ListPolicyVersions, CreatePolicyVersion, etc.) for deploy policy changes.
 - **DynamoDB:** Table-level `hash_key`/`range_key` deprecated (provider does not support table-level `key_schema`). GSI blocks migrated to `key_schema`.
