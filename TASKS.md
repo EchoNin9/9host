@@ -41,7 +41,8 @@
 | 2.3 | Create HOC `withFeatureGate` to wrap restricted UI elements | DONE | FeatureGate component, hocs/with-feature-gate.tsx |
 | 2.4 | Implement tenant context provider (tenant_slug from URL) | DONE | contexts/tenant-context.ts, tenant-provider.tsx; hooks/use-tenant.ts |
 | 2.5 | Migrate single-user UI to multi-tenant (tenant switcher, routing) | DONE | TenantSwitcher in sidebar, getSwitchTenantUrl, Landing tenant links |
-| 2.6 | Auth UI: login/signup with Cognito | TODO | 9host-user-pool exists; add Amplify UI or custom forms |
+| 2.6 | Auth UI: login/signup with Cognito | DONE | Custom Shadcn forms, Amplify Auth, AuthProvider, /login, /signup, /auth/confirm |
+| 2.6a | CI: pass VITE_COGNITO_* vars to frontend build | DONE | dev.yml, main.yml. Add vars in repo Settings → Actions. |
 | 2.7 | Tenant list from API: replace getDemoTenants() with /api/tenants | TODO | API endpoint exists (1.15). Frontend integration. |
 | 2.8 | Advanced Analytics UI (FeatureGate advanced_analytics) | TODO | Pro+ tier. Charts, metrics placeholder |
 
