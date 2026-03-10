@@ -13,6 +13,7 @@ import { TenantAnalytics } from "@/pages/tenant-analytics"
 import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
+import { SuperadminPage } from "@/pages/superadmin"
 import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
 import { AuthConfirm } from "@/pages/auth-confirm"
@@ -52,13 +53,18 @@ function Landing() {
               </span>
             )}
           </div>
-          {!authLoading && !isAuthenticated && (
-            <p className="mt-4 text-center">
+          <p className="mt-4 flex flex-wrap justify-center gap-4">
+            {!authLoading && !isAuthenticated && (
               <Button asChild variant="link" className="p-0">
                 <Link to="/login">Sign in</Link>
               </Button>
-            </p>
-          )}
+            )}
+            {!authLoading && isAuthenticated && (
+              <Button asChild variant="link" className="p-0">
+                <Link to="/admin">Platform admin</Link>
+              </Button>
+            )}
+          </p>
         </CardContent>
       </Card>
     </div>
@@ -79,6 +85,7 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/admin" element={<SuperadminPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/auth/confirm" element={<AuthConfirm />} />

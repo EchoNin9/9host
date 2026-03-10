@@ -60,7 +60,7 @@
 | 2.10 | Domains UI: connect TenantDomains to /api/tenant/domains | DONE | List, add, remove. useDomains hook, site selector, FeatureGate. |
 | 2.11 | Add Sign in link to Landing page (when unauthenticated) | DONE | Link to /login when !isAuthenticated. useAuth hook. |
 | 2.12 | Add auth routes: /login, /signup, /auth/confirm (wire to Cognito) | DONE | Login, Signup, AuthConfirm pages. Amplify signIn, signUp, confirmSignUp. |
-| 2.13 | Superadmin UI: all tenants list, impersonate tenant | TODO | Platform admin view. API client sends X-Impersonate-Tenant when impersonating. Depends on 1.21–1.23. |
+| 2.13 | Superadmin UI: all tenants list, impersonate tenant | DONE | /admin page, ImpersonationContext, X-Impersonate-Tenant in API client. Stop impersonating in sidebar. |
 | 2.14 | Tenantadmin UI: users list, role management | TODO | Tenantadmin sees all tenantadmins & tenantusers. Depends on 1.24. |
 | 2.15 | Module access UI: tenantadmin configures per-user permissions | TODO | Tenantuser sees only what tenantadmin allows. Depends on 1.25. |
 | 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | TODO | Depends on 1.24. Use role from tenant context or API. |

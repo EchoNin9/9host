@@ -7,10 +7,13 @@ import {
   Globe,
   GlobeLock,
   Settings,
+  UserCog,
+  LogOut,
   type LucideIcon,
 } from "lucide-react"
 
 import { useTenant } from "@/hooks/use-tenant"
+import { useImpersonation } from "@/hooks/use-impersonation"
 import { TenantSwitcher } from "@/components/tenant-switcher"
 import {
   Sidebar,
@@ -35,6 +38,8 @@ interface NavItem {
 
 function TenantAdminSidebar() {
   const { tenantSlug, tenantBasePath } = useTenant()
+  const { impersonateTenant, clearImpersonate, isImpersonating } =
+    useImpersonation()
   const location = useLocation()
   const base = tenantBasePath || `/${tenantSlug}`
 
@@ -82,13 +87,36 @@ function TenantAdminSidebar() {
 
       <Separator className="mx-2" />
 
-      <SidebarFooter className="border-t border-sidebar-border p-2">
-        <Link
-          to="/"
-          className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
-        >
-          ← Back to platform
-        </Link>
+      <SidebarFooter className="border-t border-sidebar-border p-2 space-y-2">
+        {isImpersonating && impersonateTenant && (
+          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <UserCog className="size-3.5 shrink-0" />
+            <span>Impersonating {impersonateTenant}</span>
+            <Link
+              to="/"
+              onClick={clearImpersonate}
+              className="ml-auto flex items-center gap-1 font-medium hover:underline"
+            >
+              <LogOut className="size-3" />
+              Stop
+            </Link>
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <Link
+            to="/admin"
+            className="flex items-center gap-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+          >
+            <UserCog className="size-3.5" />
+            Platform admin
+          </Link>
+          <Link
+            to="/"
+            className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+          >
+            ← Back to platform
+          </Link>
+        </div>
       </SidebarFooter>
 
       <SidebarRail />

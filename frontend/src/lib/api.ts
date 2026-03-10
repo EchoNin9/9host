@@ -1,7 +1,21 @@
 /**
  * API client for 9host backend.
  * Uses VITE_API_URL (set in CI from tofu output).
+ *
+ * Impersonation (Task 2.13): When setImpersonateTenant(slug) is called, all
+ * tenant-scoped requests include X-Impersonate-Tenant header for superadmin.
  */
+
+let _impersonateTenant: string | null = null
+
+/** Set impersonation target (superadmin only). Call with null to clear. */
+export function setImpersonateTenant(slug: string | null): void {
+  _impersonateTenant = slug ? slug.trim().toLowerCase() : null
+}
+
+function getImpersonateHeader(): Record<string, string> {
+  return _impersonateTenant ? { "X-Impersonate-Tenant": _impersonateTenant } : {}
+}
 
 function getApiUrl(): string {
   const url = import.meta.env.VITE_API_URL as string | undefined
@@ -17,6 +31,49 @@ export interface Tenant {
 
 export interface TenantsResponse {
   tenants: Tenant[]
+}
+
+/** Admin tenant (from GET /api/admin/tenants) — no role, includes tier */
+export interface AdminTenant {
+  slug: string
+  name: string
+  tier: string
+}
+
+export interface AdminTenantsResponse {
+  tenants: AdminTenant[]
+}
+
+export interface FetchAllTenantsResult {
+  tenants: AdminTenant[]
+  isSuperadmin: boolean
+}
+
+/**
+ * Fetch all tenants (superadmin only). Returns { tenants: [], isSuperadmin: false } on 403.
+ */
+export async function fetchAllTenants(
+  accessToken: string | null
+): Promise<FetchAllTenantsResult> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return { tenants: [], isSuperadmin: false }
+
+  try {
+    const res = await fetch(`${base}/api/admin/tenants`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+    if (res.status === 403) return { tenants: [], isSuperadmin: false }
+    if (!res.ok) return { tenants: [], isSuperadmin: false }
+    const data = (await res.json()) as AdminTenantsResponse
+    return {
+      tenants: data.tenants ?? [],
+      isSuperadmin: true,
+    }
+  } catch {
+    return { tenants: [], isSuperadmin: false }
+  }
 }
 
 /**
@@ -82,6 +139,7 @@ export async function fetchAnalytics(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "X-Tenant-Slug": tenantSlug,
+        ...getImpersonateHeader(),
       },
     })
     if (!res.ok) return null
@@ -117,6 +175,7 @@ function sitesHeaders(tenantSlug: string, accessToken: string) {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
     "X-Tenant-Slug": tenantSlug,
+    ...getImpersonateHeader(),
   }
 }
 
@@ -210,6 +269,7 @@ export async function deleteSite(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "X-Tenant-Slug": tenantSlug,
+        ...getImpersonateHeader(),
       },
     })
     return res.status === 204
@@ -243,6 +303,7 @@ function domainsHeaders(tenantSlug: string, accessToken: string) {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
     "X-Tenant-Slug": tenantSlug,
+    ...getImpersonateHeader(),
   }
 }
 
@@ -310,6 +371,7 @@ export async function deleteDomain(
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "X-Tenant-Slug": tenantSlug,
+        ...getImpersonateHeader(),
       },
     })
     return res.status === 204
