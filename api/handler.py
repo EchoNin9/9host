@@ -12,6 +12,7 @@ from analytics_handler import get_analytics_handler
 from domains_handler import domains_handler
 from handler_example import get_tenant_handler
 from sites_handler import sites_handler
+from stripe_webhook_handler import stripe_webhook_handler
 from tenants_handler import get_tenants_handler
 
 
@@ -57,6 +58,10 @@ def lambda_handler(event: dict, context: dict) -> dict:
 
     if path.startswith("/api/tenant/domains"):
         return domains_handler(event, context)
+
+    # Stripe webhook (Task 1.19) — no tenant, no Cognito auth
+    if path.startswith("/api/webhooks/stripe"):
+        return stripe_webhook_handler(event, context)
 
     # Superadmin routes (Task 1.22)
     if method == "GET" and path in ("/api/admin/tenants", "/api/admin/tenants/"):

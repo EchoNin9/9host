@@ -58,6 +58,34 @@ def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | N
         return None
 
 
+def get_user_role_in_tenant(table, sub: str, tenant_slug: str) -> str | None:
+    """
+    Get user's role in tenant from profile. Returns role (admin|manager|editor|member)
+    or None if not a member.
+    """
+    from dynamodb_helpers import get_user_profile_item
+
+    key = get_user_profile_item(tenant_slug, sub)
+    resp = table.get_item(Key=key)
+    item = resp.get("Item")
+    if not item:
+        return None
+    return (item.get("role") or "member").lower()
+
+
+def require_tenant_admin_or_manager(table, sub: str, tenant_slug: str) -> tuple[bool, str | None]:
+    """
+    Require admin or manager role for tenant. Returns (True, None) if ok,
+    (False, error_message) if not.
+    """
+    role = get_user_role_in_tenant(table, sub, tenant_slug)
+    if role is None:
+        return False, "Not a member of this tenant."
+    if role in ("admin", "manager"):
+        return True, None
+    return False, "Admin or manager role required for this action."
+
+
 def is_superadmin(
     sub: str,
     user_pool_id: str,

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token
+from auth_helpers import get_sub_from_access_token, require_tenant_admin_or_manager
 from dynamodb_helpers import (
     get_site_item,
     pk_tenant,
@@ -227,6 +227,12 @@ def sites_handler(event: dict, context: dict) -> dict:
 
     if method == "GET" and site_id:
         return _get_site(table, tenant_slug, site_id)
+
+    # POST/PUT/DELETE require admin or manager (Task 1.24)
+    if method in ("POST", "PUT", "DELETE"):
+        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+        if not ok:
+            return _json_response(403, {"error": err or "Forbidden."})
 
     if method == "POST" and is_list_or_create:
         body = _parse_body(event) or {}
