@@ -8,6 +8,7 @@ subdomain, or path param) for tenant-scoped operations.
 import json
 
 from handler_example import get_tenant_handler
+from tenants_handler import get_tenants_handler
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -32,6 +33,9 @@ def lambda_handler(event: dict, context: dict) -> dict:
 
     if method == "GET" and path in ("/api/health", "/api/health/"):
         return _json_response(200, {"status": "ok", "service": "9host-api"})
+
+    if method == "GET" and path in ("/api/tenants", "/api/tenants/"):
+        return get_tenants_handler(event, context)
 
     if method == "GET" and path in ("/api/tenant", "/api/tenant/"):
         return get_tenant_handler(event, context)

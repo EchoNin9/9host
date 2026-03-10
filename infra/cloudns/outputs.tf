@@ -1,4 +1,4 @@
-output "zone_id" {
-  description = "CloudNS zone ID for echo9.net"
-  value       = cloudns_dns_zone.echo9_net.id
+output "zone_ids" {
+  description = "CloudNS zone IDs by domain"
+  value       = { for d, z in cloudns_dns_zone.zone : d => z.id }
 }
