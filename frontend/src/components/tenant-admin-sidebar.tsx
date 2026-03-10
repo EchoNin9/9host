@@ -3,6 +3,7 @@
 import { Link, useLocation } from "react-router-dom"
 import {
   LayoutDashboard,
+  BarChart3,
   Globe,
   GlobeLock,
   Settings,
@@ -39,6 +40,7 @@ function TenantAdminSidebar() {
 
   const mainNav: NavItem[] = [
     { title: "Dashboard", href: `${base}`, icon: LayoutDashboard },
+    { title: "Analytics", href: `${base}/analytics`, icon: BarChart3 },
     { title: "Sites", href: `${base}/sites`, icon: Globe },
     { title: "Domains", href: `${base}/domains`, icon: GlobeLock },
     { title: "Settings", href: `${base}/settings`, icon: Settings },

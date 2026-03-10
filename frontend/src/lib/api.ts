@@ -42,3 +42,51 @@ export async function fetchTenants(accessToken: string | null): Promise<Tenant[]
     return []
   }
 }
+
+// -----------------------------------------------------------------------------
+// Analytics (Pro+ tier)
+// -----------------------------------------------------------------------------
+
+export interface AnalyticsDataPoint {
+  date: string
+  count: number
+}
+
+export interface TopPage {
+  path: string
+  views: number
+}
+
+export interface AnalyticsResponse {
+  period: string
+  page_views_over_time: AnalyticsDataPoint[]
+  total_page_views: number
+  unique_visitors: number
+  top_pages: TopPage[]
+  placeholder?: boolean
+}
+
+/**
+ * Fetch analytics for a tenant (Pro+ tier).
+ * Requires tenant_slug (X-Tenant-Slug header), Authorization: Bearer <accessToken>.
+ */
+export async function fetchAnalytics(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<AnalyticsResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/analytics`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Tenant-Slug": tenantSlug,
+      },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AnalyticsResponse
+  } catch {
+    return null
+  }
+}

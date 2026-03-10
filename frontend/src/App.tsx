@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/card"
 import { TenantAdminLayout } from "@/components/tenant-admin-layout"
 import { TenantDashboard } from "@/pages/tenant-dashboard"
+import { TenantAnalytics } from "@/pages/tenant-analytics"
 import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
@@ -76,6 +77,7 @@ function AppRoutes() {
       <Route path="/" element={<TenantRootRedirect />} />
       <Route path="/:tenantSlug" element={<TenantAdminLayout />}>
         <Route index element={<TenantDashboard />} />
+        <Route path="analytics" element={<TenantAnalytics />} />
         <Route path="sites" element={<TenantSites />} />
         <Route path="domains" element={<TenantDomains />} />
         <Route path="settings" element={<TenantSettings />} />
