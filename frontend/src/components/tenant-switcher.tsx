@@ -4,7 +4,7 @@ import { ChevronsUpDown } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 
 import { useTenant } from "@/hooks/use-tenant"
-import { getDemoTenants } from "@/lib/tenant-list"
+import { useTenants } from "@/hooks/use-tenants"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -15,8 +15,8 @@ import {
 
 function TenantSwitcher() {
   const { tenantSlug, getSwitchTenantUrl } = useTenant()
+  const { tenants, loading } = useTenants()
   const navigate = useNavigate()
-  const tenants = getDemoTenants()
 
   if (!tenantSlug) return null
 
@@ -42,15 +42,19 @@ function TenantSwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width]">
-        {tenants.map((slug) => (
-          <DropdownMenuItem
-            key={slug}
-            onClick={() => handleSwitch(slug)}
-            className={slug === tenantSlug ? "bg-accent" : undefined}
-          >
-            {slug}
-          </DropdownMenuItem>
-        ))}
+        {loading ? (
+          <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+        ) : (
+          tenants.map((t) => (
+            <DropdownMenuItem
+              key={t.slug}
+              onClick={() => handleSwitch(t.slug)}
+              className={t.slug === tenantSlug ? "bg-accent" : undefined}
+            >
+              {t.name || t.slug}
+            </DropdownMenuItem>
+          ))
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )

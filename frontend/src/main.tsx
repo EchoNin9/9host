@@ -1,4 +1,5 @@
-import { StrictMode } from 'react'
+import "@/lib/amplify"
+import { StrictMode } from "react"
 import { createRoot } from 'react-dom/client'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { TenantProvider } from '@/contexts/tenant-provider'

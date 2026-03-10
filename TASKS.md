@@ -30,6 +30,7 @@
 | 1.13 | Add echo9.ca for stage/prod: refactor domain→domains list, ACM SANs, CloudFront aliases | DONE | domains = [echo9.net, echo9.ca]. Same S3/CloudFront; 4 hostnames total. |
 | 1.14 | Extend CloudNS (1.11–1.12) for echo9.ca zone: CNAMEs for stage/prod, ACM validation | DONE | Zones per domain, ACM validation + stage/prod CNAMEs per zone. |
 | 1.15 | Add GET /api/tenants endpoint (user's tenants via GSI byUser, Cognito auth) | DONE | api/tenants_handler.py, auth_helpers.py. Unblocks 2.7. |
+| 1.16 | Add GET /api/tenant/analytics placeholder (Pro+ tier, tenant-scoped) | DONE | api/analytics_handler.py. Cognito auth, tenant membership, tier check. Unblocks 2.8. |
 
 ### Agent 2 — Frontend / UI
 
@@ -43,7 +44,7 @@
 | 2.5 | Migrate single-user UI to multi-tenant (tenant switcher, routing) | DONE | TenantSwitcher in sidebar, getSwitchTenantUrl, Landing tenant links |
 | 2.6 | Auth UI: login/signup with Cognito | DONE | Custom Shadcn forms, Amplify Auth, AuthProvider, /login, /signup, /auth/confirm |
 | 2.6a | CI: pass VITE_COGNITO_* vars to frontend build | DONE | dev.yml, main.yml. Add vars in repo Settings → Actions. |
-| 2.7 | Tenant list from API: replace getDemoTenants() with /api/tenants | TODO | API endpoint exists (1.15). Frontend integration. |
+| 2.7 | Tenant list from API: replace getDemoTenants() with /api/tenants | DONE | useTenants hook, fetchTenants API client, Amplify config. CI: VITE_API_URL from tofu output. |
 | 2.8 | Advanced Analytics UI (FeatureGate advanced_analytics) | TODO | Pro+ tier. Charts, metrics placeholder |
 
 ### Agent 3 — Payments

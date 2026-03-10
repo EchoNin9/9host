@@ -13,10 +13,10 @@ import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
 import { useTenant } from "@/hooks/use-tenant"
-import { getDemoTenants } from "@/lib/tenant-list"
+import { useTenants } from "@/hooks/use-tenants"
 
 function Landing() {
-  const tenants = getDemoTenants()
+  const { tenants, loading } = useTenants()
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
       <Card className="w-full max-w-md">
@@ -32,11 +32,19 @@ function Landing() {
             /acme) to access the admin.
           </p>
           <div className="flex flex-wrap gap-2">
-            {tenants.map((slug) => (
-              <Button key={slug} asChild variant="secondary">
-                <Link to={`/${slug}`}>{slug}</Link>
-              </Button>
-            ))}
+            {loading ? (
+              <span className="text-sm text-muted-foreground">Loading…</span>
+            ) : tenants.length > 0 ? (
+              tenants.map((t) => (
+                <Button key={t.slug} asChild variant="secondary">
+                  <Link to={`/${t.slug}`}>{t.name || t.slug}</Link>
+                </Button>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Sign in to see your tenants.
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

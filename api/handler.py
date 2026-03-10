@@ -7,6 +7,7 @@ subdomain, or path param) for tenant-scoped operations.
 
 import json
 
+from analytics_handler import get_analytics_handler
 from handler_example import get_tenant_handler
 from tenants_handler import get_tenants_handler
 
@@ -25,6 +26,7 @@ def lambda_handler(event: dict, context: dict) -> dict:
 
     Routes:
       GET /api/tenant, /api/tenant/ — tenant metadata (requires tenant_slug)
+      GET /api/tenant/analytics — analytics placeholder (Pro+ tier)
       $default — fallback to tenant handler for now
     """
     path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
@@ -39,5 +41,8 @@ def lambda_handler(event: dict, context: dict) -> dict:
 
     if method == "GET" and path in ("/api/tenant", "/api/tenant/"):
         return get_tenant_handler(event, context)
+
+    if method == "GET" and path in ("/api/tenant/analytics", "/api/tenant/analytics/"):
+        return get_analytics_handler(event, context)
 
     return get_tenant_handler(event, context)
