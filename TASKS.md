@@ -35,6 +35,12 @@
 | 1.18 | Add Domains API: GET/POST/DELETE /api/tenant/domains | DONE | api/domains_handler.py. Pro+ tier, tenant membership, GSI byDomain. Unblocks Domains sidebar UI. |
 | 1.19 | Add Stripe webhook route: POST /api/webhooks/stripe | TODO | Handler stub for agent3. Unblocks 3.3. Defer until Stripe ready. |
 | 1.20 | Migrate single-user schema to multi-tenant (data migration) | TODO | If existing orangewhip data. Design + run migration. |
+| 1.21 | Add superadmin Cognito group + auth check | TODO | Cognito group `superadmin`, auth_helpers.is_superadmin(sub). Platform-level vendor/owner. |
+| 1.22 | Add superadmin API routes (list all tenants, get any tenant) | TODO | GET /api/admin/tenants, GET /api/admin/tenants/{slug}. Requires superadmin. |
+| 1.23 | Add impersonation (X-Impersonate-Tenant for superadmin) | TODO | Superadmin can set X-Impersonate-Tenant to act as any tenant. Middleware override. |
+| 1.24 | Enforce role checks in API (tenantadmin vs tenantuser) | TODO | Only admin/manager can edit tenant settings, add users, etc. Check profile.role. |
+| 1.25 | Add module permissions entity + API | TODO | TENANT#{slug}#USER#{sub}#PERMISSIONS or similar. tenantadmin configures what tenantuser can access. |
+| 1.26 | Add account owner (owner_sub on tenant) | TODO | Tenant.owner_sub = primary tenantadmin. One per tenant. |
 
 ### Agent 2 — Frontend / UI
 
@@ -52,6 +58,13 @@
 | 2.8 | Advanced Analytics UI (FeatureGate advanced_analytics) | DONE | TenantAnalytics page, Recharts, FeatureGate, /api/tenant/analytics. |
 | 2.9 | Sites UI: connect TenantSites to /api/tenant/sites | DONE | List, create, edit, delete. useSites hook, Sheet forms. |
 | 2.10 | Domains UI: connect TenantDomains to /api/tenant/domains | DONE | List, add, remove. useDomains hook, site selector, FeatureGate. |
+| 2.11 | Add Sign in link to Landing page (when unauthenticated) | TODO | Link to /login so users can authenticate from Landing. |
+| 2.12 | Add auth routes: /login, /signup, /auth/confirm (wire to Cognito) | TODO | Verify 2.6 or implement. Unblocks sign-in flow from Landing. |
+| 2.13 | Superadmin UI: all tenants list, impersonate tenant | TODO | Platform admin view. API client sends X-Impersonate-Tenant when impersonating. Depends on 1.21–1.23. |
+| 2.14 | Tenantadmin UI: users list, role management | TODO | Tenantadmin sees all tenantadmins & tenantusers. Depends on 1.24. |
+| 2.15 | Module access UI: tenantadmin configures per-user permissions | TODO | Tenantuser sees only what tenantadmin allows. Depends on 1.25. |
+| 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | TODO | Depends on 1.24. Use role from tenant context or API. |
+| 2.17 | Tenant Settings: show owner, transfer owner (if owner) | TODO | Depends on 1.26. owner_sub on tenant. |
 
 ### Agent 3 — Payments
 
