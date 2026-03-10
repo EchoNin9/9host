@@ -54,6 +54,14 @@ jobs:
         working-directory: infra
         run: tofu plan -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
 
+      # Apply deploy policy first so CI has PutRolePolicy before updating Lambda role policy (IAM propagation)
+      - name: OpenTofu apply (deploy policy)
+        working-directory: infra
+        run: tofu apply -auto-approve -no-color -target=aws_iam_policy.deploy -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
+
+      - name: Wait for IAM propagation
+        run: sleep 15
+
       - name: OpenTofu apply
         working-directory: infra
         run: tofu apply -auto-approve -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
