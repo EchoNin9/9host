@@ -13,11 +13,16 @@ import { TenantAnalytics } from "@/pages/tenant-analytics"
 import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
+import { Login } from "@/pages/login"
+import { Signup } from "@/pages/signup"
+import { AuthConfirm } from "@/pages/auth-confirm"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenants } from "@/hooks/use-tenants"
+import { useAuth } from "@/hooks/use-auth"
 
 function Landing() {
   const { tenants, loading } = useTenants()
+  const { isAuthenticated, loading: authLoading } = useAuth()
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
       <Card className="w-full max-w-md">
@@ -47,6 +52,13 @@ function Landing() {
               </span>
             )}
           </div>
+          {!authLoading && !isAuthenticated && (
+            <p className="mt-4 text-center">
+              <Button asChild variant="link" className="p-0">
+                <Link to="/login">Sign in</Link>
+              </Button>
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -67,6 +79,9 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/auth/confirm" element={<AuthConfirm />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     )
