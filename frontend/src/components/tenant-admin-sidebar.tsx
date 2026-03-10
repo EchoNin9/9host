@@ -10,6 +10,7 @@ import {
 } from "lucide-react"
 
 import { useTenant } from "@/hooks/use-tenant"
+import { TenantSwitcher } from "@/components/tenant-switcher"
 import {
   Sidebar,
   SidebarContent,
@@ -47,9 +48,7 @@ function TenantAdminSidebar() {
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2 px-2 py-2">
-          <span className="font-semibold text-sidebar-foreground">
-            {tenantSlug}
-          </span>
+          <TenantSwitcher />
         </div>
       </SidebarHeader>
 

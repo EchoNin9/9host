@@ -32,7 +32,7 @@
 
 The `terraform.tfvars` file should contain only non-sensitive values (e.g. `domain`). Never put credentials in tfvars.
 
-**If you have an existing `terraform.tfvars` with `cloudns_auth_id` or `cloudns_password`:** remove those lines. Credentials are now read from Secrets Manager only.
+**Migration:** If you have `terraform.tfvars` with `cloudns_auth_id` or `cloudns_password`, remove those lines (credentials are now in Secrets Manager only).
 
 ## DNS records (Task 1.12)
 
@@ -44,16 +44,35 @@ The config creates:
 
 Values are read from the main infra remote state. Run main infra apply first.
 
-## Zone already exists
+## Zone or records already exist
 
-If echo9.net was created manually in CloudNS, import it before adding records:
-
+**Zone:** If you get `Error: echo9.net has been already added`:
 ```bash
 cd infra/cloudns
 tofu import cloudns_dns_zone.echo9_net echo9.net
 ```
 
-(Check provider docs for the correct import ID format.)
+**Records:** If you get `Error: There is another record for the same host`, the records exist. Either:
+
+1. **Skip record management** (records stay as-is, zone only):
+   ```bash
+   tofu apply -var="manage_records=false"
+   ```
+
+2. **Import records** (if the provider supports it; some versions have a priority-field bug):
+```bash
+# List record IDs (run from repo root)
+AWS_PROFILE=echo9 AWS_REGION=us-east-1 ./infra/cloudns/scripts/import-existing-records.sh
+
+# Then run the import commands it outputs, e.g.:
+cd infra/cloudns
+tofu import cloudns_dns_record.stage echo9.net/RECORD_ID
+tofu import cloudns_dns_record.prod echo9.net/RECORD_ID
+tofu import 'cloudns_dns_record.acm_validation["stage.echo9.net"]' echo9.net/RECORD_ID
+tofu import 'cloudns_dns_record.acm_validation["prod.echo9.net"]' echo9.net/RECORD_ID
+```
+
+Or get record IDs from CloudNS dashboard (Zone → Records → click a record for its ID).
 
 ## Resources
 

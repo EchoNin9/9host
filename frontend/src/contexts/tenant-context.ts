@@ -52,6 +52,8 @@ export interface TenantContextValue {
   tenantBasePath: string;
   /** Re-extract tenant from current URL (e.g. after navigation) */
   refresh: () => void;
+  /** URL to switch to another tenant (preserves current subpath) */
+  getSwitchTenantUrl: (newSlug: string) => string;
 }
 
 export const TenantContext = createContext<TenantContextValue | null>(null);
@@ -75,4 +77,27 @@ export function extractTenantWithBasePath(
   if (fromPath) return { slug: fromPath, basePath: `/${fromPath}` };
 
   return null;
+}
+
+/**
+ * Build URL for switching to another tenant, preserving current subpath.
+ * Path-based: /acme/sites → /demo/sites
+ * Subdomain: acme.stage.echo9.net/sites → demo.stage.echo9.net/sites
+ */
+export function getSwitchTenantUrl(
+  newSlug: string,
+  tenantBasePath: string,
+  domain = "echo9.net"
+): string {
+  if (typeof window === "undefined") return `/${newSlug}`;
+  const { pathname, protocol, hostname } = window.location;
+
+  if (tenantBasePath) {
+    const suffix = pathname.slice(tenantBasePath.length) || "/";
+    return `/${newSlug}${suffix}`;
+  }
+
+  const parts = hostname.split(".");
+  const parentHost = parts.length > 1 ? parts.slice(1).join(".") : domain;
+  return `${protocol}//${newSlug}.${parentHost}${pathname}`;
 }

@@ -10,18 +10,10 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-# DEPRECATED: Credentials come from AWS Secrets Manager (9host-cloudns).
-# These exist only to accept (and ignore) legacy tfvars. Remove from your tfvars.
-variable "cloudns_auth_id" {
-  description = "DEPRECATED: Use Secrets Manager. Ignored."
-  type        = number
-  default     = 0
-  sensitive   = true
-}
-
-variable "cloudns_password" {
-  description = "DEPRECATED: Use Secrets Manager. Ignored."
-  type        = string
-  default     = ""
-  sensitive   = true
+# Set to false when records already exist in CloudNS and import fails (provider bug with priority field).
+# Records will be managed manually. Zone is still managed by Terraform.
+variable "manage_records" {
+  description = "Create/manage DNS records (ACM validation, stage, prod). Set false if records exist and import fails."
+  type        = bool
+  default     = true
 }

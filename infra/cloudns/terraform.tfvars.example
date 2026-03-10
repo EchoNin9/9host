@@ -1,3 +1,6 @@
 # Copy to terraform.tfvars and fill in. Run: tofu apply -var-file=terraform.tfvars
 # CloudNS credentials are in AWS Secrets Manager (9host-cloudns) — never put them here.
 domain = "echo9.net"
+
+# Set to false when zone/records already exist and import fails (e.g. provider priority bug)
+# manage_records = false

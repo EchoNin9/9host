@@ -62,7 +62,7 @@ resource "cloudns_dns_zone" "echo9_net" {
 # ACM validation CNAMEs (Task 1.12)
 # ACM name format: _xxx.stage.echo9.net. -> record name _xxx.stage for zone echo9.net
 resource "cloudns_dns_record" "acm_validation" {
-  for_each = { for i, r in local.acm_records : r.domain => r }
+  for_each = var.manage_records ? { for i, r in local.acm_records : r.domain => r } : {}
   zone     = cloudns_dns_zone.echo9_net.domain
   name     = replace(trimsuffix(each.value.name, "."), ".${var.domain}", "")
   type     = "CNAME"
@@ -72,6 +72,7 @@ resource "cloudns_dns_record" "acm_validation" {
 
 # stage.echo9.net -> CloudFront staging
 resource "cloudns_dns_record" "stage" {
+  count  = var.manage_records ? 1 : 0
   zone   = cloudns_dns_zone.echo9_net.domain
   name   = "stage"
   type   = "CNAME"
@@ -81,6 +82,7 @@ resource "cloudns_dns_record" "stage" {
 
 # prod.echo9.net -> CloudFront production
 resource "cloudns_dns_record" "prod" {
+  count  = var.manage_records ? 1 : 0
   zone   = cloudns_dns_zone.echo9_net.domain
   name   = "prod"
   type   = "CNAME"
