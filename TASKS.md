@@ -4,7 +4,7 @@
 > **Agent roles:** agent1 (backend/infra) | agent2 (frontend/ui) | agent3 (payments)  
 > **AWS naming:** All AWS resources MUST use prefix `9host` (e.g. 9host-main, 9host-api, 9host-user-pool, 9host-media)  
 > **Agent workflow:** Update task status (TODO → DONE) in this file when completing work.  
-> **Parallel work:** See [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) for branch strategy, tofu state rules, and 3–4 task batches per session.
+> **Parallel work:** See [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) for branch strategy, tofu state rules, and 3–4 task batches per session. [docs/BATCH_JOBS.md](docs/BATCH_JOBS.md) lists concurrent agent1/agent2 batches.
 
 ---
 
@@ -39,8 +39,9 @@
 | 1.22 | Add superadmin API routes (list all tenants, get any tenant) | DONE | GET /api/admin/tenants, GET /api/admin/tenants/{slug}. Requires superadmin. |
 | 1.23 | Add impersonation (X-Impersonate-Tenant for superadmin) | DONE | Superadmin can set X-Impersonate-Tenant to act as any tenant. Middleware override. |
 | 1.24 | Enforce role checks in API (tenantadmin vs tenantuser) | DONE | require_tenant_admin_or_manager in sites/domains. admin/manager for POST/PUT/DELETE. |
-| 1.25 | Add module permissions entity + API | TODO | TENANT#{slug}#USER#{sub}#PERMISSIONS or similar. tenantadmin configures what tenantuser can access. |
-| 1.26 | Add account owner (owner_sub on tenant) | TODO | Tenant.owner_sub = primary tenantadmin. One per tenant. |
+| 1.25 | Add module permissions entity + API | DONE | USER#{sub}#PERMISSIONS, GET/PUT /api/tenant/users/{sub}/permissions. |
+| 1.26 | Add account owner (owner_sub on tenant) | DONE | owner_sub on tenant, GET /api/tenant returns it. Migration sets first user. |
+| 1.27 | Add GET /api/tenant/users (list tenant users) | DONE | users_handler.py, admin/manager only. Unblocks 2.14. |
 
 ### Agent 2 — Frontend / UI
 
@@ -61,7 +62,7 @@
 | 2.11 | Add Sign in link to Landing page (when unauthenticated) | DONE | Link to /login when !isAuthenticated. useAuth hook. |
 | 2.12 | Add auth routes: /login, /signup, /auth/confirm (wire to Cognito) | DONE | Login, Signup, AuthConfirm pages. Amplify signIn, signUp, confirmSignUp. |
 | 2.13 | Superadmin UI: all tenants list, impersonate tenant | DONE | /admin page, ImpersonationContext, X-Impersonate-Tenant in API client. Stop impersonating in sidebar. |
-| 2.14 | Tenantadmin UI: users list, role management | TODO | Tenantadmin sees all tenantadmins & tenantusers. Depends on 1.24. |
+| 2.14 | Tenantadmin UI: users list, role management | TODO | Tenantadmin sees all tenantadmins & tenantusers. Depends on 1.24, 1.27. |
 | 2.15 | Module access UI: tenantadmin configures per-user permissions | TODO | Tenantuser sees only what tenantadmin allows. Depends on 1.25. |
 | 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | TODO | Depends on 1.24. Use role from tenant context or API. |
 | 2.17 | Tenant Settings: show owner, transfer owner (if owner) | TODO | Depends on 1.26. owner_sub on tenant. |
@@ -82,9 +83,9 @@
 
 ### ~~Save Point: SSL certificates created (Phase 1)~~ ✅ Complete
 
-**Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added. Tasks 1.1–1.7 complete (schema, DynamoDB, middleware, CI/CD, Roborev, remote state).
+**Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added. Tasks 1.0–1.24 complete (schema, DynamoDB, middleware, CI/CD, CloudNS, admin API, impersonation, role checks, Stripe webhook stub, migration script). Tasks 2.0–2.13 complete (sidebar, FeatureFlag, tenant context, auth, Sites/Domains/Analytics UI, superadmin UI).
 
-**Next:** Tasks 1.13–1.14 (echo9.ca) or Agent 3 (Stripe). Tasks 1.9–1.12, 2.0–2.5 complete.
+**Next:** Tasks 1.25–1.27 (module permissions, owner_sub, tenant users API), 2.14–2.17 (tenantadmin users, role-based UI, settings owner), or Agent 3 (Stripe subscriptions).
 
 ---
 

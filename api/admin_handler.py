@@ -74,6 +74,7 @@ def list_all_tenants_handler(event: dict, context: dict) -> dict:
                 "slug": slug,
                 "name": item.get("name", slug),
                 "tier": item.get("tier", "FREE"),
+                "owner_sub": item.get("owner_sub"),
             })
 
     # Sort by slug
@@ -109,6 +110,7 @@ def get_tenant_by_slug_handler(event: dict, context: dict, tenant_slug: str) -> 
             "slug": tenant_slug,
             "name": item.get("name", tenant_slug),
             "tier": item.get("tier", "FREE"),
+            "owner_sub": item.get("owner_sub"),
             "created_at": item.get("created_at"),
             "updated_at": item.get("updated_at"),
         },

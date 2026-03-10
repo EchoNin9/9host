@@ -24,6 +24,7 @@
 | User Profile  | `TENANT#{slug}`  | `USER#{sub}#PROFILE`   | User profile within tenant     |
 | Site          | `TENANT#{slug}`  | `SITE#{id}`            | Hosted website                 |
 | Custom Domain | `TENANT#{slug}`  | `DOMAIN#{domain}`      | Domain → site mapping (Pro+)   |
+| User Permissions | `TENANT#{slug}`  | `USER#{sub}#PERMISSIONS` | Per-user module access (Task 1.25) |
 
 **Slug rules:** Lowercase, alphanumeric + hyphen. Example: `acme-corp`, `my-band`.
 
@@ -39,6 +40,7 @@ SK: TENANT
 ---
 name: string           # Display name
 tier: string           # FREE | PRO | BUSINESS
+owner_sub: string      # Cognito sub of primary tenantadmin (Task 1.26)
 stripe_customer_id: S   # (optional) For agent3
 created_at: string     # ISO8601
 updated_at: string
@@ -83,6 +85,18 @@ created_at: string
 updated_at: string
 ```
 
+### User Permissions (Task 1.25)
+
+```
+PK: TENANT#acme
+SK: USER#{sub}#PERMISSIONS
+---
+permissions: map       # { sites: bool, domains: bool, analytics: bool, settings: bool }
+updated_at: string
+```
+
+Tenantadmin configures what tenantuser can access. If missing, all modules allowed (role-based).
+
 ---
 
 ## Access Patterns
@@ -96,6 +110,7 @@ updated_at: string
 | List sites in tenant            | Query     | PK=`TENANT#{slug}`, SK begins_with `SITE#` |
 | List domains in tenant          | Query     | PK=`TENANT#{slug}`, SK begins_with `DOMAIN#` |
 | List tenants for user (by sub)  | Query GSI | GSI1PK=`USER#{sub}`, SK begins_with `TENANT#` |
+| Get user permissions            | GetItem   | PK=`TENANT#{slug}`, SK=`USER#{sub}#PERMISSIONS` |
 
 ---
 

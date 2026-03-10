@@ -20,6 +20,10 @@ def sk_user_profile(sub: str) -> str:
     return f"USER#{sub}#PROFILE"
 
 
+def sk_user_permissions(sub: str) -> str:
+    return f"USER#{sub}#PERMISSIONS"
+
+
 def sk_site(site_id: str) -> str:
     return f"SITE#{site_id}"
 
@@ -70,8 +74,16 @@ def get_site_item(tenant_slug: str, site_id: str) -> dict[str, Any]:
     }
 
 
+def get_user_permissions_item(tenant_slug: str, sub: str) -> dict[str, Any]:
+    """GetItem params for user permissions in tenant."""
+    return {
+        "pk": pk_tenant(tenant_slug),
+        "sk": sk_user_permissions(sub),
+    }
+
+
 def query_users_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list users in tenant."""
+    """Query params: list users in tenant (profiles only, sk ends with #PROFILE)."""
     return {
         "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
         "ExpressionAttributeValues": {

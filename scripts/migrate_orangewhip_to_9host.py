@@ -74,14 +74,16 @@ def migrate(table_name: str, tenant_slug: str, dry_run: bool) -> int:
 
     now = datetime.now(timezone.utc).isoformat()
 
-    # Ensure tenant exists (create if not)
+    # Ensure tenant exists (create if not). owner_sub set from first migrated user.
     tenant_key = {"pk": pk_tenant(tenant_slug), "sk": sk_tenant()}
+    first_sub = items[0].get("pk", "").replace("USER#", "") if items else None
     try:
         table.put_item(
             Item={
                 **tenant_key,
                 "name": tenant_slug.replace("-", " ").title(),
                 "tier": "FREE",
+                "owner_sub": first_sub,
                 "created_at": now,
                 "updated_at": now,
             },
