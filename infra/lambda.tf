@@ -70,6 +70,12 @@ resource "aws_iam_role_policy" "api_lambda" {
           aws_dynamodb_table.main.arn,
           "${aws_dynamodb_table.main.arn}/index/*"
         ]
+      },
+      {
+        Sid    = "Cognito"
+        Effect = "Allow"
+        Action = ["cognito-idp:GetUser"]
+        Resource = aws_cognito_user_pool.main.arn
       }
     ]
   })
@@ -90,7 +96,7 @@ resource "aws_lambda_function" "api" {
   environment {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.main.name
-      DOMAIN         = var.domain
+      DOMAINS        = join(",", var.domains)
     }
   }
 

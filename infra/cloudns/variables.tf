@@ -1,7 +1,7 @@
-variable "domain" {
-  description = "Primary domain (e.g. echo9.net)."
-  type        = string
-  default     = "echo9.net"
+variable "domains" {
+  description = "List of base domains (e.g. [\"echo9.net\", \"echo9.ca\"]). Override or use remote state."
+  type        = list(string)
+  default     = []
 }
 
 variable "aws_region" {

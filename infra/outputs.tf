@@ -48,13 +48,13 @@ output "cloudfront_staging_distribution_id" {
 }
 
 output "cloudfront_staging_domain" {
-  description = "CloudFront staging distribution domain (add CNAME stage.echo9.net -> this in CloudNS)"
+  description = "CloudFront staging distribution domain (add CNAME stage.{domain} -> this in CloudNS)"
   value       = aws_cloudfront_distribution.staging.domain_name
 }
 
 output "cloudfront_staging_url" {
   description = "Staging frontend URL (after DNS)"
-  value       = "https://stage.${var.domain}"
+  value       = "https://stage.${var.domains[0]}"
 }
 
 output "cloudfront_production_distribution_id" {
@@ -63,13 +63,13 @@ output "cloudfront_production_distribution_id" {
 }
 
 output "cloudfront_production_domain" {
-  description = "CloudFront production distribution domain (add CNAME prod.echo9.net -> this in CloudNS)"
+  description = "CloudFront production distribution domain (add CNAME prod.{domain} -> this in CloudNS)"
   value       = aws_cloudfront_distribution.production.domain_name
 }
 
 output "cloudfront_production_url" {
   description = "Production frontend URL (after DNS)"
-  value       = "https://prod.${var.domain}"
+  value       = "https://prod.${var.domains[0]}"
 }
 
 output "s3_frontend_staging_bucket" {
@@ -103,6 +103,12 @@ output "cognito_client_id" {
 output "cognito_domain" {
   description = "Cognito hosted UI domain (e.g. 9host-auth.auth.us-east-1.amazoncognito.com)"
   value       = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+}
+
+# Domains list for CloudNS (Task 1.14)
+output "domains" {
+  description = "List of base domains (echo9.net, echo9.ca)"
+  value       = var.domains
 }
 
 output "cognito_issuer_url" {

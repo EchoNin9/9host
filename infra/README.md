@@ -14,15 +14,15 @@ Infrastructure as Code uses **OpenTofu** (open-source Terraform fork).
 1. **Create `infra/terraform.tfvars`** (or pass `-var`):
    ```hcl
    github_org_repo = "EchoNin9/9host"
-   domain          = "echo9.net"
+   domains         = ["echo9.net", "echo9.ca"]
    ```
 
 2. **Apply** (run locally with `AWS_PROFILE=echo9` or equivalent):
    ```bash
    cd infra
    tofu init
-   tofu plan -var="github_org_repo=EchoNin9/9host"
-   tofu apply -var="github_org_repo=EchoNin9/9host"
+   tofu plan -var="github_org_repo=EchoNin9/9host" -var='domains=["echo9.net","echo9.ca"]'
+   tofu apply -var="github_org_repo=EchoNin9/9host" -var='domains=["echo9.net","echo9.ca"]'
    ```
 
 3. **Add GitHub repo variables** (Settings → Secrets and variables → Actions → Variables):
