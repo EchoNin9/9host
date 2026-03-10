@@ -76,6 +76,95 @@ export async function fetchAllTenants(
   }
 }
 
+// -----------------------------------------------------------------------------
+// Tenant metadata (GET /api/tenant)
+// -----------------------------------------------------------------------------
+
+export interface TenantMetadata {
+  tenant_slug: string
+  name: string
+  tier: string
+  owner_sub: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+function tenantHeaders(tenantSlug: string, accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "X-Tenant-Slug": tenantSlug,
+    ...getImpersonateHeader(),
+  }
+}
+
+/**
+ * Fetch tenant metadata (name, tier, owner_sub).
+ */
+export async function fetchTenant(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<TenantMetadata | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant`, {
+      headers: tenantHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as TenantMetadata
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Transfer tenant owner. Requires current user to be owner.
+ */
+export async function putTransferOwner(
+  tenantSlug: string,
+  accessToken: string | null,
+  newOwnerSub: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !newOwnerSub) return false
+
+  try {
+    const res = await fetch(`${base}/api/tenant`, {
+      method: "PUT",
+      headers: {
+        ...tenantHeaders(tenantSlug, accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ owner_sub: newOwnerSub }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Tenant users (GET /api/tenant/users, permissions)
+// -----------------------------------------------------------------------------
+
+export interface TenantUser {
+  sub: string
+  email: string
+  name: string
+  role: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TenantUsersResponse {
+  users: TenantUser[]
+}
+
+export const MODULE_KEYS = ["sites", "domains", "analytics", "settings"] as const
+
+export type ModulePermissions = Record<(typeof MODULE_KEYS)[number], boolean>
+
 /**
  * Fetch tenants for the authenticated user.
  * Requires Authorization: Bearer <accessToken>.
@@ -97,6 +186,84 @@ export async function fetchTenants(accessToken: string | null): Promise<Tenant[]
     return data.tenants ?? []
   } catch {
     return []
+  }
+}
+
+/**
+ * Fetch tenant users (admin/manager only).
+ */
+export async function fetchTenantUsers(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<TenantUser[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+
+  try {
+    const res = await fetch(`${base}/api/tenant/users`, {
+      headers: tenantHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as TenantUsersResponse
+    return data.users ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Fetch user permissions (admin/manager only).
+ */
+export async function fetchUserPermissions(
+  tenantSlug: string,
+  accessToken: string | null,
+  userSub: string
+): Promise<ModulePermissions | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !userSub) return null
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/users/${encodeURIComponent(userSub)}/permissions`,
+      { headers: tenantHeaders(tenantSlug, accessToken) }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { permissions: ModulePermissions }
+    return data.permissions ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Update user permissions (admin/manager only).
+ */
+export async function updateUserPermissions(
+  tenantSlug: string,
+  accessToken: string | null,
+  userSub: string,
+  permissions: Partial<ModulePermissions>
+): Promise<ModulePermissions | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !userSub) return null
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/users/${encodeURIComponent(userSub)}/permissions`,
+      {
+        method: "PUT",
+        headers: {
+          ...tenantHeaders(tenantSlug, accessToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ permissions }),
+      }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { permissions: ModulePermissions }
+    return data.permissions ?? null
+  } catch {
+    return null
   }
 }
 

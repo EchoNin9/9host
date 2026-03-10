@@ -13,6 +13,7 @@ import { TenantAnalytics } from "@/pages/tenant-analytics"
 import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
+import { TenantUsers } from "@/pages/tenant-users"
 import { SuperadminPage } from "@/pages/superadmin"
 import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
@@ -102,6 +103,7 @@ function AppRoutes() {
         <Route path="analytics" element={<TenantAnalytics />} />
         <Route path="sites" element={<TenantSites />} />
         <Route path="domains" element={<TenantDomains />} />
+        <Route path="users" element={<TenantUsers />} />
         <Route path="settings" element={<TenantSettings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

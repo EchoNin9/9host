@@ -62,10 +62,10 @@
 | 2.11 | Add Sign in link to Landing page (when unauthenticated) | DONE | Link to /login when !isAuthenticated. useAuth hook. |
 | 2.12 | Add auth routes: /login, /signup, /auth/confirm (wire to Cognito) | DONE | Login, Signup, AuthConfirm pages. Amplify signIn, signUp, confirmSignUp. |
 | 2.13 | Superadmin UI: all tenants list, impersonate tenant | DONE | /admin page, ImpersonationContext, X-Impersonate-Tenant in API client. Stop impersonating in sidebar. |
-| 2.14 | Tenantadmin UI: users list, role management | TODO | Tenantadmin sees all tenantadmins & tenantusers. Depends on 1.24, 1.27. |
-| 2.15 | Module access UI: tenantadmin configures per-user permissions | TODO | Tenantuser sees only what tenantadmin allows. Depends on 1.25. |
+| 2.14 | Tenantadmin UI: users list, role management | DONE | TenantUsers page, /users route, useTenantUsers. Admin/manager only. |
+| 2.15 | Module access UI: tenantadmin configures per-user permissions | DONE | Permissions sheet per user, GET/PUT /api/tenant/users/{sub}/permissions. |
 | 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | DONE | useTenantRole hook, canEdit for admin/manager. editor/member see view-only. |
-| 2.17 | Tenant Settings: show owner, transfer owner (if owner) | TODO | Depends on 1.26. owner_sub on tenant. |
+| 2.17 | Tenant Settings: show owner, transfer owner (if owner) | DONE | useTenantMetadata, owner display, PUT /api/tenant transfer. |
 
 ### Agent 3 — Payments
 
@@ -81,11 +81,17 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
+### Save Point: Role-based UI complete (2026-03-10)
+
+**Status:** Tasks 1.0–1.27 complete (schema, DynamoDB, middleware, CI/CD, CloudNS, admin API, impersonation, role checks, module permissions, owner_sub, tenant users API). Tasks 2.0–2.16 complete (sidebar, FeatureFlag, tenant context, auth, Sites/Domains/Analytics UI, superadmin UI, role-based UI via useTenantRole).
+
+**Next:** Tasks 2.14 (tenantadmin users list), 2.15 (module access UI), 2.17 (tenant settings owner/transfer), or Agent 3 (Stripe subscriptions).
+
+### ~~Save Point: Batch 1 complete (Phase 2)~~ Superseded
+
 ### ~~Save Point: SSL certificates created (Phase 1)~~ ✅ Complete
 
-**Status:** SSL certs validated. GitHub repo vars (AWS_ROLE_ARN_STAGING, AWS_ROLE_ARN_PRODUCTION) added. Tasks 1.0–1.24 complete (schema, DynamoDB, middleware, CI/CD, CloudNS, admin API, impersonation, role checks, Stripe webhook stub, migration script). Tasks 2.0–2.13 complete (sidebar, FeatureFlag, tenant context, auth, Sites/Domains/Analytics UI, superadmin UI).
-
-**Next:** Tasks 1.25–1.27 (module permissions, owner_sub, tenant users API), 2.14–2.17 (tenantadmin users, role-based UI, settings owner), or Agent 3 (Stripe subscriptions).
+**Status:** SSL certs validated. GitHub repo vars added. Tasks 1.0–1.24, 2.0–2.13 complete.
 
 ---
 

@@ -7,6 +7,7 @@ import {
   Globe,
   GlobeLock,
   Settings,
+  Users,
   UserCog,
   LogOut,
   type LucideIcon,
@@ -48,6 +49,7 @@ function TenantAdminSidebar() {
     { title: "Analytics", href: `${base}/analytics`, icon: BarChart3 },
     { title: "Sites", href: `${base}/sites`, icon: Globe },
     { title: "Domains", href: `${base}/domains`, icon: GlobeLock },
+    { title: "Users", href: `${base}/users`, icon: Users },
     { title: "Settings", href: `${base}/settings`, icon: Settings },
   ]
 
