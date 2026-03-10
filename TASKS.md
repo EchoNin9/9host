@@ -35,9 +35,9 @@
 | 1.18 | Add Domains API: GET/POST/DELETE /api/tenant/domains | DONE | api/domains_handler.py. Pro+ tier, tenant membership, GSI byDomain. Unblocks Domains sidebar UI. |
 | 1.19 | Add Stripe webhook route: POST /api/webhooks/stripe | TODO | Handler stub for agent3. Unblocks 3.3. Defer until Stripe ready. |
 | 1.20 | Migrate single-user schema to multi-tenant (data migration) | TODO | If existing orangewhip data. Design + run migration. |
-| 1.21 | Add superadmin Cognito group + auth check | TODO | Cognito group `superadmin`, auth_helpers.is_superadmin(sub). Platform-level vendor/owner. |
-| 1.22 | Add superadmin API routes (list all tenants, get any tenant) | TODO | GET /api/admin/tenants, GET /api/admin/tenants/{slug}. Requires superadmin. |
-| 1.23 | Add impersonation (X-Impersonate-Tenant for superadmin) | TODO | Superadmin can set X-Impersonate-Tenant to act as any tenant. Middleware override. |
+| 1.21 | Add superadmin Cognito group + auth check | DONE | Cognito group superadmin, auth_helpers.is_superadmin(sub). Platform-level vendor/owner. |
+| 1.22 | Add superadmin API routes (list all tenants, get any tenant) | DONE | GET /api/admin/tenants, GET /api/admin/tenants/{slug}. Requires superadmin. |
+| 1.23 | Add impersonation (X-Impersonate-Tenant for superadmin) | DONE | Superadmin can set X-Impersonate-Tenant to act as any tenant. Middleware override. |
 | 1.24 | Enforce role checks in API (tenantadmin vs tenantuser) | TODO | Only admin/manager can edit tenant settings, add users, etc. Check profile.role. |
 | 1.25 | Add module permissions entity + API | TODO | TENANT#{slug}#USER#{sub}#PERMISSIONS or similar. tenantadmin configures what tenantuser can access. |
 | 1.26 | Add account owner (owner_sub on tenant) | TODO | Tenant.owner_sub = primary tenantadmin. One per tenant. |

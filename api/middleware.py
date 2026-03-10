@@ -2,9 +2,10 @@
 Tenant middleware: extract tenant_slug from request and inject into Lambda context.
 
 Sources (in order of precedence):
-  1. X-Tenant-Slug header (for API clients)
-  2. Host header subdomain (e.g. acme.echo9.net -> acme)
-  3. Path parameter: /{tenant}/...
+  1. X-Impersonate-Tenant header (superadmin only — Task 1.23)
+  2. X-Tenant-Slug header (for API clients)
+  3. Host header subdomain (e.g. acme.echo9.net -> acme)
+  4. Path parameter: /{tenant}/...
 
 Use with: event["tenant_slug"] in handlers. All DynamoDB queries MUST use TENANT#{tenant_slug}.
 """
@@ -99,12 +100,31 @@ def _valid_slug(slug: str) -> bool:
     return bool(SLUG_PATTERN.match(s)) and len(s) <= 64
 
 
+def _get_header(event: dict, name: str) -> str:
+    """Extract header value (case-insensitive)."""
+    headers = event.get("headers") or {}
+    key_lower = name.lower()
+    if isinstance(headers, dict):
+        for k, v in headers.items():
+            if (k or "").lower() == key_lower:
+                return (v or "").strip()
+        return ""
+    for h in headers:
+        k = (h.get("key") or h.get("Key") or "").lower()
+        if k == key_lower:
+            return (h.get("value") or h.get("Value") or "").strip()
+    return ""
+
+
 def with_tenant(
     handler: Callable[[dict, dict], Any],
     domains: str | list[str] | None = None,
 ) -> Callable[[dict, dict], Any]:
     """
     Decorator/wrapper that injects tenant_slug into the event before calling the handler.
+
+    Supports X-Impersonate-Tenant for superadmin (Task 1.23): if header present and
+    user is in superadmin group, overrides tenant_slug with header value.
 
     Usage:
         @with_tenant
@@ -118,6 +138,18 @@ def with_tenant(
     def wrapped(event: dict, context: dict) -> Any:
         domains_val = domains or os.environ.get("DOMAINS")
         tenant_slug = extract_tenant_slug(event, domains=domains_val)
+
+        # X-Impersonate-Tenant: superadmin can override tenant_slug
+        impersonate = _get_header(event, "x-impersonate-tenant")
+        if impersonate and _valid_slug(impersonate):
+            from auth_helpers import get_sub_from_access_token, is_superadmin
+
+            region = os.environ.get("AWS_REGION", "us-east-1")
+            user_pool_id = os.environ.get("USER_POOL_ID", "")
+            sub = get_sub_from_access_token(event, region=region)
+            if sub and is_superadmin(sub, user_pool_id, region=region):
+                tenant_slug = impersonate.strip().lower()
+
         event["tenant_slug"] = tenant_slug
         return handler(event, context)
 

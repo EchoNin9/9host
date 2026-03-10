@@ -7,6 +7,7 @@ subdomain, or path param) for tenant-scoped operations.
 
 import json
 
+from admin_handler import get_tenant_by_slug_handler, list_all_tenants_handler
 from analytics_handler import get_analytics_handler
 from domains_handler import domains_handler
 from handler_example import get_tenant_handler
@@ -31,6 +32,8 @@ def lambda_handler(event: dict, context: dict) -> dict:
       GET /api/tenant/analytics — analytics placeholder (Pro+ tier)
       GET/POST/PUT/DELETE /api/tenant/sites — sites CRUD
       GET/POST/DELETE /api/tenant/domains — custom domains (Pro+ tier)
+      GET /api/admin/tenants — list all tenants (superadmin)
+      GET /api/admin/tenants/{slug} — get any tenant (superadmin)
       $default — fallback to tenant handler for now
     """
     path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
@@ -54,5 +57,13 @@ def lambda_handler(event: dict, context: dict) -> dict:
 
     if path.startswith("/api/tenant/domains"):
         return domains_handler(event, context)
+
+    # Superadmin routes (Task 1.22)
+    if method == "GET" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
+        return list_all_tenants_handler(event, context)
+    if method == "GET" and path.startswith("/api/admin/tenants/"):
+        slug_part = path[len("/api/admin/tenants/"):].strip("/")
+        if slug_part and "/" not in slug_part:
+            return get_tenant_by_slug_handler(event, context, slug_part.lower())
 
     return get_tenant_handler(event, context)

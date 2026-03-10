@@ -5,6 +5,22 @@ Uses Cognito GetUser to validate access tokens (no JWT lib required).
 """
 
 
+def _get_header(event: dict, name: str) -> str:
+    """Extract header value (case-insensitive)."""
+    headers = event.get("headers") or {}
+    key_lower = name.lower()
+    if isinstance(headers, dict):
+        for k, v in headers.items():
+            if (k or "").lower() == key_lower:
+                return (v or "").strip()
+        return ""
+    for h in headers:
+        k = (h.get("key") or h.get("Key") or "").lower()
+        if k == key_lower:
+            return (h.get("value") or h.get("Value") or "").strip()
+    return ""
+
+
 def _get_auth_header(event: dict) -> str:
     """Extract Authorization header value."""
     headers = event.get("headers") or {}
@@ -40,3 +56,30 @@ def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | N
         return resp.get("Username")  # fallback
     except Exception:
         return None
+
+
+def is_superadmin(
+    sub: str,
+    user_pool_id: str,
+    region: str = "us-east-1",
+) -> bool:
+    """
+    Check if user (by sub) is in Cognito superadmin group.
+    Returns True if sub is in superadmin group, False otherwise.
+    """
+    if not sub or not user_pool_id:
+        return False
+    try:
+        import boto3
+
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.admin_list_groups_for_user(
+            UserPoolId=user_pool_id,
+            Username=sub,
+        )
+        for g in resp.get("Groups", []):
+            if (g.get("GroupName") or "").lower() == "superadmin":
+                return True
+        return False
+    except Exception:
+        return False

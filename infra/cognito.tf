@@ -87,6 +87,14 @@ resource "aws_cognito_user_pool_client" "frontend" {
   }
 }
 
+# Superadmin group — platform-level vendor/owner (Task 1.21)
+resource "aws_cognito_user_group" "superadmin" {
+  name         = "superadmin"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Platform admin — can list all tenants, impersonate"
+  precedence   = 0
+}
+
 # Cognito groups (admin, manager, editor, member) — per docs/SCHEMA.md
 resource "aws_cognito_user_group" "admin" {
   name         = "admin"

@@ -74,7 +74,10 @@ resource "aws_iam_role_policy" "api_lambda" {
       {
         Sid    = "Cognito"
         Effect = "Allow"
-        Action = ["cognito-idp:GetUser"]
+        Action = [
+          "cognito-idp:GetUser",
+          "cognito-idp:AdminListGroupsForUser"
+        ]
         Resource = aws_cognito_user_pool.main.arn
       }
     ]
@@ -97,6 +100,7 @@ resource "aws_lambda_function" "api" {
     variables = {
       DYNAMODB_TABLE = aws_dynamodb_table.main.name
       DOMAINS        = join(",", var.domains)
+      USER_POOL_ID   = aws_cognito_user_pool.main.id
     }
   }
 
