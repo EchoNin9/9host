@@ -50,6 +50,7 @@
 | 2.6a | CI: pass VITE_COGNITO_* vars to frontend build | DONE | dev.yml, main.yml. Add vars in repo Settings → Actions. |
 | 2.7 | Tenant list from API: replace getDemoTenants() with /api/tenants | DONE | useTenants hook, fetchTenants API client, Amplify config. CI: VITE_API_URL from tofu output. |
 | 2.8 | Advanced Analytics UI (FeatureGate advanced_analytics) | DONE | TenantAnalytics page, Recharts, FeatureGate, /api/tenant/analytics. |
+| 2.9 | Sites UI: connect TenantSites to /api/tenant/sites | DONE | List, create, edit, delete. useSites hook, Sheet forms. |
 
 ### Agent 3 — Payments
 

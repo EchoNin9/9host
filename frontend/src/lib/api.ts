@@ -90,3 +90,130 @@ export async function fetchAnalytics(
     return null
   }
 }
+
+// -----------------------------------------------------------------------------
+// Sites (tenant-scoped CRUD)
+// -----------------------------------------------------------------------------
+
+export interface Site {
+  id: string
+  name: string
+  slug: string
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SitesResponse {
+  sites: Site[]
+}
+
+export interface SiteResponse {
+  site: Site
+}
+
+function sitesHeaders(tenantSlug: string, accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "X-Tenant-Slug": tenantSlug,
+  }
+}
+
+/**
+ * List sites for a tenant.
+ */
+export async function fetchSites(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<Site[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+
+  try {
+    const res = await fetch(`${base}/api/tenant/sites`, {
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as SitesResponse
+    return data.sites ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Create a site.
+ */
+export async function createSite(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { name: string; slug?: string; status?: string }
+): Promise<Site | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/sites`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as SiteResponse
+    return data.site ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Update a site.
+ */
+export async function updateSite(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { name?: string; slug?: string; status?: string }
+): Promise<Site | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${siteId}`, {
+      method: "PUT",
+      headers: sitesHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as SiteResponse
+    return data.site ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Delete a site.
+ */
+export async function deleteSite(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return false
+
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${siteId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Tenant-Slug": tenantSlug,
+      },
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
