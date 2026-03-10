@@ -1,0 +1,242 @@
+"""
+Sites API — GET/POST/PUT/DELETE /api/tenant/sites.
+
+Tenant-scoped sites CRUD. Requires tenant_slug (header/subdomain), Cognito auth,
+tenant membership.
+"""
+
+import json
+import os
+import re
+import uuid
+from datetime import datetime, timezone
+
+import boto3
+
+from auth_helpers import get_sub_from_access_token
+from dynamodb_helpers import (
+    get_site_item,
+    pk_tenant,
+    query_sites_in_tenant,
+    query_tenants_for_user,
+    sk_site,
+)
+from middleware import with_tenant
+
+# Slug: lowercase alphanumeric + hyphen
+SITE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
+
+
+def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
+    return {
+        "statusCode": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": "" if empty_body else json.dumps(body),
+    }
+
+
+def _user_is_tenant_member(table, sub: str, tenant_slug: str) -> bool:
+    """Check if user is a member of the tenant via GSI byUser."""
+    params = query_tenants_for_user(sub)
+    resp = table.query(**params)
+    for item in resp.get("Items", []):
+        gsi1sk = item.get("gsi1sk", "")
+        if f"TENANT#{tenant_slug}#PROFILE" == gsi1sk:
+            return True
+    return False
+
+
+def _parse_body(event: dict) -> dict | None:
+    """Parse JSON body from event."""
+    body = event.get("body")
+    if not body:
+        return None
+    if isinstance(body, str):
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return None
+    return body
+
+
+def _extract_site_id_from_path(path: str) -> str | None:
+    """Extract site_id from /api/tenant/sites/{site_id}."""
+    prefix = "/api/tenant/sites/"
+    if path.startswith(prefix):
+        rest = path[len(prefix) :].strip("/")
+        if rest:
+            return rest
+    return None
+
+
+def _site_to_response(item: dict) -> dict:
+    """Convert DynamoDB item to API response."""
+    sk = item.get("sk", "")
+    site_id = sk.replace("SITE#", "") if sk.startswith("SITE#") else ""
+
+    return {
+        "id": site_id,
+        "name": item.get("name", ""),
+        "slug": item.get("slug", ""),
+        "status": item.get("status", "draft"),
+        "created_at": item.get("created_at", ""),
+        "updated_at": item.get("updated_at", ""),
+    }
+
+
+def _list_sites(table, tenant_slug: str) -> dict:
+    """List sites in tenant."""
+    params = query_sites_in_tenant(tenant_slug)
+    resp = table.query(**params)
+    sites = [_site_to_response(item) for item in resp.get("Items", [])]
+    return _json_response(200, {"sites": sites})
+
+
+def _get_site(table, tenant_slug: str, site_id: str) -> dict:
+    """Get single site."""
+    key = get_site_item(tenant_slug, site_id)
+    resp = table.get_item(Key=key)
+    item = resp.get("Item")
+    if not item:
+        return _json_response(404, {"error": "Site not found."})
+    return _json_response(200, {"site": _site_to_response(item)})
+
+
+def _create_site(table, tenant_slug: str, body: dict) -> dict:
+    """Create site."""
+    name = (body.get("name") or "").strip()
+    slug = (body.get("slug") or "").strip().lower()
+    status = (body.get("status") or "draft").strip().lower()
+
+    if not name:
+        return _json_response(400, {"error": "name is required."})
+
+    if status not in ("draft", "published"):
+        status = "draft"
+
+    if not slug:
+        slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-"))
+        if not slug:
+            slug = str(uuid.uuid4())[:8]
+
+    if not SITE_SLUG_PATTERN.match(slug):
+        return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+
+    site_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    item = {
+        "pk": pk_tenant(tenant_slug),
+        "sk": sk_site(site_id),
+        "name": name,
+        "slug": slug,
+        "status": status,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    table.put_item(Item=item)
+    return _json_response(201, {"site": _site_to_response(item)})
+
+
+def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
+    """Update site."""
+    key = get_site_item(tenant_slug, site_id)
+    resp = table.get_item(Key=key)
+    item = resp.get("Item")
+    if not item:
+        return _json_response(404, {"error": "Site not found."})
+
+    name = body.get("name")
+    slug = body.get("slug")
+    status = body.get("status")
+
+    if name is not None:
+        item["name"] = str(name).strip()
+    if slug is not None:
+        s = str(slug).strip().lower()
+        if not SITE_SLUG_PATTERN.match(s):
+            return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+        item["slug"] = s
+    if status is not None:
+        s = str(status).strip().lower()
+        if s in ("draft", "published"):
+            item["status"] = s
+
+    item["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    table.put_item(Item=item)
+    return _json_response(200, {"site": _site_to_response(item)})
+
+
+def _delete_site(table, tenant_slug: str, site_id: str) -> dict:
+    """Delete site."""
+    key = get_site_item(tenant_slug, site_id)
+    resp = table.get_item(Key=key)
+    if not resp.get("Item"):
+        return _json_response(404, {"error": "Site not found."})
+
+    table.delete_item(Key=key)
+    return _json_response(204, {}, empty_body=True)
+
+
+@with_tenant
+def sites_handler(event: dict, context: dict) -> dict:
+    """
+    GET/POST/PUT/DELETE /api/tenant/sites — tenant-scoped sites CRUD.
+    Requires tenant_slug (X-Tenant-Slug or subdomain), Cognito auth, tenant membership.
+    """
+    tenant_slug = event.get("tenant_slug")
+    if not tenant_slug:
+        return _json_response(
+            400,
+            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
+        )
+
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    sub = get_sub_from_access_token(event, region=region)
+    if not sub:
+        return _json_response(
+            401,
+            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
+        )
+
+    table_name = os.environ.get("DYNAMODB_TABLE")
+    if not table_name:
+        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
+
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    if not _user_is_tenant_member(table, sub, tenant_slug):
+        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+
+    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
+    method = (
+        event.get("requestContext", {}).get("http", {}).get("method")
+        or event.get("httpMethod")
+        or "GET"
+    )
+
+    site_id = _extract_site_id_from_path(path)
+    base_path = "/api/tenant/sites"
+    is_list_or_create = path in (base_path, f"{base_path}/")
+
+    if method == "GET" and is_list_or_create:
+        return _list_sites(table, tenant_slug)
+
+    if method == "GET" and site_id:
+        return _get_site(table, tenant_slug, site_id)
+
+    if method == "POST" and is_list_or_create:
+        body = _parse_body(event) or {}
+        return _create_site(table, tenant_slug, body)
+
+    if method == "PUT" and site_id:
+        body = _parse_body(event) or {}
+        return _update_site(table, tenant_slug, site_id, body)
+
+    if method == "DELETE" and site_id:
+        return _delete_site(table, tenant_slug, site_id)
+
+    return _json_response(405, {"error": "Method not allowed."})

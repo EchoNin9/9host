@@ -31,7 +31,7 @@
 | 1.14 | Extend CloudNS (1.11–1.12) for echo9.ca zone: CNAMEs for stage/prod, ACM validation | DONE | Zones per domain, ACM validation + stage/prod CNAMEs per zone. |
 | 1.15 | Add GET /api/tenants endpoint (user's tenants via GSI byUser, Cognito auth) | DONE | api/tenants_handler.py, auth_helpers.py. Unblocks 2.7. |
 | 1.16 | Add GET /api/tenant/analytics placeholder (Pro+ tier, tenant-scoped) | DONE | api/analytics_handler.py. Cognito auth, tenant membership, tier check. Unblocks 2.8. |
-| 1.17 | Add Sites API: GET/POST/PUT/DELETE /api/tenant/sites | TODO | Tenant-scoped sites CRUD. Schema has SITE#{id}. Unblocks Sites sidebar UI. |
+| 1.17 | Add Sites API: GET/POST/PUT/DELETE /api/tenant/sites | DONE | api/sites_handler.py. Tenant-scoped CRUD, Cognito auth, tenant membership. Unblocks Sites sidebar UI. |
 | 1.18 | Add Domains API: GET/POST/DELETE /api/tenant/domains | TODO | Custom domains (Pro+ tier). Schema has DOMAIN#{domain}. Unblocks Domains sidebar UI. |
 | 1.19 | Add Stripe webhook route: POST /api/webhooks/stripe | TODO | Handler stub for agent3. Unblocks 3.3. Defer until Stripe ready. |
 | 1.20 | Migrate single-user schema to multi-tenant (data migration) | TODO | If existing orangewhip data. Design + run migration. |
