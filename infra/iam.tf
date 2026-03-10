@@ -131,6 +131,17 @@ data "aws_iam_policy_document" "deploy" {
     ]
   }
 
+  # Inline role policies (e.g. 9host-api-lambda) — CI needs PutRolePolicy for Cognito/other updates
+  statement {
+    sid    = "IAMRolePolicy"
+    effect = "Allow"
+    actions = [
+      "iam:PutRolePolicy",
+      "iam:DeleteRolePolicy"
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/9host-*"]
+  }
+
   statement {
     sid    = "S3State"
     effect = "Allow"

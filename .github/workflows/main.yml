@@ -52,11 +52,11 @@ jobs:
 
       - name: OpenTofu plan
         working-directory: infra
-        run: tofu plan -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net","echo9.ca"]'
+        run: tofu plan -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
 
       - name: OpenTofu apply
         working-directory: infra
-        run: tofu apply -auto-approve -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net","echo9.ca"]'
+        run: tofu apply -auto-approve -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
 
       - name: Sync frontend to S3 (production)
         run: |

@@ -10,7 +10,7 @@ variable "github_org_repo" {
 }
 
 variable "domains" {
-  description = "List of base domains for stage/prod (e.g. [\"echo9.net\", \"echo9.ca\"])."
+  description = "List of base domains for stage/prod. Add echo9.ca after CloudNS zone + validation records exist."
   type        = list(string)
-  default     = ["echo9.net", "echo9.ca"]
+  default     = ["echo9.net"]
 }
