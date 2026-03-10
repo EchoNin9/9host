@@ -275,6 +275,20 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   statement {
+    sid    = "SecretsManager"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:DeleteSecret",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:TagResource"
+    ]
+    resources = ["arn:aws:secretsmanager:*:*:secret:9host-*"]
+  }
+
+  statement {
     sid    = "CloudFront"
     effect = "Allow"
     actions = [

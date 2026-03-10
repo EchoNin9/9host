@@ -1,33 +1,38 @@
 # CloudNS DNS (Task 1.11, 1.12)
 
-9host uses ClouDNS for DNS management of echo9.net. The ClouDNS config (`infra/cloudns/`) manages the zone and DNS records. It reads ACM/CloudFront data from the main infra remote state.
+9host uses ClouDNS for DNS management of echo9.net. Credentials are stored in **AWS Secrets Manager** — never in tfvars or env files.
 
 ## Prerequisites
 
 - ClouDNS account with API access (Premium DNS, DDoS Protected DNS, or GeoDNS plan)
 - API credentials from **Account Settings → API** (auth-id and auth-password)
-- AWS credentials (to read main infra remote state)
+- AWS credentials (to read main infra remote state and Secrets Manager)
 - Main infra applied at least once (`cd infra && tofu apply`)
 
 ## Setup
 
-1. Create an API user in ClouDNS (Account Settings → API)
-2. Copy `infra/cloudns/terraform.tfvars.example` to `infra/cloudns/terraform.tfvars`
-3. Fill in `cloudns_auth_id` and `cloudns_password`
+1. **Apply main infra** (creates the `9host-cloudns` secret):
+   ```bash
+   cd infra && tofu apply
+   ```
 
-## Apply
+2. **Store CloudNS credentials in Secrets Manager**:
+   ```bash
+   aws secretsmanager put-secret-value \
+     --secret-id 9host-cloudns \
+     --secret-string '{"auth_id":12345,"password":"your-auth-password"}'
+   ```
 
-```bash
-cd infra/cloudns
-tofu init
-AWS_PROFILE=echo9 tofu apply -var-file=terraform.tfvars
-```
+3. **Apply CloudNS config**:
+   ```bash
+   cd infra/cloudns
+   tofu init
+   tofu apply -var-file=terraform.tfvars
+   ```
 
-Or pass vars directly:
+The `terraform.tfvars` file should contain only non-sensitive values (e.g. `domain`). Never put credentials in tfvars.
 
-```bash
-tofu apply -var="cloudns_auth_id=12345" -var="cloudns_password=your-password" -var="domain=echo9.net"
-```
+**If you have an existing `terraform.tfvars` with `cloudns_auth_id` or `cloudns_password`:** remove those lines. Credentials are now read from Secrets Manager only.
 
 ## DNS records (Task 1.12)
 

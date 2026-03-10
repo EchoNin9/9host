@@ -122,3 +122,11 @@ output "api_gateway_id" {
   description = "API Gateway HTTP API ID"
   value       = aws_apigatewayv2_api.main.id
 }
+
+# ------------------------------------------------------------------------------
+# CloudNS credentials (Secrets Manager)
+# ------------------------------------------------------------------------------
+output "cloudns_secret_arn" {
+  description = "ARN of Secrets Manager secret for CloudNS credentials. Set value via: aws secretsmanager put-secret-value --secret-id 9host-cloudns --secret-string '{\"auth_id\":12345,\"password\":\"xxx\"}'"
+  value       = aws_secretsmanager_secret.cloudns.arn
+}

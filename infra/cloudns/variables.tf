@@ -10,14 +10,18 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+# DEPRECATED: Credentials come from AWS Secrets Manager (9host-cloudns).
+# These exist only to accept (and ignore) legacy tfvars. Remove from your tfvars.
 variable "cloudns_auth_id" {
-  description = "ClouDNS API auth-id (from Account Settings > API)."
+  description = "DEPRECATED: Use Secrets Manager. Ignored."
   type        = number
+  default     = 0
   sensitive   = true
 }
 
 variable "cloudns_password" {
-  description = "ClouDNS API password (auth-password)."
+  description = "DEPRECATED: Use Secrets Manager. Ignored."
   type        = string
+  default     = ""
   sensitive   = true
 }

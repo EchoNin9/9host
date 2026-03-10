@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
 # CloudNS DNS (Task 1.11, 1.12) — echo9.net zone + DNS records
 # Run: cd infra/cloudns && tofu init && tofu apply -var-file=terraform.tfvars
-# Requires AWS credentials (for remote state). Does not block main infra CI.
+# Credentials from AWS Secrets Manager (9host-cloudns). Never use tfvars for password.
 # ------------------------------------------------------------------------------
 
 terraform {
@@ -17,9 +17,13 @@ terraform {
   }
 }
 
+locals {
+  cloudns_creds = jsondecode(data.aws_secretsmanager_secret_version.cloudns.secret_string)
+}
+
 provider "cloudns" {
-  auth_id    = var.cloudns_auth_id
-  password   = var.cloudns_password
+  auth_id    = local.cloudns_creds.auth_id
+  password   = local.cloudns_creds.password
   rate_limit = 10
 }
 
@@ -27,7 +31,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Read main infra outputs (ACM validation, CloudFront domains)
+# Read main infra outputs (ACM validation, CloudFront domains, secret ARN)
 data "aws_caller_identity" "current" {}
 
 data "terraform_remote_state" "infra" {
@@ -38,6 +42,10 @@ data "terraform_remote_state" "infra" {
     region         = var.aws_region
     dynamodb_table = "9host-tofu-state-lock"
   }
+}
+
+data "aws_secretsmanager_secret_version" "cloudns" {
+  secret_id = data.terraform_remote_state.infra.outputs.cloudns_secret_arn
 }
 
 locals {
