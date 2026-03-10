@@ -32,7 +32,7 @@
 | 1.15 | Add GET /api/tenants endpoint (user's tenants via GSI byUser, Cognito auth) | DONE | api/tenants_handler.py, auth_helpers.py. Unblocks 2.7. |
 | 1.16 | Add GET /api/tenant/analytics placeholder (Pro+ tier, tenant-scoped) | DONE | api/analytics_handler.py. Cognito auth, tenant membership, tier check. Unblocks 2.8. |
 | 1.17 | Add Sites API: GET/POST/PUT/DELETE /api/tenant/sites | DONE | api/sites_handler.py. Tenant-scoped CRUD, Cognito auth, tenant membership. Unblocks Sites sidebar UI. |
-| 1.18 | Add Domains API: GET/POST/DELETE /api/tenant/domains | TODO | Custom domains (Pro+ tier). Schema has DOMAIN#{domain}. Unblocks Domains sidebar UI. |
+| 1.18 | Add Domains API: GET/POST/DELETE /api/tenant/domains | DONE | api/domains_handler.py. Pro+ tier, tenant membership, GSI byDomain. Unblocks Domains sidebar UI. |
 | 1.19 | Add Stripe webhook route: POST /api/webhooks/stripe | TODO | Handler stub for agent3. Unblocks 3.3. Defer until Stripe ready. |
 | 1.20 | Migrate single-user schema to multi-tenant (data migration) | TODO | If existing orangewhip data. Design + run migration. |
 
@@ -51,6 +51,7 @@
 | 2.7 | Tenant list from API: replace getDemoTenants() with /api/tenants | DONE | useTenants hook, fetchTenants API client, Amplify config. CI: VITE_API_URL from tofu output. |
 | 2.8 | Advanced Analytics UI (FeatureGate advanced_analytics) | DONE | TenantAnalytics page, Recharts, FeatureGate, /api/tenant/analytics. |
 | 2.9 | Sites UI: connect TenantSites to /api/tenant/sites | DONE | List, create, edit, delete. useSites hook, Sheet forms. |
+| 2.10 | Domains UI: connect TenantDomains to /api/tenant/domains | DONE | List, add, remove. useDomains hook, site selector, FeatureGate. |
 
 ### Agent 3 — Payments
 

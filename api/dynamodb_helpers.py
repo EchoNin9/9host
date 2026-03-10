@@ -92,6 +92,25 @@ def query_sites_in_tenant(tenant_slug: str) -> dict[str, Any]:
     }
 
 
+def get_domain_item(tenant_slug: str, domain: str) -> dict[str, Any]:
+    """GetItem params for domain in tenant."""
+    return {
+        "pk": pk_tenant(tenant_slug),
+        "sk": sk_domain(domain),
+    }
+
+
+def query_domains_in_tenant(tenant_slug: str) -> dict[str, Any]:
+    """Query params: list domains in tenant."""
+    return {
+        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "ExpressionAttributeValues": {
+            ":pk": pk_tenant(tenant_slug),
+            ":sk_prefix": "DOMAIN#",
+        },
+    }
+
+
 def query_tenants_for_user(sub: str) -> dict[str, Any]:
     """Query GSI byUser: list tenants for Cognito user."""
     return {

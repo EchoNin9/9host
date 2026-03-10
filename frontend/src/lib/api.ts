@@ -217,3 +217,103 @@ export async function deleteSite(
     return false
   }
 }
+
+// -----------------------------------------------------------------------------
+// Domains (Pro+ tier, tenant-scoped)
+// -----------------------------------------------------------------------------
+
+export interface Domain {
+  domain: string
+  site_id: string
+  status: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DomainsResponse {
+  domains: Domain[]
+}
+
+export interface DomainResponse {
+  domain: Domain
+}
+
+function domainsHeaders(tenantSlug: string, accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "X-Tenant-Slug": tenantSlug,
+  }
+}
+
+/**
+ * List domains for a tenant (Pro+ tier).
+ */
+export async function fetchDomains(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<Domain[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+
+  try {
+    const res = await fetch(`${base}/api/tenant/domains`, {
+      headers: domainsHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as DomainsResponse
+    return data.domains ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Add a custom domain (Pro+ tier).
+ */
+export async function createDomain(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { domain: string; site_id: string; status?: string }
+): Promise<Domain | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/domains`, {
+      method: "POST",
+      headers: domainsHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as DomainResponse
+    return data.domain ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Remove a custom domain (Pro+ tier).
+ */
+export async function deleteDomain(
+  tenantSlug: string,
+  accessToken: string | null,
+  domain: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !domain) return false
+
+  try {
+    const res = await fetch(`${base}/api/tenant/domains/${encodeURIComponent(domain)}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "X-Tenant-Slug": tenantSlug,
+      },
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}

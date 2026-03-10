@@ -15,6 +15,10 @@ API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_acce
 | GET | /api/tenant/sites/{id} | Yes | Get site |
 | PUT | /api/tenant/sites/{id} | Yes | Update site |
 | DELETE | /api/tenant/sites/{id} | Yes | Delete site |
+| GET | /api/tenant/domains | Yes | List domains (Pro+; requires X-Tenant-Slug or subdomain) |
+| POST | /api/tenant/domains | Yes | Add domain |
+| GET | /api/tenant/domains/{domain} | Yes | Get domain |
+| DELETE | /api/tenant/domains/{domain} | Yes | Remove domain |
 
 ## GET /api/tenant/analytics
 
@@ -49,3 +53,17 @@ API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_acce
 **PUT /api/tenant/sites/{id}** — Update site. Body: `{"name", "slug", "status"}` (all optional).
 
 **DELETE /api/tenant/sites/{id}** — Delete site. 204 No Content.
+
+## Domains API (/api/tenant/domains)
+
+**Requirements:** Cognito auth, tenant membership, tenant tier Pro or Business (X-Tenant-Slug or subdomain).
+
+**GET /api/tenant/domains** — List domains. Response: `{"domains": [{"domain", "site_id", "status", "created_at", "updated_at"}, ...]}`
+
+**POST /api/tenant/domains** — Add domain. Body: `{"domain": "example.com", "site_id": "uuid", "status": "pending"}`. domain and site_id required. status: pending | verified.
+
+**GET /api/tenant/domains/{domain}** — Get domain. Response: `{"domain": {...}}`
+
+**DELETE /api/tenant/domains/{domain}** — Remove domain. 204 No Content.
+
+**403 (Pro required):** `{"error": "Custom Domains requires Pro or Business tier.", "tier": "FREE", "upgrade_required": true}`
