@@ -44,26 +44,54 @@ export function Login() {
 
   async function resolvePostLoginDestination(): Promise<string> {
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const DBG = (msg: string, data?: unknown) =>
+      console.log("[9host post-login]", msg, data ?? "")
 
     for (let attempt = 0; attempt < 2; attempt++) {
+      DBG(`attempt ${attempt + 1}/2`)
       if (attempt > 0) await delay(150)
       else await delay(100)
 
       try {
         const session = await fetchAuthSession()
         const token = session.tokens?.accessToken?.toString() ?? null
-        if (!token) continue
+        DBG("fetchAuthSession", {
+          hasTokens: !!session.tokens,
+          hasAccessToken: !!session.tokens?.accessToken,
+          tokenLength: token?.length ?? 0,
+        })
+        if (!token) {
+          DBG("no token, retrying...")
+          continue
+        }
 
-        const { isSuperadmin } = await fetchAllTenants(token)
-        if (isSuperadmin) return "/admin"
+        const { isSuperadmin, tenants: adminTenants } =
+          await fetchAllTenants(token)
+        DBG("fetchAllTenants", { isSuperadmin, tenantCount: adminTenants?.length })
+
+        if (isSuperadmin) {
+          DBG("redirecting to /admin")
+          return "/admin"
+        }
 
         const tenants = await fetchTenants(token)
-        if (tenants.length === 1) return `/${tenants[0].slug}`
+        DBG("fetchTenants", {
+          count: tenants.length,
+          slugs: tenants.map((t) => t.slug),
+        })
+        if (tenants.length === 1) {
+          DBG("redirecting to tenant", tenants[0].slug)
+          return `/${tenants[0].slug}`
+        }
+        DBG("fallback to /")
         return "/"
-      } catch {
+      } catch (err) {
+        DBG("error", err)
+
         // Retry on next attempt
       }
     }
+    DBG("exhausted retries, fallback to /")
     return "/"
   }
 

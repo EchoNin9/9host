@@ -56,22 +56,37 @@ export async function fetchAllTenants(
   accessToken: string | null
 ): Promise<FetchAllTenantsResult> {
   const base = getApiUrl()
-  if (!base || !accessToken) return { tenants: [], isSuperadmin: false }
+  const DBG = (msg: string, data?: unknown) =>
+    console.log("[9host fetchAllTenants]", msg, data ?? "")
+
+  if (!base || !accessToken) {
+    DBG("early return", { hasBase: !!base, hasToken: !!accessToken })
+    return { tenants: [], isSuperadmin: false }
+  }
 
   try {
+    DBG("fetching /api/admin/tenants")
     const res = await fetch(`${base}/api/admin/tenants`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: { Authorization: `Bearer ${accessToken}` },
     })
-    if (res.status === 403) return { tenants: [], isSuperadmin: false }
-    if (!res.ok) return { tenants: [], isSuperadmin: false }
-    const data = (await res.json()) as AdminTenantsResponse
+    const body = await res.json().catch(() => ({}))
+    DBG("response", { status: res.status, ok: res.ok, bodyKeys: Object.keys(body) })
+
+    if (res.status === 403) {
+      DBG("403 Forbidden - not superadmin")
+      return { tenants: [], isSuperadmin: false }
+    }
+    if (!res.ok) {
+      DBG("!res.ok", { status: res.status, error: (body as { error?: string }).error })
+      return { tenants: [], isSuperadmin: false }
+    }
+    const data = body as AdminTenantsResponse
     return {
       tenants: data.tenants ?? [],
       isSuperadmin: true,
     }
-  } catch {
+  } catch (err) {
+    DBG("catch", err)
     return { tenants: [], isSuperadmin: false }
   }
 }
