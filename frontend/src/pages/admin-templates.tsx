@@ -1,14 +1,11 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { Link, Navigate } from "react-router-dom"
+import { Navigate } from "react-router-dom"
 import { fetchAuthSession } from "aws-amplify/auth"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,7 +24,7 @@ import {
 } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
-import { FileCode, Pencil, Trash2 } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
 
 function EditTemplateForm({
   template,
@@ -124,21 +121,7 @@ function AdminTemplatesPage() {
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (!isSuperadmin) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-8">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-            <CardDescription>Superadmin required.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="secondary">
-              <Link to="/">Back</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
+    return <Navigate to="/" replace />
   }
 
   const handleCreate = async () => {
@@ -190,33 +173,29 @@ function AdminTemplatesPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center p-8">
-      <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FileCode className="size-6" />
-                Platform templates
-              </CardTitle>
-              <CardDescription>
-                Manage site templates. Tier-gated for tenant site creation.
-              </CardDescription>
-            </div>
-            <Button onClick={() => setCreateOpen(true)}>Add template</Button>
-          </div>
-        </CardHeader>
-        <CardContent>
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Platform templates</h1>
+          <p className="text-muted-foreground">
+            Manage site templates. Tier-gated for tenant site creation.
+          </p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>Add template</Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <div className="p-6 text-sm text-muted-foreground">Loading…</div>
           ) : templates.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No templates yet.</p>
+            <div className="p-6 text-sm text-muted-foreground">No templates yet.</div>
           ) : (
-            <ul className="space-y-2">
+            <div className="divide-y">
               {templates.map((t) => (
-                <li
+                <div
                   key={t.slug}
-                  className="flex items-center justify-between rounded-lg border p-3"
+                  className="flex items-center justify-between p-4"
                 >
                   <div>
                     <span className="font-medium">{t.name}</span>
@@ -240,15 +219,10 @@ function AdminTemplatesPage() {
                       <Trash2 className="size-4" />
                     </Button>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
-          <p className="mt-4">
-            <Button asChild variant="link" className="p-0">
-              <Link to="/admin">← Back to tenants</Link>
-            </Button>
-          </p>
         </CardContent>
       </Card>
 

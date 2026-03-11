@@ -31,6 +31,9 @@ export function Login() {
         navigate("/auth/confirm", { state: { email } })
         return
       }
+      
+      // We don't know the exact user role/tenants here yet, so we redirect to /
+      // The Landing page or TenantRootRedirect will handle routing to the right place
       navigate("/", { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed")

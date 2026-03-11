@@ -14,7 +14,9 @@ import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
 import { TenantUsers } from "@/pages/tenant-users"
-import { SuperadminPage } from "@/pages/superadmin"
+import { SuperadminLayout } from "@/components/superadmin-layout"
+import { SuperadminDashboard } from "@/pages/superadmin-dashboard"
+import { SuperadminTenantsPage } from "@/pages/superadmin-tenants"
 import { AdminTemplatesPage } from "@/pages/admin-templates"
 import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
@@ -33,10 +35,22 @@ function TenantLocationSync() {
 }
 import { useTenants } from "@/hooks/use-tenants"
 import { useAuth } from "@/hooks/use-auth"
+import { useAdminTenants } from "@/hooks/use-admin-tenants"
 
 function Landing() {
   const { tenants, loading } = useTenants()
   const { isAuthenticated, loading: authLoading } = useAuth()
+  const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
+
+  // Auto-redirect logic after login
+  if (!authLoading && isAuthenticated && !loading && !superadminLoading) {
+    if (isSuperadmin) {
+      return <Navigate to="/admin" replace />
+    } else if (tenants.length === 1) {
+      return <Navigate to={`/${tenants[0].slug}`} replace />
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
       <Card className="w-full max-w-md">
@@ -98,8 +112,11 @@ function AppRoutes() {
     return (
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/admin" element={<SuperadminPage />} />
-        <Route path="/admin/templates" element={<AdminTemplatesPage />} />
+        <Route path="/admin" element={<SuperadminLayout />}>
+          <Route index element={<SuperadminDashboard />} />
+          <Route path="tenants" element={<SuperadminTenantsPage />} />
+          <Route path="templates" element={<AdminTemplatesPage />} />
+        </Route>
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/auth/confirm" element={<AuthConfirm />} />

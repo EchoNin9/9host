@@ -1,14 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Link, Navigate, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import { fetchAuthSession } from "aws-amplify/auth"
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,14 +16,13 @@ import {
 } from "@/components/ui/sheet"
 import { Input } from "@/components/ui/input"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
-import { useAuth } from "@/hooks/use-auth"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import {
   fetchAdminTenant,
   patchAdminTenant,
   type AdminTenantDetail,
 } from "@/lib/api"
-import { UserCog, Pencil } from "lucide-react"
+import { Pencil } from "lucide-react"
 
 const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
 
@@ -117,9 +113,8 @@ function TenantEditSheet({
   )
 }
 
-function SuperadminPage() {
-  const { isAuthenticated, loading: authLoading } = useAuth()
-  const { tenants, loading, isSuperadmin, refetch } = useAdminTenants()
+function SuperadminTenantsPage() {
+  const { tenants, loading, refetch } = useAdminTenants()
   const { setImpersonate } = useImpersonation()
   const navigate = useNavigate()
   const [editSlug, setEditSlug] = useState<string | null>(null)
@@ -135,67 +130,34 @@ function SuperadminPage() {
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <span className="text-muted-foreground">Loading…</span>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
-  if (!loading && !isSuperadmin) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-8">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-            <CardDescription>
-              Superadmin access required. You do not have permission to view this
-              page.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="secondary">
-              <Link to="/">Back to platform</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
   const handleImpersonate = (slug: string) => {
     setImpersonate(slug)
     navigate(`/${slug}`)
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-8">
-      <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <UserCog className="size-6" />
-            <CardTitle>Superadmin — All Tenants</CardTitle>
-          </div>
-          <CardDescription>
-            Platform admin view. Impersonate a tenant to act as them.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Tenants</h1>
+          <p className="text-muted-foreground">
+            Manage all tenants on the platform.
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading tenants…</p>
+            <div className="p-6 text-sm text-muted-foreground">Loading tenants…</div>
           ) : tenants.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tenants yet.</p>
+            <div className="p-6 text-sm text-muted-foreground">No tenants yet.</div>
           ) : (
-            <ul className="space-y-2">
+            <div className="divide-y">
               {tenants.map((t) => (
-                <li
+                <div
                   key={t.slug}
-                  className="flex items-center justify-between rounded-lg border p-3"
+                  className="flex items-center justify-between p-4"
                 >
                   <div>
                     <span className="font-medium">{t.name || t.slug}</span>
@@ -209,7 +171,8 @@ function SuperadminPage() {
                       variant="outline"
                       onClick={() => handleEdit(t.slug)}
                     >
-                      <Pencil className="size-4" />
+                      <Pencil className="mr-2 size-4" />
+                      Edit
                     </Button>
                     <Button
                       size="sm"
@@ -219,18 +182,10 @@ function SuperadminPage() {
                       Impersonate
                     </Button>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
-          <p className="mt-4 flex gap-4">
-            <Button asChild variant="link" className="p-0">
-              <Link to="/admin/templates">Templates</Link>
-            </Button>
-            <Button asChild variant="link" className="p-0">
-              <Link to="/">← Back to platform</Link>
-            </Button>
-          </p>
         </CardContent>
       </Card>
 
@@ -254,4 +209,4 @@ function SuperadminPage() {
   )
 }
 
-export { SuperadminPage }
+export { SuperadminTenantsPage }

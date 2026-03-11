@@ -83,6 +83,11 @@
 | 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |
 | 2.26 | Create Tenant UI (Superadmin) | TODO | Dedicated route `/create-tenant`. Form fields: slug (max 60 chars), display name, tier selector. Wire to `POST /api/admin/tenants`. |
 | 2.27 | Add Sign Out button | DONE | Add logout button at the bottom of the left navbar (`tenant-admin-sidebar.tsx`). |
+| 2.28 | Post-login navigation (Superadmin) | DONE | Redirect superadmin to `/admin` after successful login. |
+| 2.29 | Post-login navigation (Tenant User) | DONE | Redirect tenant admin/user to their tenant dashboard (`/{tenantSlug}`) after successful login. |
+| 2.30 | Superadmin Portal: Dashboard | DONE | Main dashboard view for superadmins (landing page after auth). |
+| 2.31 | Superadmin Portal: Tenants Section | DONE | List all tenants with clickable links to administer each specific tenant. |
+| 2.32 | Superadmin Portal: Administer Tenant | DONE | Dedicated view for superadmins to manage a specific tenant's domains, sites, and users. |
 
 ### Agent 4 — Self-Serve (Future)
 
