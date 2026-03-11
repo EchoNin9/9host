@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { signIn, fetchAuthSession } from "aws-amplify/auth"
+import { Hub } from "aws-amplify/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -27,11 +28,26 @@ export function Login() {
     setError(null)
     setLoading(true)
     try {
+      const signedInPromise = new Promise<void>((resolve) => {
+        const cancel = Hub.listen("auth", ({ payload }) => {
+          if (payload.event === "signedIn") {
+            cancel()
+            resolve()
+          }
+        })
+        setTimeout(() => {
+          cancel()
+          resolve()
+        }, 3000)
+      })
+
       const { nextStep } = await signIn({ username: email, password })
       if (nextStep?.signInStep === "CONFIRM_SIGN_UP") {
         navigate("/auth/confirm", { state: { email } })
         return
       }
+
+      await signedInPromise
 
       const destination = await resolvePostLoginDestination()
       navigate(destination, { replace: true })
@@ -43,56 +59,46 @@ export function Login() {
   }
 
   async function resolvePostLoginDestination(): Promise<string> {
-    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
     const DBG = (msg: string, data?: unknown) =>
       console.log("[9host post-login]", msg, data ?? "")
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      DBG(`attempt ${attempt + 1}/2`)
-      if (attempt > 0) await delay(150)
-      else await delay(100)
-
-      try {
-        const session = await fetchAuthSession()
-        const token = session.tokens?.accessToken?.toString() ?? null
-        DBG("fetchAuthSession", {
-          hasTokens: !!session.tokens,
-          hasAccessToken: !!session.tokens?.accessToken,
-          tokenLength: token?.length ?? 0,
-        })
-        if (!token) {
-          DBG("no token, retrying...")
-          continue
-        }
-
-        const { isSuperadmin, tenants: adminTenants } =
-          await fetchAllTenants(token)
-        DBG("fetchAllTenants", { isSuperadmin, tenantCount: adminTenants?.length })
-
-        if (isSuperadmin) {
-          DBG("redirecting to /admin")
-          return "/admin"
-        }
-
-        const tenants = await fetchTenants(token)
-        DBG("fetchTenants", {
-          count: tenants.length,
-          slugs: tenants.map((t) => t.slug),
-        })
-        if (tenants.length === 1) {
-          DBG("redirecting to tenant", tenants[0].slug)
-          return `/${tenants[0].slug}`
-        }
-        DBG("fallback to /")
+    try {
+      const session = await fetchAuthSession()
+      const token = session.tokens?.accessToken?.toString() ?? null
+      DBG("fetchAuthSession", {
+        hasTokens: !!session.tokens,
+        hasAccessToken: !!session.tokens?.accessToken,
+        tokenLength: token?.length ?? 0,
+      })
+      if (!token) {
+        DBG("no token after Hub signedIn")
         return "/"
-      } catch (err) {
-        DBG("error", err)
-
-        // Retry on next attempt
       }
+
+      const { isSuperadmin, tenants: adminTenants } =
+        await fetchAllTenants(token)
+      DBG("fetchAllTenants", { isSuperadmin, tenantCount: adminTenants?.length })
+
+      if (isSuperadmin) {
+        DBG("redirecting to /admin")
+        return "/admin"
+      }
+
+      const tenants = await fetchTenants(token)
+      DBG("fetchTenants", {
+        count: tenants.length,
+        slugs: tenants.map((t) => t.slug),
+      })
+      if (tenants.length === 1) {
+        DBG("redirecting to tenant", tenants[0].slug)
+        return `/${tenants[0].slug}`
+      }
+      DBG("fallback to /")
+      return "/"
+    } catch (err) {
+      DBG("error", err)
+      return "/"
     }
-    DBG("exhausted retries, fallback to /")
-    return "/"
   }
 
   return (
