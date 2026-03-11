@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, BrowserRouter, Routes } from "react-router-dom"
+import { Link, Navigate, Route, BrowserRouter, Routes, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -20,6 +20,17 @@ import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
 import { AuthConfirm } from "@/pages/auth-confirm"
 import { useTenant } from "@/hooks/use-tenant"
+import { useEffect } from "react"
+
+/** Syncs tenant context when URL changes (fixes nav/links not working after navigation) */
+function TenantLocationSync() {
+  const location = useLocation()
+  const { refresh } = useTenant()
+  useEffect(() => {
+    refresh()
+  }, [location.pathname, location.key, refresh])
+  return null
+}
 import { useTenants } from "@/hooks/use-tenants"
 import { useAuth } from "@/hooks/use-auth"
 
@@ -116,6 +127,7 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
+      <TenantLocationSync />
       <AppRoutes />
     </BrowserRouter>
   )
