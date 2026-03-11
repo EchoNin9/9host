@@ -109,7 +109,13 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Save Point: Templates backend complete (2026-03-11)
+### Save Point: Superadmin Portal & Post-Login Routing (2026-03-11)
+
+**Status:** agent2 tasks 2.20, 2.23, 2.27, 2.28, 2.29, 2.30, 2.31, 2.32 complete. Superadmin portal is built (`/admin`, `/admin/tenants`, `/admin/templates`), post-login routing correctly directs superadmins to `/admin` and single-tenant users to `/:tenantSlug`. Site template selection integrated into site creation.
+
+**Next:** agent3 Stripe integration (3.1–3.3) and agent2 billing UI (2.24–2.25), or agent2 Create Tenant UI for Superadmin (2.26).
+
+### ~~Save Point: Templates backend complete (2026-03-11)~~ Superseded
 
 **Status:** agent1 tasks 1.0–1.33 complete (module_overrides, resolved_features, PATCH admin tenants, templates CRUD, template_id on sites, seed templates in CI). agent2 tasks 2.0–2.19, 2.21, 2.22 done (resolved features, superadmin edit tenant, templates UI, module_overrides editor).
 
