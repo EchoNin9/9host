@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { getCurrentUser } from "aws-amplify/auth"
+import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth"
 
 export interface UseAuthResult {
   isAuthenticated: boolean
@@ -11,8 +11,9 @@ export interface UseAuthResult {
 }
 
 /**
- * Returns auth state. isAuthenticated is true when user has a valid Cognito session.
- * userId is the Cognito sub (for owner checks, etc.).
+ * Returns auth state. Uses fetchAuthSession() which properly rehydrates
+ * tokens from localStorage on page reload (getCurrentUser() can throw
+ * before Amplify finishes bootstrapping the in-memory auth state).
  */
 export function useAuth(): UseAuthResult {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -22,9 +23,19 @@ export function useAuth(): UseAuthResult {
   const checkAuth = useCallback(async () => {
     setLoading(true)
     try {
-      const user = await getCurrentUser()
-      setIsAuthenticated(true)
-      setUserId(user?.userId ?? null)
+      const session = await fetchAuthSession()
+      if (session.tokens?.accessToken) {
+        setIsAuthenticated(true)
+        try {
+          const user = await getCurrentUser()
+          setUserId(user?.userId ?? null)
+        } catch {
+          setUserId(null)
+        }
+      } else {
+        setIsAuthenticated(false)
+        setUserId(null)
+      }
     } catch {
       setIsAuthenticated(false)
       setUserId(null)

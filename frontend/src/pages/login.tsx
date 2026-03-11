@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { signIn } from "aws-amplify/auth"
+import { signIn, fetchAuthSession } from "aws-amplify/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { fetchAllTenants, fetchTenants } from "@/lib/api"
 
 export function Login() {
   const navigate = useNavigate()
@@ -31,15 +32,30 @@ export function Login() {
         navigate("/auth/confirm", { state: { email } })
         return
       }
-      
-      // We don't know the exact user role/tenants here yet, so we redirect to /
-      // The Landing page or TenantRootRedirect will handle routing to the right place
-      navigate("/", { replace: true })
+
+      const destination = await resolvePostLoginDestination()
+      navigate(destination, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed")
     } finally {
       setLoading(false)
     }
+  }
+
+  async function resolvePostLoginDestination(): Promise<string> {
+    try {
+      const session = await fetchAuthSession()
+      const token = session.tokens?.accessToken?.toString() ?? null
+
+      const { isSuperadmin } = await fetchAllTenants(token)
+      if (isSuperadmin) return "/admin"
+
+      const tenants = await fetchTenants(token)
+      if (tenants.length === 1) return `/${tenants[0].slug}`
+    } catch {
+      // Fall through to default
+    }
+    return "/"
   }
 
   return (
