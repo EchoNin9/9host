@@ -17,7 +17,7 @@ from admin_templates_handler import (
 )
 from analytics_handler import get_analytics_handler
 from domains_handler import domains_handler
-from handler_example import get_tenant_handler, put_tenant_handler
+from handler_example import get_tenant_handler, patch_tenant_handler, put_tenant_handler
 from sites_handler import sites_handler
 from users_handler import users_handler
 from stripe_webhook_handler import stripe_webhook_handler
@@ -61,6 +61,8 @@ def lambda_handler(event: dict, context: dict) -> dict:
             return get_tenant_handler(event, context)
         if method == "PUT":
             return put_tenant_handler(event, context)
+        if method == "PATCH":
+            return patch_tenant_handler(event, context)
 
     if method == "GET" and path in ("/api/tenant/analytics", "/api/tenant/analytics/"):
         return get_analytics_handler(event, context)

@@ -80,11 +80,16 @@ export async function fetchAllTenants(
 // Tenant metadata (GET /api/tenant)
 // -----------------------------------------------------------------------------
 
+/** Resolved features from GET /api/tenant (tier + module_overrides) */
+export type ResolvedFeatures = Record<string, boolean>
+
 export interface TenantMetadata {
   tenant_slug: string
   name: string
   tier: string
   owner_sub: string | null
+  module_overrides?: Record<string, boolean>
+  resolved_features?: ResolvedFeatures
   created_at?: string
   updated_at?: string
 }
@@ -113,6 +118,93 @@ export async function fetchTenant(
     })
     if (!res.ok) return null
     return (await res.json()) as TenantMetadata
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fetch single tenant by slug (superadmin only).
+ */
+export async function fetchAdminTenant(
+  accessToken: string | null,
+  slug: string
+): Promise<AdminTenantDetail | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !slug) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/tenants/${encodeURIComponent(slug)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTenantDetail
+  } catch {
+    return null
+  }
+}
+
+/** Admin tenant detail (from GET /api/admin/tenants/{slug}) */
+export interface AdminTenantDetail {
+  slug: string
+  name: string
+  tier: string
+  owner_sub?: string | null
+  module_overrides?: Record<string, boolean>
+  created_at?: string
+  updated_at?: string
+}
+
+/**
+ * PATCH tenant (superadmin only). Body: tier, name, module_overrides.
+ */
+export async function patchAdminTenant(
+  accessToken: string | null,
+  slug: string,
+  body: { tier?: string; name?: string; module_overrides?: Record<string, boolean> }
+): Promise<AdminTenantDetail | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !slug) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/tenants/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTenantDetail
+  } catch {
+    return null
+  }
+}
+
+/**
+ * PATCH tenant module_overrides (admin/manager only). Task 2.22.
+ */
+export async function patchTenantModuleOverrides(
+  tenantSlug: string,
+  accessToken: string | null,
+  module_overrides: Record<string, boolean>
+): Promise<TenantMetadata | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant`, {
+      method: "PATCH",
+      headers: {
+        ...tenantHeaders(tenantSlug, accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ module_overrides }),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as TenantMetadata
+    return data
   } catch {
     return null
   }
@@ -542,6 +634,126 @@ export async function deleteDomain(
       },
     })
     return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Admin templates (superadmin only)
+// -----------------------------------------------------------------------------
+
+export interface AdminTemplate {
+  slug: string
+  name: string
+  description: string
+  tier_required: string
+  components: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AdminTemplatesResponse {
+  templates: AdminTemplate[]
+}
+
+function adminHeaders(accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  }
+}
+
+export async function fetchAdminTemplates(
+  accessToken: string | null
+): Promise<AdminTemplate[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return []
+
+  try {
+    const res = await fetch(`${base}/api/admin/templates`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as AdminTemplatesResponse
+    return data.templates ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchAdminTemplate(
+  accessToken: string | null,
+  slug: string
+): Promise<AdminTemplate | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !slug) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/templates/${encodeURIComponent(slug)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTemplate
+  } catch {
+    return null
+  }
+}
+
+export async function createAdminTemplate(
+  accessToken: string | null,
+  body: { slug: string; name: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
+): Promise<AdminTemplate | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/templates`, {
+      method: "POST",
+      headers: adminHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTemplate
+  } catch {
+    return null
+  }
+}
+
+export async function updateAdminTemplate(
+  accessToken: string | null,
+  slug: string,
+  body: { name?: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
+): Promise<AdminTemplate | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !slug) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/templates/${encodeURIComponent(slug)}`, {
+      method: "PUT",
+      headers: adminHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTemplate
+  } catch {
+    return null
+  }
+}
+
+export async function deleteAdminTemplate(
+  accessToken: string | null,
+  slug: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !slug) return false
+
+  try {
+    const res = await fetch(`${base}/api/admin/templates/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return res.ok
   } catch {
     return false
   }

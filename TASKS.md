@@ -72,11 +72,11 @@
 | 2.15 | Module access UI: tenantadmin configures per-user permissions | DONE | Permissions sheet per user, GET/PUT /api/tenant/users/{sub}/permissions. |
 | 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | DONE | useTenantRole hook, canEdit for admin/manager. editor/member see view-only. |
 | 2.17 | Tenant Settings: show owner, transfer owner (if owner) | DONE | useTenantMetadata, owner display, PUT /api/tenant transfer. |
-| 2.18 | Use resolved features from GET /api/tenant in FeatureGate | TODO | Depends on 1.28. TierProvider/FeatureGate reads resolved_features (tier + module_overrides). |
-| 2.19 | Superadmin: edit tenant (tier, name, module_overrides) | TODO | Depends on 1.29. Edit sheet on Superadmin page. PATCH /api/admin/tenants/{slug}. |
+| 2.18 | Use resolved features from GET /api/tenant in FeatureGate | DONE | TenantTierProvider, TierContext.resolved_features, useFeatureGate checks it first. |
+| 2.19 | Superadmin: edit tenant (tier, name, module_overrides) | DONE | Edit sheet on Superadmin page. PATCH /api/admin/tenants/{slug}. |
 | 2.20 | Site creation: template selector | TODO | Depends on 1.30, 1.32. Fetch GET /api/templates, picker in Add site flow. template_id in POST. |
-| 2.21 | Superadmin: templates management UI | TODO | Depends on 1.31. /admin/templates. List, add, edit, delete. GET/POST/PUT/DELETE /api/admin/templates. |
-| 2.22 | Tenant Settings: module_overrides editor | TODO | Depends on 1.28. Tenantadmin edits module_overrides (e.g. Free + custom_domains). Needs PATCH /api/tenant. |
+| 2.21 | Superadmin: templates management UI | DONE | /admin/templates. List, add, edit, delete. GET/POST/PUT/DELETE /api/admin/templates. |
+| 2.22 | Tenant Settings: module_overrides editor | DONE | PATCH /api/tenant. Toggles for custom_domains, advanced_analytics. admin/manager only. |
 | 2.23 | Site detail: show template used | TODO | Depends on 1.32. Display which template site was created from on site cards/detail. |
 | 2.24 | Billing / upgrade UI | TODO | Depends on 3.1, 3.2. Pricing page, upgrade/downgrade buttons, tier badge. |
 | 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |

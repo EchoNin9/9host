@@ -201,6 +201,78 @@ def put_tenant_handler(event: dict, context: dict) -> dict:
     )
 
 
+@with_tenant
+def patch_tenant_handler(event: dict, context: dict) -> dict:
+    """
+    PATCH /api/tenant — update module_overrides (Task 2.22). Requires admin/manager.
+    Body: { "module_overrides": { "custom_domains": bool, "advanced_analytics": bool } }.
+    """
+    tenant_slug = event.get("tenant_slug")
+    if not tenant_slug:
+        return _json_response(
+            400,
+            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
+        )
+
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    sub = get_sub_from_access_token(event, region=region)
+    if not sub:
+        return _json_response(
+            401,
+            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
+        )
+
+    table_name = os.environ.get("DYNAMODB_TABLE")
+    if not table_name:
+        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
+
+    from auth_helpers import require_tenant_admin_or_manager
+
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    if not _user_is_tenant_member(table, sub, tenant_slug):
+        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+
+    ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+    if not ok:
+        return _json_response(403, {"error": err or "Forbidden."})
+
+    body = _parse_body(event) or {}
+    mo = body.get("module_overrides")
+    if not isinstance(mo, dict):
+        return _json_response(400, {"error": "module_overrides must be an object"})
+
+    clean_mo = {k: bool(v) for k, v in mo.items() if k in FEATURE_KEYS}
+
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    table.update_item(
+        Key=get_tenant_item(tenant_slug),
+        UpdateExpression="SET module_overrides = :mo, updated_at = :u",
+        ExpressionAttributeValues={":mo": clean_mo, ":u": now},
+    )
+    resp = table.get_item(Key=get_tenant_item(tenant_slug))
+    item = resp.get("Item", {})
+    tier = item.get("tier", "FREE")
+    module_overrides = item.get("module_overrides") or {}
+    resolved_features = {}
+    for fk in FEATURE_KEYS:
+        if fk in module_overrides:
+            resolved_features[fk] = bool(module_overrides[fk])
+        else:
+            resolved_features[fk] = _tier_has_feature(tier, fk)
+    return _json_response(
+        200,
+        {
+            "tenant_slug": tenant_slug,
+            "module_overrides": module_overrides,
+            "resolved_features": resolved_features,
+        },
+    )
+
+
 def raw_handler(event: dict, context: dict) -> dict:
     """
     Example without decorator: manually extract tenant_slug.

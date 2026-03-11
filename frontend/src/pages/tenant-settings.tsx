@@ -19,8 +19,10 @@ import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantUsers } from "@/hooks/use-tenant-users"
 import { useAuth } from "@/hooks/use-auth"
-import { putTransferOwner } from "@/lib/api"
-import { Crown } from "lucide-react"
+import { patchTenantModuleOverrides, putTransferOwner } from "@/lib/api"
+import { Crown, Settings2 } from "lucide-react"
+
+const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
 
 function TenantSettings() {
   const { tenantSlug } = useTenant()
@@ -32,8 +34,27 @@ function TenantSettings() {
   const [transferTarget, setTransferTarget] = useState("")
   const [transferring, setTransferring] = useState(false)
   const [transferError, setTransferError] = useState<string | null>(null)
+  const [moduleOverridesSaving, setModuleOverridesSaving] = useState(false)
 
   const isOwner = tenant?.owner_sub && userId && tenant.owner_sub === userId
+
+  const handleModuleOverrideToggle = async (
+    key: string,
+    value: boolean
+  ) => {
+    if (!tenantSlug || !tenant) return
+    const next = { ...(tenant.module_overrides ?? {}), [key]: value }
+    setModuleOverridesSaving(true)
+    const session = await fetchAuthSession()
+    const token = session.tokens?.accessToken?.toString() ?? null
+    const result = await patchTenantModuleOverrides(
+      tenantSlug,
+      token,
+      next
+    )
+    setModuleOverridesSaving(false)
+    if (result) void refetch()
+  }
 
   const handleTransfer = async () => {
     if (!tenantSlug || !transferTarget) return
@@ -101,6 +122,42 @@ function TenantSettings() {
               <p className="text-sm text-muted-foreground">
                 Tier: {tenant?.tier ?? "—"}
               </p>
+              {canEdit && (
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Settings2 className="size-4" />
+                    Module overrides
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Override tier-based features (e.g. Free + custom domains)
+                  </p>
+                  <div className="space-y-2">
+                    {FEATURE_KEYS.map((key) => (
+                      <label
+                        key={key}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            tenant?.resolved_features?.[key] ??
+                            tenant?.module_overrides?.[key] ??
+                            false
+                          }
+                          onChange={(e) =>
+                            handleModuleOverrideToggle(key, e.target.checked)
+                          }
+                          disabled={moduleOverridesSaving}
+                          className="h-4 w-4 rounded"
+                        />
+                        <span className="text-sm capitalize">
+                          {key.replace("_", " ")}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </CardContent>

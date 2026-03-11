@@ -15,6 +15,7 @@ import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
 import { TenantUsers } from "@/pages/tenant-users"
 import { SuperadminPage } from "@/pages/superadmin"
+import { AdminTemplatesPage } from "@/pages/admin-templates"
 import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
 import { AuthConfirm } from "@/pages/auth-confirm"
@@ -87,6 +88,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/admin" element={<SuperadminPage />} />
+        <Route path="/admin/templates" element={<AdminTemplatesPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/auth/confirm" element={<AuthConfirm />} />
