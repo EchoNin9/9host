@@ -1,4 +1,6 @@
-import { Link, Navigate, Route, BrowserRouter, Routes, useLocation } from "react-router-dom"
+import { Link, Navigate, Route, BrowserRouter, Routes, useParams } from "react-router-dom"
+import { useCallback, useEffect, useMemo } from "react"
+import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -21,23 +23,62 @@ import { AdminTemplatesPage } from "@/pages/admin-templates"
 import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
 import { AuthConfirm } from "@/pages/auth-confirm"
-import { useTenant } from "@/hooks/use-tenant"
-import { useEffect } from "react"
-
-/** Syncs tenant context when URL changes (fixes nav/links not working after navigation) */
-function TenantLocationSync() {
-  const location = useLocation()
-  const { refresh } = useTenant()
-  useEffect(() => {
-    refresh()
-  }, [location.pathname, location.key, refresh])
-  return null
-}
 import { useTenants } from "@/hooks/use-tenants"
 import { useAuth } from "@/hooks/use-auth"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
+import {
+  TenantContext,
+  extractTenantFromHost,
+  getSwitchTenantUrl,
+  type TenantContextValue,
+} from "@/contexts/tenant-context"
 
-import { useNavigate } from "react-router-dom"
+/**
+ * Provides tenant context derived from React Router's :tenantSlug param.
+ * Overrides the parent TenantProvider so all tenant-scoped components
+ * get the slug synchronously from the router instead of from window.location.
+ */
+function TenantRouteProvider() {
+  const { tenantSlug: routeSlug } = useParams<{ tenantSlug: string }>()
+  const slug = routeSlug ?? null
+  const basePath = slug ? `/${slug}` : ""
+
+  const getSwitchUrl = useCallback(
+    (newSlug: string) => getSwitchTenantUrl(newSlug, basePath),
+    [basePath]
+  )
+
+  const value = useMemo<TenantContextValue>(
+    () => ({
+      tenantSlug: slug,
+      hasTenant: slug !== null,
+      tenantBasePath: basePath,
+      refresh: () => {},
+      getSwitchTenantUrl: getSwitchUrl,
+    }),
+    [slug, basePath, getSwitchUrl]
+  )
+
+  return (
+    <TenantContext.Provider value={value}>
+      <TenantAdminLayout />
+    </TenantContext.Provider>
+  )
+}
+
+/**
+ * Root route: redirects to /:tenantSlug when accessed via tenant subdomain,
+ * otherwise renders the Landing page.
+ */
+function RootRoute() {
+  const subdomainSlug = useMemo(
+    () => extractTenantFromHost(window.location.hostname),
+    []
+  )
+
+  if (subdomainSlug) return <Navigate to={`/${subdomainSlug}`} replace />
+  return <Landing />
+}
 
 function Landing() {
   const { tenants, loading } = useTenants()
@@ -45,7 +86,6 @@ function Landing() {
   const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
   const navigate = useNavigate()
 
-  // Auto-redirect logic after login
   useEffect(() => {
     if (!authLoading && isAuthenticated && !loading && !superadminLoading) {
       if (isSuperadmin) {
@@ -103,37 +143,24 @@ function Landing() {
   )
 }
 
-/** Redirects / to /:tenant when on subdomain so we use consistent path-based routes */
-function TenantRootRedirect() {
-  const { tenantSlug } = useTenant()
-  if (!tenantSlug) return null
-  return <Navigate to={`/${tenantSlug}`} replace />
-}
-
+/**
+ * Single merged route tree. React Router v6 matches static routes
+ * (/admin, /login, etc.) before dynamic segments (/:tenantSlug),
+ * so no conditional hasTenant branching is needed.
+ */
 function AppRoutes() {
-  const { hasTenant } = useTenant()
-
-  if (!hasTenant) {
-    return (
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/admin" element={<SuperadminLayout />}>
-          <Route index element={<SuperadminDashboard />} />
-          <Route path="tenants" element={<SuperadminTenantsPage />} />
-          <Route path="templates" element={<AdminTemplatesPage />} />
-        </Route>
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/auth/confirm" element={<AuthConfirm />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    )
-  }
-
   return (
     <Routes>
-      <Route path="/" element={<TenantRootRedirect />} />
-      <Route path="/:tenantSlug" element={<TenantAdminLayout />}>
+      <Route path="/" element={<RootRoute />} />
+      <Route path="/admin" element={<SuperadminLayout />}>
+        <Route index element={<SuperadminDashboard />} />
+        <Route path="tenants" element={<SuperadminTenantsPage />} />
+        <Route path="templates" element={<AdminTemplatesPage />} />
+      </Route>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/auth/confirm" element={<AuthConfirm />} />
+      <Route path="/:tenantSlug" element={<TenantRouteProvider />}>
         <Route index element={<TenantDashboard />} />
         <Route path="analytics" element={<TenantAnalytics />} />
         <Route path="sites" element={<TenantSites />} />
@@ -149,7 +176,6 @@ function AppRoutes() {
 function App() {
   return (
     <BrowserRouter>
-      <TenantLocationSync />
       <AppRoutes />
     </BrowserRouter>
   )

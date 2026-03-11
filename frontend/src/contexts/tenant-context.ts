@@ -18,7 +18,7 @@ function isValidSlug(slug: string): boolean {
   return Boolean(SLUG_PATTERN.test(s)) && s.length <= 64;
 }
 
-function extractTenantFromHost(hostname: string, domain: string): string | null {
+export function extractTenantFromHost(hostname: string, domain = "echo9.net"): string | null {
   const host = hostname.toLowerCase();
   const platformHosts = [
     `stage.${domain}`,
