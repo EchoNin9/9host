@@ -43,17 +43,26 @@ export function Login() {
   }
 
   async function resolvePostLoginDestination(): Promise<string> {
-    try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-      const { isSuperadmin } = await fetchAllTenants(token)
-      if (isSuperadmin) return "/admin"
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await delay(150)
+      else await delay(100)
 
-      const tenants = await fetchTenants(token)
-      if (tenants.length === 1) return `/${tenants[0].slug}`
-    } catch {
-      // Fall through to default
+      try {
+        const session = await fetchAuthSession()
+        const token = session.tokens?.accessToken?.toString() ?? null
+        if (!token) continue
+
+        const { isSuperadmin } = await fetchAllTenants(token)
+        if (isSuperadmin) return "/admin"
+
+        const tenants = await fetchTenants(token)
+        if (tenants.length === 1) return `/${tenants[0].slug}`
+        return "/"
+      } catch {
+        // Retry on next attempt
+      }
     }
     return "/"
   }
