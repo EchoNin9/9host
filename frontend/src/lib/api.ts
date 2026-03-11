@@ -417,6 +417,7 @@ export interface Site {
   name: string
   slug: string
   status: string
+  template_id?: string
   created_at: string
   updated_at: string
 }
@@ -466,7 +467,7 @@ export async function fetchSites(
 export async function createSite(
   tenantSlug: string,
   accessToken: string | null,
-  body: { name: string; slug?: string; status?: string }
+  body: { name: string; slug?: string; status?: string; template_id?: string }
 ): Promise<Site | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug) return null
@@ -642,6 +643,39 @@ export async function deleteDomain(
 // -----------------------------------------------------------------------------
 // Admin templates (superadmin only)
 // -----------------------------------------------------------------------------
+
+export interface Template {
+  slug: string
+  name: string
+  description: string
+  tier_required: string
+  components: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TemplatesResponse {
+  templates: Template[]
+}
+
+export async function fetchTemplates(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<Template[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+
+  try {
+    const res = await fetch(`${base}/api/templates`, {
+      headers: tenantHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as TemplatesResponse
+    return data.templates ?? []
+  } catch {
+    return []
+  }
+}
 
 export interface AdminTemplate {
   slug: string

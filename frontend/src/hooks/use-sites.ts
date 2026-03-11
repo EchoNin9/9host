@@ -15,7 +15,7 @@ export interface UseSitesResult {
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
-  create: (body: { name: string; slug?: string; status?: string }) => Promise<Site | null>
+  create: (body: { name: string; slug?: string; status?: string; template_id?: string }) => Promise<Site | null>
   update: (
     siteId: string,
     body: { name?: string; slug?: string; status?: string }
@@ -57,7 +57,7 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
   }, [load])
 
   const create = useCallback(
-    async (body: { name: string; slug?: string; status?: string }) => {
+    async (body: { name: string; slug?: string; status?: string; template_id?: string }) => {
       if (!tenantSlug) return null
       const session = await fetchAuthSession()
       const token = session.tokens?.accessToken?.toString() ?? null

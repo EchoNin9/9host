@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import {
   Card,
@@ -25,7 +25,8 @@ import {
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
-import type { Site } from "@/lib/api"
+import { fetchAuthSession } from "aws-amplify/auth"
+import { fetchTemplates, type Site, type Template } from "@/lib/api"
 
 function SiteForm({
   site,
@@ -33,24 +34,44 @@ function SiteForm({
   onClose,
 }: {
   site: Site | null
-  onSubmit: (body: { name: string; slug?: string; status?: string }) => Promise<Site | null>
+  onSubmit: (body: { name: string; slug?: string; status?: string; template_id?: string }) => Promise<Site | null>
   onClose: () => void
 }) {
   const [name, setName] = useState(site?.name ?? "")
   const [slug, setSlug] = useState(site?.slug ?? "")
+  const { tenantSlug } = useTenant()
   const [status, setStatus] = useState(site?.status ?? "draft")
+  const [templateId, setTemplateId] = useState(site?.template_id ?? "")
   const [saving, setSaving] = useState(false)
+  const [templates, setTemplates] = useState<Template[]>([])
+
+  useEffect(() => {
+    if (site) return
+    async function loadTemplates() {
+      if (!tenantSlug) return
+      try {
+        const session = await fetchAuthSession()
+        const token = session.tokens?.accessToken?.toString() ?? null
+        const list = await fetchTemplates(tenantSlug, token)
+        setTemplates(list)
+      } catch (e) {
+        console.error("Failed to load templates", e)
+      }
+    }
+    void loadTemplates()
+  }, [tenantSlug, site])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
     setSaving(true)
     try {
-      const body: { name: string; slug?: string; status?: string } = {
+      const body: { name: string; slug?: string; status?: string; template_id?: string } = {
         name: name.trim(),
         status,
       }
       if (slug.trim()) body.slug = slug.trim().toLowerCase()
+      if (!site && templateId) body.template_id = templateId
       const result = await onSubmit(body)
       if (result) onClose()
     } finally {
@@ -88,6 +109,26 @@ function SiteForm({
           Lowercase letters, numbers, hyphens only
         </p>
       </div>
+      {!site && (
+        <div>
+          <label htmlFor="site-template" className="text-sm font-medium">
+            Template (optional)
+          </label>
+          <select
+            id="site-template"
+            value={templateId}
+            onChange={(e) => setTemplateId(e.target.value)}
+            className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+          >
+            <option value="">No template (Blank site)</option>
+            {templates.map((t) => (
+              <option key={t.slug} value={t.slug}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {site && (
         <div>
           <label htmlFor="site-status" className="text-sm font-medium">
@@ -142,6 +183,7 @@ function TenantSites() {
     name: string
     slug?: string
     status?: string
+    template_id?: string
   }) => {
     if (editingSite) {
       return update(editingSite.id, body)
@@ -249,15 +291,22 @@ function TenantSites() {
                 )}
               </CardHeader>
               <CardContent>
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    site.status === "published"
-                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {site.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      site.status === "published"
+                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {site.status}
+                  </span>
+                  {site.template_id && (
+                    <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                      Template: {site.template_id}
+                    </span>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}

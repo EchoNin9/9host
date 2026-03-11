@@ -1,6 +1,7 @@
 "use client"
 
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { signOut } from "aws-amplify/auth"
 import {
   LayoutDashboard,
   BarChart3,
@@ -42,7 +43,17 @@ function TenantAdminSidebar() {
   const { impersonateTenant, clearImpersonate, isImpersonating } =
     useImpersonation()
   const location = useLocation()
+  const navigate = useNavigate()
   const base = tenantBasePath || `/${tenantSlug}`
+
+  const handleSignOut = async () => {
+    try {
+      await signOut()
+      navigate("/login")
+    } catch (error) {
+      console.error("Error signing out: ", error)
+    }
+  }
 
   const mainNav: NavItem[] = [
     { title: "Dashboard", href: `${base}`, icon: LayoutDashboard },
@@ -118,6 +129,13 @@ function TenantAdminSidebar() {
           >
             ← Back to platform
           </Link>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 mt-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground text-left"
+          >
+            <LogOut className="size-3.5" />
+            Sign Out
+          </button>
         </div>
       </SidebarFooter>
 
