@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { signIn, fetchAuthSession } from "aws-amplify/auth"
+import { signIn, confirmSignIn, fetchAuthSession } from "aws-amplify/auth"
 import { Hub } from "aws-amplify/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,9 @@ export function Login() {
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [needsNewPassword, setNeedsNewPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -28,6 +31,23 @@ export function Login() {
     setError(null)
     setLoading(true)
     try {
+      if (needsNewPassword) {
+        if (newPassword !== confirmPassword) {
+          setError("Passwords do not match")
+          setLoading(false)
+          return
+        }
+        if (newPassword.length < 8) {
+          setError("Password must be at least 8 characters")
+          setLoading(false)
+          return
+        }
+        await confirmSignIn({ challengeResponse: newPassword })
+        const destination = await resolvePostLoginDestination()
+        navigate(destination, { replace: true })
+        return
+      }
+
       const signedInPromise = new Promise<void>((resolve) => {
         const cancel = Hub.listen("auth", ({ payload }) => {
           if (payload.event === "signedIn") {
@@ -46,6 +66,11 @@ export function Login() {
         navigate("/auth/confirm", { state: { email } })
         return
       }
+      if (nextStep?.signInStep === "CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED") {
+        setNeedsNewPassword(true)
+        setLoading(false)
+        return
+      }
 
       await signedInPromise
 
@@ -59,44 +84,18 @@ export function Login() {
   }
 
   async function resolvePostLoginDestination(): Promise<string> {
-    const DBG = (msg: string, data?: unknown) =>
-      console.log("[9host post-login]", msg, data ?? "")
-
     try {
       const session = await fetchAuthSession()
       const token = session.tokens?.accessToken?.toString() ?? null
-      DBG("fetchAuthSession", {
-        hasTokens: !!session.tokens,
-        hasAccessToken: !!session.tokens?.accessToken,
-        tokenLength: token?.length ?? 0,
-      })
-      if (!token) {
-        DBG("no token after Hub signedIn")
-        return "/"
-      }
+      if (!token) return "/"
 
-      const { isSuperadmin, tenants: adminTenants } =
-        await fetchAllTenants(token)
-      DBG("fetchAllTenants", { isSuperadmin, tenantCount: adminTenants?.length })
-
-      if (isSuperadmin) {
-        DBG("redirecting to /admin")
-        return "/admin"
-      }
+      const { isSuperadmin } = await fetchAllTenants(token)
+      if (isSuperadmin) return "/admin"
 
       const tenants = await fetchTenants(token)
-      DBG("fetchTenants", {
-        count: tenants.length,
-        slugs: tenants.map((t) => t.slug),
-      })
-      if (tenants.length === 1) {
-        DBG("redirecting to tenant", tenants[0].slug)
-        return `/${tenants[0].slug}`
-      }
-      DBG("fallback to /")
+      if (tenants.length === 1) return `/${tenants[0].slug}`
       return "/"
-    } catch (err) {
-      DBG("error", err)
+    } catch {
       return "/"
     }
   }
@@ -105,8 +104,14 @@ export function Login() {
     <div className="flex min-h-screen items-center justify-center p-8">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>Sign in to 9host with your email</CardDescription>
+          <CardTitle>
+            {needsNewPassword ? "Set new password" : "Sign in"}
+          </CardTitle>
+          <CardDescription>
+            {needsNewPassword
+              ? "Your account requires a new password. Choose a secure password."
+              : "Sign in to 9host with your email"}
+          </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
@@ -115,43 +120,91 @@ export function Login() {
                 {error}
               </p>
             )}
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">
-                Email
-              </label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
+            {!needsNewPassword && (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="email" className="text-sm font-medium">
+                    Email
+                  </label>
+                  <Input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-medium">
+                    Password
+                  </label>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </>
+            )}
+            {needsNewPassword && (
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="new-password" className="text-sm font-medium">
+                    New password
+                  </label>
+                  <Input
+                    id="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="confirm-password"
+                    className="text-sm font-medium"
+                  >
+                    Confirm new password
+                  </label>
+                  <Input
+                    id="confirm-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={8}
+                  />
+                </div>
+              </>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in…" : "Sign in"}
+              {loading
+                ? "Setting password…"
+                : needsNewPassword
+                  ? "Set password"
+                  : "Sign in"}
             </Button>
-            <p className="text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link to="/signup" className="underline hover:text-foreground">
-                Sign up
-              </Link>
-            </p>
+            {!needsNewPassword && (
+              <p className="text-center text-sm text-muted-foreground">
+                Don&apos;t have an account?{" "}
+                <Link
+                  to="/signup"
+                  className="underline hover:text-foreground"
+                >
+                  Sign up
+                </Link>
+              </p>
+            )}
           </CardFooter>
         </form>
       </Card>
