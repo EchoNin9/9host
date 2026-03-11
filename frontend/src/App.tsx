@@ -37,19 +37,24 @@ import { useTenants } from "@/hooks/use-tenants"
 import { useAuth } from "@/hooks/use-auth"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 
+import { useNavigate } from "react-router-dom"
+
 function Landing() {
   const { tenants, loading } = useTenants()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
+  const navigate = useNavigate()
 
   // Auto-redirect logic after login
-  if (!authLoading && isAuthenticated && !loading && !superadminLoading) {
-    if (isSuperadmin) {
-      return <Navigate to="/admin" replace />
-    } else if (tenants.length === 1) {
-      return <Navigate to={`/${tenants[0].slug}`} replace />
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && !loading && !superadminLoading) {
+      if (isSuperadmin) {
+        navigate("/admin", { replace: true })
+      } else if (tenants.length === 1) {
+        navigate(`/${tenants[0].slug}`, { replace: true })
+      }
     }
-  }
+  }, [authLoading, isAuthenticated, loading, superadminLoading, isSuperadmin, tenants, navigate])
 
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
