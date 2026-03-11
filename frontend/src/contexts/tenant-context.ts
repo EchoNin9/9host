@@ -37,8 +37,10 @@ function extractTenantFromHost(hostname: string, domain: string): string | null 
 }
 
 function extractTenantFromPath(pathname: string): string | null {
+  const platformPaths = ["admin", "login", "signup", "auth", "create-tenant"];
   const segments = pathname.split("/").filter(Boolean);
   const first = segments[0];
+  if (first && platformPaths.includes(first)) return null;
   if (first && isValidSlug(first)) return first;
   return null;
 }
