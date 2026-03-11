@@ -16,6 +16,8 @@ import boto3
 from auth_helpers import get_sub_from_access_token, require_tenant_admin_or_manager
 from dynamodb_helpers import (
     get_site_item,
+    get_tenant_item,
+    get_template_item,
     pk_tenant,
     query_sites_in_tenant,
     query_tenants_for_user,
@@ -79,9 +81,22 @@ def _site_to_response(item: dict) -> dict:
         "name": item.get("name", ""),
         "slug": item.get("slug", ""),
         "status": item.get("status", "draft"),
+        "template_id": item.get("template_id"),
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
+
+
+def _tier_rank(tier: str) -> int:
+    """Tier rank for comparison. FREE=0, PRO=1, BUSINESS=2."""
+    t = (tier or "FREE").upper()
+    if t == "FREE":
+        return 0
+    if t == "PRO":
+        return 1
+    if t == "BUSINESS":
+        return 2
+    return 0
 
 
 def _list_sites(table, tenant_slug: str) -> dict:
@@ -103,10 +118,11 @@ def _get_site(table, tenant_slug: str, site_id: str) -> dict:
 
 
 def _create_site(table, tenant_slug: str, body: dict) -> dict:
-    """Create site."""
+    """Create site. Optional template_id: validate exists and tenant tier >= template.tier_required (Task 1.32)."""
     name = (body.get("name") or "").strip()
     slug = (body.get("slug") or "").strip().lower()
     status = (body.get("status") or "draft").strip().lower()
+    template_id = (body.get("template_id") or "").strip().lower() or None
 
     if not name:
         return _json_response(400, {"error": "name is required."})
@@ -122,6 +138,30 @@ def _create_site(table, tenant_slug: str, body: dict) -> dict:
     if not SITE_SLUG_PATTERN.match(slug):
         return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
 
+    # Validate template_id if provided (Task 1.32)
+    if template_id:
+        template_resp = table.get_item(Key=get_template_item(template_id))
+        template_item = template_resp.get("Item")
+        if not template_item:
+            return _json_response(400, {"error": f"Template not found: {template_id}"})
+
+        tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
+        tenant_item = tenant_resp.get("Item")
+        if not tenant_item:
+            return _json_response(404, {"error": "Tenant not found."})
+
+        tenant_tier_rank = _tier_rank(tenant_item.get("tier", "FREE"))
+        template_tier_required = template_item.get("tier_required", "FREE")
+        if tenant_tier_rank < _tier_rank(template_tier_required):
+            return _json_response(
+                403,
+                {
+                    "error": f"Template {template_id} requires {template_tier_required} tier or higher.",
+                    "tier_required": template_tier_required,
+                    "tenant_tier": tenant_item.get("tier", "FREE"),
+                },
+            )
+
     site_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
@@ -134,6 +174,8 @@ def _create_site(table, tenant_slug: str, body: dict) -> dict:
         "created_at": now,
         "updated_at": now,
     }
+    if template_id:
+        item["template_id"] = template_id
 
     table.put_item(Item=item)
     return _json_response(201, {"site": _site_to_response(item)})

@@ -46,8 +46,8 @@
 | 1.29 | Add PATCH /api/admin/tenants/{slug} (superadmin: tier, name, module_overrides) | DONE | Friends & family: set tier without Stripe. Superadmin only. |
 | 1.30 | Add site template entity + GET /api/templates (tier-filtered) | DONE | Platform templates. PK=TENANT#_platform, SK=TEMPLATE#{slug}. tier_required per template. |
 | 1.31 | Add superadmin templates CRUD: GET/POST/PUT/DELETE /api/admin/templates | DONE | Add/remove templates. Same backend components, different configs. |
-| 1.32 | Add template_id to Site, validate on POST /api/tenant/sites | TODO | Site created from template. Check tenant tier >= template.tier_required. |
-| 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | TODO | docs/TEMPLATES.md. Components JSON structure. Same backend, tier-gated. |
+| 1.32 | Add template_id to Site, validate on POST /api/tenant/sites | DONE | Site created from template. Check tenant tier >= template.tier_required. |
+| 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | DONE | scripts/seed_templates.py. CI runs after tofu apply. |
 
 ### Agent 2 — Frontend / UI
 

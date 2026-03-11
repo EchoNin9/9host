@@ -78,6 +78,11 @@ jobs:
         working-directory: infra
         run: tofu apply -auto-approve -no-color -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
 
+      - name: Seed platform templates
+        run: |
+          TABLE=$(cd infra && tofu output -raw dynamodb_table_name)
+          python scripts/seed_templates.py --table "$TABLE"
+
       - name: Sync frontend to S3 (staging)
         run: |
           aws s3 sync frontend/dist/ s3://9host-frontend-staging/ --delete
