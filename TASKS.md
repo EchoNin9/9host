@@ -49,6 +49,7 @@
 | 1.32 | Add template_id to Site, validate on POST /api/tenant/sites | DONE | Site created from template. Check tenant tier >= template.tier_required. |
 | 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | DONE | scripts/seed_templates.py. CI runs after tofu apply. |
 | 1.34 | Add POST /api/admin/tenants endpoint to create a new tenant | DONE | Superadmin only. Accepts slug (max 60 char), name, tier. Validates slug uniqueness. Creates Tenant, User, and membership records. |
+| 1.35 | **FIX: handler.py import shadowing — `patch_tenant_handler` overwritten** | DONE | Import alias `admin_patch_tenant_handler` for admin PATCH route. |
 
 ### Agent 2 — Frontend / UI
 
@@ -81,13 +82,15 @@
 | 2.23 | Site detail: show template used | DONE | Depends on 1.32. Display which template site was created from on site cards/detail. |
 | 2.24 | Billing / upgrade UI | TODO | Depends on 3.1, 3.2. Pricing page, upgrade/downgrade buttons, tier badge. |
 | 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |
-| 2.26 | Create Tenant UI (Superadmin) | TODO | Dedicated route `/create-tenant`. Form fields: slug (max 60 chars), display name, tier selector. Wire to `POST /api/admin/tenants`. |
+| 2.26 | Create Tenant UI (Superadmin) | TODO | Add `createAdminTenant` to `api.ts`, "Add Tenant" button + form on superadmin tenants page. Wire to `POST /api/admin/tenants`. Fields: slug (max 60 chars), display name, tier selector. |
 | 2.27 | Add Sign Out button | DONE | Add logout button at the bottom of the left navbar (`tenant-admin-sidebar.tsx`). |
 | 2.28 | Post-login navigation (Superadmin) | DONE | Redirect superadmin to `/admin` after successful login. |
 | 2.29 | Post-login navigation (Tenant User) | DONE | Redirect tenant admin/user to their tenant dashboard (`/{tenantSlug}`) after successful login. |
 | 2.30 | Superadmin Portal: Dashboard | DONE | Main dashboard view for superadmins (landing page after auth). |
 | 2.31 | Superadmin Portal: Tenants Section | DONE | List all tenants with clickable links to administer each specific tenant. |
 | 2.32 | Superadmin Portal: Administer Tenant | DONE | Dedicated view for superadmins to manage a specific tenant's domains, sites, and users. |
+| 2.33 | **FIX: Merge route trees to eliminate hasTenant race condition** | TODO | `AppRoutes` conditionally renders two `<Routes>` trees based on `hasTenant` from TenantContext. Because `TenantLocationSync` updates context in `useEffect` (after render), `hasTenant` is stale during the first render after navigation. This causes: (a) tenant user post-login redirect to `/{slug}` caught by platform catch-all → redirect back to `/`, (b) superadmin impersonation `navigate("/{slug}")` similarly fails, (c) "Back to platform" from tenant → `TenantRootRedirect` sends user back to `/{slug}`, (d) "Platform admin" from tenant → `/:tenantSlug` captures `admin` as a slug. **Fix:** merge all routes into one `<Routes>` tree — React Router v6 matches static routes (`/admin`, `/login`) before dynamic (`/:tenantSlug`). Remove conditional `hasTenant` branching and `TenantLocationSync`. |
+| 2.34 | **FIX: Hide "Platform admin" link for non-superadmin users** | TODO | Landing page (line 94-97) and tenant sidebar show "Platform admin" to all authenticated users. Non-superadmins get "Access denied". Only show link when user is superadmin. |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -109,7 +112,19 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Save Point: Superadmin Portal & Post-Login Routing (2026-03-11)
+### Save Point: Navigation & CRUD bugfixes (2026-03-11)
+
+**Status:** Critical bugs identified blocking core workflows: (1) routing race condition in `AppRoutes` prevents cross-boundary navigation (platform ↔ tenant), (2) `handler.py` import shadowing breaks `PATCH /api/admin/tenants/{slug}`, (3) Create Tenant UI (2.26) still TODO, (4) "Platform admin" link visible to non-superadmins.
+
+**Blocking:** Sites, domains, post-login redirect, superadmin impersonation, and tenant creation all broken or missing due to these bugs.
+
+**Next (priority order):**
+1. **1.35** — Fix handler.py import alias (agent1, 5 min)
+2. **2.33** — Merge route trees to fix navigation (agent2, core fix)
+3. **2.26** — Create Tenant UI for superadmin (agent2)
+4. **2.34** — Hide "Platform admin" link for non-superadmins (agent2, minor)
+
+### ~~Save Point: Superadmin Portal & Post-Login Routing (2026-03-11)~~ Superseded
 
 **Status:** agent2 tasks 2.20, 2.23, 2.27, 2.28, 2.29, 2.30, 2.31, 2.32 complete. Superadmin portal is built (`/admin`, `/admin/tenants`, `/admin/templates`), post-login routing correctly directs superadmins to `/admin` and single-tenant users to `/:tenantSlug`. Site template selection integrated into site creation.
 

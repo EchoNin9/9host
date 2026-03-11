@@ -11,7 +11,7 @@ from admin_handler import (
     create_tenant_handler,
     get_tenant_by_slug_handler,
     list_all_tenants_handler,
-    patch_tenant_handler,
+    patch_tenant_handler as admin_patch_tenant_handler,
 )
 from admin_templates_handler import (
     create_template_handler,
@@ -100,7 +100,7 @@ def lambda_handler(event: dict, context: dict) -> dict:
             if method == "GET":
                 return get_tenant_by_slug_handler(event, context, slug_lower)
             if method == "PATCH":
-                return patch_tenant_handler(event, context, slug_lower)
+                return admin_patch_tenant_handler(event, context, slug_lower)
 
     # Superadmin templates (Task 1.31)
     if method == "GET" and path in ("/api/admin/templates", "/api/admin/templates/"):
