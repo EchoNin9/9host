@@ -48,6 +48,7 @@
 | 1.31 | Add superadmin templates CRUD: GET/POST/PUT/DELETE /api/admin/templates | DONE | Add/remove templates. Same backend components, different configs. |
 | 1.32 | Add template_id to Site, validate on POST /api/tenant/sites | DONE | Site created from template. Check tenant tier >= template.tier_required. |
 | 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | DONE | scripts/seed_templates.py. CI runs after tofu apply. |
+| 1.34 | Add POST /api/admin/tenants endpoint to create a new tenant | DONE | Superadmin only. Accepts slug (max 60 char), name, tier. Validates slug uniqueness. Creates Tenant, User, and membership records. |
 
 ### Agent 2 — Frontend / UI
 
@@ -80,6 +81,14 @@
 | 2.23 | Site detail: show template used | TODO | Depends on 1.32. Display which template site was created from on site cards/detail. |
 | 2.24 | Billing / upgrade UI | TODO | Depends on 3.1, 3.2. Pricing page, upgrade/downgrade buttons, tier badge. |
 | 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |
+| 2.26 | Create Tenant UI (Superadmin) | TODO | Dedicated route `/create-tenant`. Form fields: slug (max 60 chars), display name, tier selector. Wire to `POST /api/admin/tenants`. |
+| 2.27 | Add Sign Out button | TODO | Add logout button at the bottom of the left navbar (`tenant-admin-sidebar.tsx`). |
+
+### Agent 4 — Self-Serve (Future)
+
+| ID | Task | Status | Notes |
+|----|------|--------|-------|
+| 4.1 | Self-serve tenant signup flow | TODO | Allow regular authenticated users to create their own tenants. |
 
 ### Agent 3 — Payments
 
@@ -95,11 +104,11 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Save Point: Tenant admin complete, agent1 templates next (2026-03-10)
+### Save Point: Templates backend complete (2026-03-11)
 
-**Status:** Tasks 1.0–1.27 complete. Tasks 2.0–2.17 complete (tenant admin, users, permissions, settings owner). agent2 Batch 2 done. Stripe deferred until site review.
+**Status:** agent1 tasks 1.0–1.33 complete (module_overrides, resolved_features, PATCH admin tenants, templates CRUD, template_id on sites, seed templates in CI). agent2 tasks 2.0–2.19, 2.21, 2.22 done (resolved features, superadmin edit tenant, templates UI, module_overrides editor).
 
-**Next:** agent1 tasks 1.28–1.33 (tenant modules, tier override, site templates). See [docs/BATCH_JOBS.md](docs/BATCH_JOBS.md) Batch 3.
+**Next:** agent2 tasks 2.20 (template selector in Add site flow), 2.23 (show template on site cards/detail). Then agent3 Stripe (3.1–3.3) and 2.24–2.25 billing UI.
 
 ### ~~Save Point: Batch 1 complete (Phase 2)~~ Superseded
 

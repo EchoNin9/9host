@@ -24,6 +24,7 @@ API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_acce
 | GET | /api/admin/tenants/{slug} | Yes | Get tenant (superadmin) |
 | PATCH | /api/admin/tenants/{slug} | Yes | Update tenant tier/name/module_overrides (superadmin) |
 | GET | /api/admin/templates | Yes | List all templates (superadmin) |
+| POST | /api/admin/tenants | Yes | Create tenant (superadmin). Body: slug, name, tier. |
 | POST | /api/admin/templates | Yes | Create template (superadmin) |
 | GET | /api/admin/templates/{slug} | Yes | Get template (superadmin) |
 | PUT | /api/admin/templates/{slug} | Yes | Update template (superadmin) |

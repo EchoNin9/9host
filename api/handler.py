@@ -7,7 +7,12 @@ subdomain, or path param) for tenant-scoped operations.
 
 import json
 
-from admin_handler import get_tenant_by_slug_handler, list_all_tenants_handler, patch_tenant_handler
+from admin_handler import (
+    create_tenant_handler,
+    get_tenant_by_slug_handler,
+    list_all_tenants_handler,
+    patch_tenant_handler,
+)
 from admin_templates_handler import (
     create_template_handler,
     delete_template_handler,
@@ -83,9 +88,11 @@ def lambda_handler(event: dict, context: dict) -> dict:
     if path.startswith("/api/webhooks/stripe"):
         return stripe_webhook_handler(event, context)
 
-    # Superadmin routes (Task 1.22, 1.29)
+    # Superadmin routes (Task 1.22, 1.29, 1.34)
     if method == "GET" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
         return list_all_tenants_handler(event, context)
+    if method == "POST" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
+        return create_tenant_handler(event, context)
     if path.startswith("/api/admin/tenants/"):
         slug_part = path[len("/api/admin/tenants/"):].strip("/")
         if slug_part and "/" not in slug_part:

@@ -1,17 +1,26 @@
 """
-Superadmin API — GET /api/admin/tenants, GET /api/admin/tenants/{slug} (Task 1.22),
-PATCH /api/admin/tenants/{slug} (Task 1.29).
+Superadmin API — GET /api/admin/tenants, POST /api/admin/tenants (Task 1.34),
+GET /api/admin/tenants/{slug} (Task 1.22), PATCH /api/admin/tenants/{slug} (Task 1.29).
 
 Requires Cognito auth and superadmin group membership.
 """
 
 import json
 import os
+import re
+from datetime import datetime, timezone
 
 import boto3
 
 from auth_helpers import get_sub_from_access_token, is_superadmin
-from dynamodb_helpers import get_tenant_item
+from dynamodb_helpers import (
+    get_tenant_item,
+    gsi1pk_user,
+    gsi1sk_tenant_profile,
+    pk_tenant,
+    sk_tenant,
+    sk_user_profile,
+)
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -43,6 +52,119 @@ def _require_superadmin(event: dict) -> tuple[str | None, dict | None]:
         )
 
     return sub, None
+
+
+# Slug: lowercase alphanumeric + hyphen, max 60 chars
+TENANT_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
+
+
+def _get_user_email_name(event: dict, region: str) -> tuple[str, str]:
+    """Fetch email and name from Cognito GetUser. Returns (email, name)."""
+    auth = (event.get("headers") or {}).get("authorization") or (event.get("headers") or {}).get("Authorization") or ""
+    if not auth.startswith("Bearer "):
+        return "", ""
+    token = auth[7:].strip()
+    if not token:
+        return "", ""
+    try:
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.get_user(AccessToken=token)
+        email, name = "", ""
+        for attr in resp.get("UserAttributes", []):
+            if attr.get("Name") == "email":
+                email = attr.get("Value", "")
+            elif attr.get("Name") in ("name", "preferred_username"):
+                if not name:
+                    name = attr.get("Value", "")
+        return email, name
+    except Exception:
+        return "", ""
+
+
+def create_tenant_handler(event: dict, context: dict) -> dict:
+    """
+    POST /api/admin/tenants — create a new tenant (superadmin only).
+    Body: { "slug": string (max 60), "name": string, "tier": "FREE"|"PRO"|"BUSINESS" }.
+    Creates Tenant, User profile (creator as admin), and membership (GSI byUser).
+    """
+    sub, err = _require_superadmin(event)
+    if err:
+        return err
+
+    body = _parse_body(event) or {}
+    slug = (body.get("slug") or "").strip().lower().replace(" ", "-")
+    name = (body.get("name") or "").strip()
+    tier = (body.get("tier") or "FREE").upper()
+
+    if not slug:
+        return _json_response(400, {"error": "slug is required"})
+    if len(slug) > 60:
+        return _json_response(400, {"error": "slug must be at most 60 characters"})
+    if not TENANT_SLUG_PATTERN.match(slug):
+        return _json_response(
+            400,
+            {"error": "slug must be lowercase alphanumeric and hyphen (e.g. acme-corp, my-band)"},
+        )
+    if tier not in ("FREE", "PRO", "BUSINESS"):
+        return _json_response(400, {"error": "tier must be FREE, PRO, or BUSINESS"})
+
+    if not name:
+        name = slug.replace("-", " ").title()
+
+    table_name = os.environ.get("DYNAMODB_TABLE")
+    if not table_name:
+        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
+
+    dynamodb = boto3.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    # Validate slug uniqueness
+    resp = table.get_item(Key=get_tenant_item(slug))
+    if resp.get("Item"):
+        return _json_response(409, {"error": f"Tenant already exists: {slug}"})
+
+    now = datetime.now(timezone.utc).isoformat()
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    email, user_name = _get_user_email_name(event, region)
+
+    # Create tenant
+    tenant_item = {
+        "pk": pk_tenant(slug),
+        "sk": sk_tenant(),
+        "name": name,
+        "tier": tier,
+        "owner_sub": sub,
+        "created_at": now,
+        "updated_at": now,
+    }
+    table.put_item(Item=tenant_item)
+
+    # Create user profile (creator as admin) and membership
+    profile_item = {
+        "pk": pk_tenant(slug),
+        "sk": sk_user_profile(sub),
+        "gsi1pk": gsi1pk_user(sub),
+        "gsi1sk": gsi1sk_tenant_profile(slug),
+        "sub": sub,
+        "email": email,
+        "name": user_name or name,
+        "role": "admin",
+        "created_at": now,
+        "updated_at": now,
+    }
+    table.put_item(Item=profile_item)
+
+    return _json_response(
+        201,
+        {
+            "slug": slug,
+            "name": name,
+            "tier": tier,
+            "owner_sub": sub,
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
 
 
 def list_all_tenants_handler(event: dict, context: dict) -> dict:
