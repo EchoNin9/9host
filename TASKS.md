@@ -42,6 +42,12 @@
 | 1.25 | Add module permissions entity + API | DONE | USER#{sub}#PERMISSIONS, GET/PUT /api/tenant/users/{sub}/permissions. |
 | 1.26 | Add account owner (owner_sub on tenant) | DONE | owner_sub on tenant, GET /api/tenant returns it. Migration sets first user. |
 | 1.27 | Add GET /api/tenant/users (list tenant users) | DONE | users_handler.py, admin/manager only. Unblocks 2.14. |
+| 1.28 | Add tenant module_overrides + resolved features in GET /api/tenant | DONE | module_overrides map on tenant. resolved_features in response. |
+| 1.29 | Add PATCH /api/admin/tenants/{slug} (superadmin: tier, name, module_overrides) | DONE | Friends & family: set tier without Stripe. Superadmin only. |
+| 1.30 | Add site template entity + GET /api/templates (tier-filtered) | DONE | Platform templates. PK=TENANT#_platform, SK=TEMPLATE#{slug}. tier_required per template. |
+| 1.31 | Add superadmin templates CRUD: GET/POST/PUT/DELETE /api/admin/templates | DONE | Add/remove templates. Same backend components, different configs. |
+| 1.32 | Add template_id to Site, validate on POST /api/tenant/sites | TODO | Site created from template. Check tenant tier >= template.tier_required. |
+| 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | TODO | docs/TEMPLATES.md. Components JSON structure. Same backend, tier-gated. |
 
 ### Agent 2 — Frontend / UI
 
@@ -66,6 +72,14 @@
 | 2.15 | Module access UI: tenantadmin configures per-user permissions | DONE | Permissions sheet per user, GET/PUT /api/tenant/users/{sub}/permissions. |
 | 2.16 | Role-based UI: hide create/edit/delete for tenantuser in Sites, Domains, Settings | DONE | useTenantRole hook, canEdit for admin/manager. editor/member see view-only. |
 | 2.17 | Tenant Settings: show owner, transfer owner (if owner) | DONE | useTenantMetadata, owner display, PUT /api/tenant transfer. |
+| 2.18 | Use resolved features from GET /api/tenant in FeatureGate | TODO | Depends on 1.28. TierProvider/FeatureGate reads resolved_features (tier + module_overrides). |
+| 2.19 | Superadmin: edit tenant (tier, name, module_overrides) | TODO | Depends on 1.29. Edit sheet on Superadmin page. PATCH /api/admin/tenants/{slug}. |
+| 2.20 | Site creation: template selector | TODO | Depends on 1.30, 1.32. Fetch GET /api/templates, picker in Add site flow. template_id in POST. |
+| 2.21 | Superadmin: templates management UI | TODO | Depends on 1.31. /admin/templates. List, add, edit, delete. GET/POST/PUT/DELETE /api/admin/templates. |
+| 2.22 | Tenant Settings: module_overrides editor | TODO | Depends on 1.28. Tenantadmin edits module_overrides (e.g. Free + custom_domains). Needs PATCH /api/tenant. |
+| 2.23 | Site detail: show template used | TODO | Depends on 1.32. Display which template site was created from on site cards/detail. |
+| 2.24 | Billing / upgrade UI | TODO | Depends on 3.1, 3.2. Pricing page, upgrade/downgrade buttons, tier badge. |
+| 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |
 
 ### Agent 3 — Payments
 
@@ -81,11 +95,11 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Save Point: Role-based UI complete (2026-03-10)
+### Save Point: Tenant admin complete, agent1 templates next (2026-03-10)
 
-**Status:** Tasks 1.0–1.27 complete (schema, DynamoDB, middleware, CI/CD, CloudNS, admin API, impersonation, role checks, module permissions, owner_sub, tenant users API). Tasks 2.0–2.16 complete (sidebar, FeatureFlag, tenant context, auth, Sites/Domains/Analytics UI, superadmin UI, role-based UI via useTenantRole).
+**Status:** Tasks 1.0–1.27 complete. Tasks 2.0–2.17 complete (tenant admin, users, permissions, settings owner). agent2 Batch 2 done. Stripe deferred until site review.
 
-**Next:** Tasks 2.14 (tenantadmin users list), 2.15 (module access UI), 2.17 (tenant settings owner/transfer), or Agent 3 (Stripe subscriptions).
+**Next:** agent1 tasks 1.28–1.33 (tenant modules, tier override, site templates). See [docs/BATCH_JOBS.md](docs/BATCH_JOBS.md) Batch 3.
 
 ### ~~Save Point: Batch 1 complete (Phase 2)~~ Superseded
 

@@ -19,6 +19,15 @@ API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_acce
 | POST | /api/tenant/domains | Yes | Add domain |
 | GET | /api/tenant/domains/{domain} | Yes | Get domain |
 | DELETE | /api/tenant/domains/{domain} | Yes | Remove domain |
+| GET | /api/templates | Yes | List templates (tier-filtered; requires X-Tenant-Slug or subdomain) |
+| GET | /api/admin/tenants | Yes | List all tenants (superadmin) |
+| GET | /api/admin/tenants/{slug} | Yes | Get tenant (superadmin) |
+| PATCH | /api/admin/tenants/{slug} | Yes | Update tenant tier/name/module_overrides (superadmin) |
+| GET | /api/admin/templates | Yes | List all templates (superadmin) |
+| POST | /api/admin/templates | Yes | Create template (superadmin) |
+| GET | /api/admin/templates/{slug} | Yes | Get template (superadmin) |
+| PUT | /api/admin/templates/{slug} | Yes | Update template (superadmin) |
+| DELETE | /api/admin/templates/{slug} | Yes | Delete template (superadmin) |
 
 ## GET /api/tenant/analytics
 

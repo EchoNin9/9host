@@ -133,3 +133,30 @@ def query_tenants_for_user(sub: str) -> dict[str, Any]:
             ":sk_prefix": "TENANT#",
         },
     }
+
+
+# Platform templates (Task 1.30) — PK=TENANT#_platform, SK=TEMPLATE#{slug}
+PLATFORM_TENANT = "_platform"
+
+
+def sk_template(slug: str) -> str:
+    return f"TEMPLATE#{slug}"
+
+
+def get_template_item(slug: str) -> dict[str, Any]:
+    """GetItem params for platform template."""
+    return {
+        "pk": pk_tenant(PLATFORM_TENANT),
+        "sk": sk_template(slug),
+    }
+
+
+def query_templates() -> dict[str, Any]:
+    """Query params: list all platform templates."""
+    return {
+        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "ExpressionAttributeValues": {
+            ":pk": pk_tenant(PLATFORM_TENANT),
+            ":sk_prefix": "TEMPLATE#",
+        },
+    }

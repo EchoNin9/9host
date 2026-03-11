@@ -25,6 +25,7 @@
 | Site          | `TENANT#{slug}`  | `SITE#{id}`            | Hosted website                 |
 | Custom Domain | `TENANT#{slug}`  | `DOMAIN#{domain}`      | Domain → site mapping (Pro+)   |
 | User Permissions | `TENANT#{slug}`  | `USER#{sub}#PERMISSIONS` | Per-user module access (Task 1.25) |
+| Site Template | `TENANT#_platform` | `TEMPLATE#{slug}`   | Platform site templates (Task 1.30) |
 
 **Slug rules:** Lowercase, alphanumeric + hyphen. Example: `acme-corp`, `my-band`.
 
@@ -41,6 +42,7 @@ SK: TENANT
 name: string           # Display name
 tier: string           # FREE | PRO | BUSINESS
 owner_sub: string      # Cognito sub of primary tenantadmin (Task 1.26)
+module_overrides: map  # (optional) Task 1.28. Override tier features: { custom_domains: true, advanced_analytics: true }
 stripe_customer_id: S   # (optional) For agent3
 created_at: string     # ISO8601
 updated_at: string
@@ -69,9 +71,31 @@ SK: SITE#site-uuid
 name: string
 slug: string           # URL path segment, e.g. "my-site"
 status: string         # draft | published
+template_id: string    # (optional) Task 1.32. Template slug used to create site.
 created_at: string
 updated_at: string
 ```
+
+### Site Template (Task 1.30–1.33)
+
+Platform-level templates. Stored under `TENANT#_platform` to satisfy PK rule.
+
+```
+PK: TENANT#_platform
+SK: TEMPLATE#musician-band
+---
+slug: string           # musician-band | personal-tech | personal-resume | professional-services | business-generic
+name: string           # Display name
+description: string    # Short description
+tier_required: string  # FREE | PRO | BUSINESS — minimum tier to use this template
+components: map        # JSON structure: which backend components/pages to include
+created_at: string
+updated_at: string
+```
+
+**Templates:** musician-band, personal-tech, personal-resume, professional-services, business-generic
+
+**Access:** GET /api/templates returns tenant-tier-filtered list. Superadmin CRUD via /api/admin/templates.
 
 ### Custom Domain (Pro+)
 
@@ -111,6 +135,7 @@ Tenantadmin configures what tenantuser can access. If missing, all modules allow
 | List domains in tenant          | Query     | PK=`TENANT#{slug}`, SK begins_with `DOMAIN#` |
 | List tenants for user (by sub)  | Query GSI | GSI1PK=`USER#{sub}`, SK begins_with `TENANT#` |
 | Get user permissions            | GetItem   | PK=`TENANT#{slug}`, SK=`USER#{sub}#PERMISSIONS` |
+| List templates (platform)       | Query     | PK=`TENANT#_platform`, SK begins_with `TEMPLATE#` |
 
 ---
 

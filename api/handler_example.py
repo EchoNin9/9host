@@ -1,8 +1,32 @@
 """
-Tenant metadata handler — GET /api/tenant (Task 1.26: owner_sub).
+Tenant metadata handler — GET /api/tenant (Task 1.26: owner_sub, 1.28: module_overrides, resolved_features).
 
-Fetches tenant from DynamoDB. Returns name, tier, owner_sub, etc.
+Fetches tenant from DynamoDB. Returns name, tier, owner_sub, module_overrides, resolved_features in GET.
 """
+
+# Feature keys aligned with frontend feature-flags.ts
+FEATURE_KEYS = ("custom_domains", "advanced_analytics")
+
+
+def _tier_rank(tier: str) -> int:
+    """Tier rank for comparison. FREE=0, PRO=1, BUSINESS=2."""
+    t = (tier or "FREE").upper()
+    if t == "FREE":
+        return 0
+    if t == "PRO":
+        return 1
+    if t == "BUSINESS":
+        return 2
+    return 0
+
+
+def _tier_has_feature(tier: str, feature: str) -> bool:
+    """Check if tier grants feature by default (Pro+ for custom_domains, advanced_analytics)."""
+    if feature not in FEATURE_KEYS:
+        return False
+    rank = _tier_rank(tier)
+    return rank >= 1  # PRO and BUSINESS
+
 
 import json
 import os
@@ -69,17 +93,28 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
     if not item:
         return _json_response(404, {"error": "Tenant not found."})
 
-    return _json_response(
-        200,
-        {
-            "tenant_slug": tenant_slug,
-            "name": item.get("name", tenant_slug),
-            "tier": item.get("tier", "FREE"),
-            "owner_sub": item.get("owner_sub"),
-            "created_at": item.get("created_at"),
-            "updated_at": item.get("updated_at"),
-        },
-    )
+    tier = item.get("tier", "FREE")
+    module_overrides = item.get("module_overrides") or {}
+
+    # Resolved features: tier base + module_overrides override (Task 1.28)
+    resolved_features = {}
+    for fk in FEATURE_KEYS:
+        if fk in module_overrides:
+            resolved_features[fk] = bool(module_overrides[fk])
+        else:
+            resolved_features[fk] = _tier_has_feature(tier, fk)
+
+    body = {
+        "tenant_slug": tenant_slug,
+        "name": item.get("name", tenant_slug),
+        "tier": tier,
+        "owner_sub": item.get("owner_sub"),
+        "module_overrides": module_overrides,
+        "resolved_features": resolved_features,
+        "created_at": item.get("created_at"),
+        "updated_at": item.get("updated_at"),
+    }
+    return _json_response(200, body)
 
 
 def _parse_body(event: dict) -> dict | None:
