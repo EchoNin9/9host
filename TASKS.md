@@ -88,7 +88,7 @@
 | 2.23 | Site detail: show template used | DONE | Depends on 1.32. Display which template site was created from on site cards/detail. |
 | 2.24 | Billing / upgrade UI | TODO | Depends on 3.1, 3.2. Pricing page, upgrade/downgrade buttons, tier badge. |
 | 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |
-| 2.26 | Create Tenant UI (Superadmin) | TODO | Add `createAdminTenant` to `api.ts`, "Add Tenant" button + form on superadmin tenants page. Wire to `POST /api/admin/tenants`. Fields: slug (max 60 chars), display name, tier selector. |
+| 2.26 | Create Tenant UI (Superadmin) | DONE | Add `createAdminTenant` to `api.ts`, "Add Tenant" button + form on superadmin tenants page. Wire to `POST /api/admin/tenants`. Fields: slug (max 60 chars), display name, tier selector. |
 | 2.27 | Add Sign Out button | DONE | Add logout button at the bottom of the left navbar (`tenant-admin-sidebar.tsx`). |
 | 2.28 | Post-login navigation (Superadmin) | DONE | Redirect superadmin to `/admin` after successful login. |
 | 2.29 | Post-login navigation (Tenant User) | DONE | Redirect tenant admin/user to their tenant dashboard (`/{tenantSlug}`) after successful login. |
@@ -96,7 +96,7 @@
 | 2.31 | Superadmin Portal: Tenants Section | DONE | List all tenants with clickable links to administer each specific tenant. |
 | 2.32 | Superadmin Portal: Administer Tenant | DONE | Dedicated view for superadmins to manage a specific tenant's domains, sites, and users. |
 | 2.33 | **FIX: Merge route trees to eliminate hasTenant race condition** | DONE | `AppRoutes` conditionally renders two `<Routes>` trees based on `hasTenant` from TenantContext. Because `TenantLocationSync` updates context in `useEffect` (after render), `hasTenant` is stale during the first render after navigation. This causes: (a) tenant user post-login redirect to `/{slug}` caught by platform catch-all → redirect back to `/`, (b) superadmin impersonation `navigate("/{slug}")` similarly fails, (c) "Back to platform" from tenant → `TenantRootRedirect` sends user back to `/{slug}`, (d) "Platform admin" from tenant → `/:tenantSlug` captures `admin` as a slug. **Fix:** merge all routes into one `<Routes>` tree — React Router v6 matches static routes (`/admin`, `/login`) before dynamic (`/:tenantSlug`). Remove conditional `hasTenant` branching and `TenantLocationSync`. |
-| 2.34 | **FIX: Hide "Platform admin" link for non-superadmin users** | TODO | Landing page (line 94-97) and tenant sidebar show "Platform admin" to all authenticated users. Non-superadmins get "Access denied". Only show link when user is superadmin. |
+| 2.34 | **FIX: Hide "Platform admin" link for non-superadmin users** | DONE | Landing page and tenant sidebar show "Platform admin" only when isSuperadmin. |
 | 2.35 | Superadmin: delete tenant UI with confirmation | TODO | Depends on 1.36. Delete button + cascade warning on admin tenant view. |
 | 2.36 | Superadmin: manage tenant domains UI (admin-scoped) | TODO | Depends on 1.37. Add/remove domains via /api/admin/tenants/{slug}/domains in administer-tenant view. |
 | 2.37 | Superadmin: manage tenant sites UI (admin-scoped) | TODO | Depends on 1.38. Full CRUD for sites via admin API in administer-tenant view. |

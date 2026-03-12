@@ -16,6 +16,7 @@ import {
 
 import { useTenant } from "@/hooks/use-tenant"
 import { useImpersonation } from "@/hooks/use-impersonation"
+import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { TenantSwitcher } from "@/components/tenant-switcher"
 import {
   Sidebar,
@@ -42,6 +43,7 @@ function TenantAdminSidebar() {
   const { tenantSlug, tenantBasePath } = useTenant()
   const { impersonateTenant, clearImpersonate, isImpersonating } =
     useImpersonation()
+  const { isSuperadmin } = useAdminTenants()
   const location = useLocation()
   const navigate = useNavigate()
   const base = tenantBasePath || `/${tenantSlug}`
@@ -116,13 +118,15 @@ function TenantAdminSidebar() {
           </div>
         )}
         <div className="flex flex-col gap-1">
-          <Link
-            to="/admin"
-            className="flex items-center gap-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
-          >
-            <UserCog className="size-3.5" />
-            Platform admin
-          </Link>
+          {isSuperadmin && (
+            <Link
+              to="/admin"
+              className="flex items-center gap-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              <UserCog className="size-3.5" />
+              Platform admin
+            </Link>
+          )}
           <Link
             to="/"
             className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"

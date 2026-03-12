@@ -90,7 +90,7 @@ function Landing() {
     if (!authLoading && isAuthenticated && !loading && !superadminLoading) {
       if (isSuperadmin) {
         navigate("/admin", { replace: true })
-      } else if (tenants.length === 1) {
+      } else if (tenants.length >= 1) {
         navigate(`/${tenants[0].slug}`, { replace: true })
       }
     }
@@ -131,7 +131,7 @@ function Landing() {
                 <Link to="/login">Sign in</Link>
               </Button>
             )}
-            {!authLoading && isAuthenticated && (
+            {!authLoading && isAuthenticated && isSuperadmin && (
               <Button asChild variant="link" className="p-0">
                 <Link to="/admin">Platform admin</Link>
               </Button>

@@ -122,6 +122,32 @@ export async function fetchTenant(
 }
 
 /**
+ * Create tenant (superadmin only). Body: slug (max 60 chars), name, tier.
+ */
+export async function createAdminTenant(
+  accessToken: string | null,
+  body: { slug: string; name: string; tier?: string }
+): Promise<AdminTenantDetail | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/tenants`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTenantDetail
+  } catch {
+    return null
+  }
+}
+
+/**
  * Fetch single tenant by slug (superadmin only).
  */
 export async function fetchAdminTenant(

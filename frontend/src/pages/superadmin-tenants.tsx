@@ -20,9 +20,10 @@ import { useImpersonation } from "@/hooks/use-impersonation"
 import {
   fetchAdminTenant,
   patchAdminTenant,
+  createAdminTenant,
   type AdminTenantDetail,
 } from "@/lib/api"
-import { Pencil } from "lucide-react"
+import { Pencil, Plus } from "lucide-react"
 
 const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
 
@@ -113,12 +114,112 @@ function TenantEditSheet({
   )
 }
 
+function CreateTenantSheet({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void
+  onCreated: () => void
+}) {
+  const [slug, setSlug] = useState("")
+  const [name, setName] = useState("")
+  const [tier, setTier] = useState("FREE")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.toLowerCase().replace(/\s/g, "-").replace(/[^a-z0-9-]/g, "")
+    setSlug(v.slice(0, 60))
+  }
+
+  const handleCreate = async () => {
+    setError(null)
+    const s = slug.trim()
+    if (!s) {
+      setError("Slug is required")
+      return
+    }
+    if (s.length > 60) {
+      setError("Slug must be at most 60 characters")
+      return
+    }
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(s)) {
+      setError("Slug must be lowercase alphanumeric and hyphen (e.g. acme-corp)")
+      return
+    }
+    setSaving(true)
+    const session = await fetchAuthSession()
+    const token = session.tokens?.accessToken?.toString() ?? null
+    const result = await createAdminTenant(token, {
+      slug: s,
+      name: name.trim() || s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      tier,
+    })
+    setSaving(false)
+    if (result) {
+      onCreated()
+      onClose()
+    } else {
+      setError("Failed to create tenant")
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-sm font-medium">Slug</label>
+        <Input
+          value={slug}
+          onChange={handleSlugChange}
+          placeholder="acme-corp"
+          maxLength={60}
+          className="mt-1"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">
+          Lowercase letters, numbers, hyphens. Max 60 chars.
+        </p>
+      </div>
+      <div>
+        <label className="text-sm font-medium">Display name</label>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Acme Corp"
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <label className="text-sm font-medium">Tier</label>
+        <select
+          value={tier}
+          onChange={(e) => setTier(e.target.value)}
+          className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+        >
+          <option value="FREE">Free</option>
+          <option value="PRO">Pro</option>
+          <option value="BUSINESS">Business</option>
+        </select>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button onClick={handleCreate} disabled={saving}>
+          {saving ? "Creating…" : "Create tenant"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function SuperadminTenantsPage() {
   const { tenants, loading, refetch } = useAdminTenants()
   const { setImpersonate } = useImpersonation()
   const navigate = useNavigate()
   const [editSlug, setEditSlug] = useState<string | null>(null)
   const [editTenant, setEditTenant] = useState<AdminTenantDetail | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const handleEdit = async (slug: string) => {
     const session = await fetchAuthSession()
@@ -144,6 +245,10 @@ function SuperadminTenantsPage() {
             Manage all tenants on the platform.
           </p>
         </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-2 size-4" />
+          Add Tenant
+        </Button>
       </div>
 
       <Card>
@@ -202,6 +307,20 @@ function SuperadminTenantsPage() {
                 onSaved={() => void refetch()}
               />
             )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Add tenant</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4">
+            <CreateTenantSheet
+              onClose={() => setCreateOpen(false)}
+              onCreated={() => void refetch()}
+            />
           </div>
         </SheetContent>
       </Sheet>
