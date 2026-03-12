@@ -30,10 +30,29 @@ from tenants_handler import get_tenants_handler
 from templates_handler import get_templates_handler
 
 
-def _json_response(status: int, body: dict) -> dict:
+# CORS headers for Lambda proxy — API Gateway cors_configuration may not apply to $default
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+    "Access-Control-Max-Age": "300",
+}
+
+
+def _with_cors(resp: dict) -> dict:
+    """Merge CORS headers into the response so cross-origin fetches succeed."""
+    h = resp.get("headers") or {}
+    resp["headers"] = {**CORS_HEADERS, **h}
+    return resp
+
+
+def _json_response(status: int, body: dict, headers: dict | None = None) -> dict:
+    h = {"Content-Type": "application/json", **CORS_HEADERS}
+    if headers:
+        h.update(headers)
     return {
         "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
+        "headers": h,
         "body": json.dumps(body),
     }
 
@@ -55,67 +74,75 @@ def lambda_handler(event: dict, context: dict) -> dict:
     method = (event.get("requestContext", {}).get("http", {}).get("method") or
               event.get("httpMethod") or "GET")
 
+    # CORS preflight — must return 200 for browser to allow actual request
+    if method == "OPTIONS":
+        return {
+            "statusCode": 200,
+            "headers": CORS_HEADERS,
+            "body": "",
+        }
+
     if method == "GET" and path in ("/api/health", "/api/health/"):
         return _json_response(200, {"status": "ok", "service": "9host-api"})
 
     if method == "GET" and path in ("/api/tenants", "/api/tenants/"):
-        return get_tenants_handler(event, context)
+        return _with_cors(get_tenants_handler(event, context))
 
     if path in ("/api/tenant", "/api/tenant/"):
         if method == "GET":
-            return get_tenant_handler(event, context)
+            return _with_cors(get_tenant_handler(event, context))
         if method == "PUT":
-            return put_tenant_handler(event, context)
+            return _with_cors(put_tenant_handler(event, context))
         if method == "PATCH":
-            return patch_tenant_handler(event, context)
+            return _with_cors(patch_tenant_handler(event, context))
 
     if method == "GET" and path in ("/api/tenant/analytics", "/api/tenant/analytics/"):
-        return get_analytics_handler(event, context)
+        return _with_cors(get_analytics_handler(event, context))
 
     if path.startswith("/api/tenant/sites"):
-        return sites_handler(event, context)
+        return _with_cors(sites_handler(event, context))
 
     if path.startswith("/api/tenant/domains"):
-        return domains_handler(event, context)
+        return _with_cors(domains_handler(event, context))
 
     if path.startswith("/api/tenant/users"):
-        return users_handler(event, context)
+        return _with_cors(users_handler(event, context))
 
     if method == "GET" and path in ("/api/templates", "/api/templates/"):
-        return get_templates_handler(event, context)
+        return _with_cors(get_templates_handler(event, context))
 
     # Stripe webhook (Task 1.19) — no tenant, no Cognito auth
     if path.startswith("/api/webhooks/stripe"):
-        return stripe_webhook_handler(event, context)
+        return _with_cors(stripe_webhook_handler(event, context))
 
     # Superadmin routes (Task 1.22, 1.29, 1.34)
     if method == "GET" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
-        return list_all_tenants_handler(event, context)
+        return _with_cors(list_all_tenants_handler(event, context))
     if method == "POST" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
-        return create_tenant_handler(event, context)
+        return _with_cors(create_tenant_handler(event, context))
     if path.startswith("/api/admin/tenants/"):
         slug_part = path[len("/api/admin/tenants/"):].strip("/")
         if slug_part and "/" not in slug_part:
             slug_lower = slug_part.lower()
             if method == "GET":
-                return get_tenant_by_slug_handler(event, context, slug_lower)
+                return _with_cors(get_tenant_by_slug_handler(event, context, slug_lower))
             if method == "PATCH":
-                return admin_patch_tenant_handler(event, context, slug_lower)
+                return _with_cors(admin_patch_tenant_handler(event, context, slug_lower))
 
     # Superadmin templates (Task 1.31)
     if method == "GET" and path in ("/api/admin/templates", "/api/admin/templates/"):
-        return list_templates_handler(event, context)
+        return _with_cors(list_templates_handler(event, context))
     if method == "POST" and path in ("/api/admin/templates", "/api/admin/templates/"):
-        return create_template_handler(event, context)
+        return _with_cors(create_template_handler(event, context))
     if path.startswith("/api/admin/templates/"):
         slug_part = path[len("/api/admin/templates/"):].strip("/")
         if slug_part and "/" not in slug_part:
             slug_lower = slug_part.lower()
             if method == "GET":
-                return get_template_handler(event, context, slug_lower)
+                return _with_cors(get_template_handler(event, context, slug_lower))
             if method == "PUT":
-                return update_template_handler(event, context, slug_lower)
+                return _with_cors(update_template_handler(event, context, slug_lower))
             if method == "DELETE":
-                return delete_template_handler(event, context, slug_lower)
+                return _with_cors(delete_template_handler(event, context, slug_lower))
 
-    return get_tenant_handler(event, context)
+    return _with_cors(get_tenant_handler(event, context))
