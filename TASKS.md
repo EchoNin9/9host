@@ -145,6 +145,7 @@
 | 2.68 | Superadmin Administer Tenant: add change owner UI | DONE | Settings tab: picker to change owner_sub; restrict to Cognito users only (exclude TUSERs). Backend: PUT /api/admin/tenants/{slug}/settings already accepts owner_sub. |
 | 2.69 | **FIX: Superadmin Administer Tenant: add site does not save** | DONE | Adding a site in `/admin/tenants/<tenant>` does not save/update the UI. The payload seems correct in fetch/xhr. |
 | 2.70 | **FIX: Superadmin Administer Tenant: add user** | DONE | Support adding non-Cognito (TUSER) users and assigning custom tenant roles in the Add User slideout. |
+| 2.71 | **FIX: Add DB user (TUSER) 500** | DONE | POST /api/admin/tenants/{slug}/users with type=tuser returns 500: "cannot access local variable 'get_tuser_item'". Remove redundant in-function imports that shadow module-level import. |
 
 ### Agent 4 — Self-Serve (Future)
 

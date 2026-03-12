@@ -555,7 +555,6 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
     if method == "GET" and target_sub and is_permissions:
         key = get_user_permissions_item(tenant_slug, target_sub)
         if not table.get_item(Key=get_user_profile_item(tenant_slug, target_sub)).get("Item"):
-            from dynamodb_helpers import get_tuser_item
             if not table.get_item(Key=get_tuser_item(tenant_slug, target_sub)).get("Item"):
                 return _json_response(404, {"error": "User not found in tenant."})
         item = table.get_item(Key=key).get("Item")
@@ -565,7 +564,6 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
 
     if method == "PUT" and target_sub and is_permissions:
         if not table.get_item(Key=get_user_profile_item(tenant_slug, target_sub)).get("Item"):
-            from dynamodb_helpers import get_tuser_item
             if not table.get_item(Key=get_tuser_item(tenant_slug, target_sub)).get("Item"):
                 return _json_response(404, {"error": "User not found in tenant."})
         body = _parse_body(event) or {}
@@ -689,7 +687,6 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         item = table.get_item(Key=key).get("Item")
         is_tuser = False
         if not item:
-            from dynamodb_helpers import get_tuser_item
             key = get_tuser_item(tenant_slug, target_sub)
             item = table.get_item(Key=key).get("Item")
             is_tuser = True
@@ -728,7 +725,6 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
     if method == "DELETE" and target_sub and not is_permissions:
         profile_key = get_user_profile_item(tenant_slug, target_sub)
         if not table.get_item(Key=profile_key).get("Item"):
-            from dynamodb_helpers import get_tuser_item
             tuser_key = get_tuser_item(tenant_slug, target_sub)
             if table.get_item(Key=tuser_key).get("Item"):
                 table.delete_item(Key=tuser_key)
