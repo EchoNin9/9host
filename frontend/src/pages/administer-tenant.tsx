@@ -69,7 +69,7 @@ function AdministerTenantPage() {
   const { setImpersonate } = useImpersonation()
   const [tenant, setTenant] = useState<AdminTenantDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<TabId>("domains")
+  const [tab, setTab] = useState<TabId>("settings")
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -109,10 +109,10 @@ function AdministerTenantPage() {
   if (!tenant) return <div className="p-6">Tenant not found.</div>
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: "domains", label: "Domains", icon: <GlobeLock className="size-4" /> },
-    { id: "sites", label: "Sites", icon: <Globe className="size-4" /> },
-    { id: "users", label: "Users", icon: <Users className="size-4" /> },
     { id: "settings", label: "Settings", icon: <Settings className="size-4" /> },
+    { id: "users", label: "Users", icon: <Users className="size-4" /> },
+    { id: "sites", label: "Sites", icon: <Globe className="size-4" /> },
+    { id: "domains", label: "Domains", icon: <GlobeLock className="size-4" /> },
   ]
 
   return (
@@ -484,6 +484,7 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [permUser, setPermUser] = useState<TenantUser | null>(null)
   const [editUser, setEditUser] = useState<TenantUser | null>(null)
+  const [editNameUser, setEditNameUser] = useState<TenantUser | null>(null)
   const [addMode, setAddMode] = useState<"cognito" | "tuser">("cognito")
   const [addEmail, setAddEmail] = useState("")
   const [addUsername, setAddUsername] = useState("")
@@ -576,6 +577,16 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
     }
   }
 
+  const handleDisplayNameChange = async (userSub: string, name: string) => {
+    const session = await fetchAuthSession()
+    const token = session.tokens?.accessToken?.toString() ?? null
+    const result = await updateAdminUser(token, tenantSlug, userSub, { name })
+    if (result) {
+      setEditNameUser(null)
+      void load()
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -596,11 +607,12 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
               <div key={u.sub} className="flex items-center justify-between py-3">
                 <div>
                   <span className="font-medium">
-                    {u.type === "tuser" ? (u.sub) : (u.email || u.name || u.sub)}
+                    {u.type === "tuser" ? (u.name || u.sub) : (u.email || u.name || u.sub)}
                   </span>
                   <span className="ml-2 text-sm text-muted-foreground">({u.role}{u.type === "tuser" ? " · DB user" : ""})</span>
                 </div>
                 <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setEditNameUser(u)}>Edit name</Button>
                   <Button size="sm" variant="outline" onClick={() => setEditUser(u)}>Edit role</Button>
                   <Button size="sm" variant="outline" onClick={() => setPermUser(u)}>Permissions</Button>
                   <Button size="sm" variant="ghost" onClick={() => handleRemove(u.sub)}>Remove</Button>
@@ -757,6 +769,15 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
           onSaved={() => { void load(); setPermUser(null) }}
         />
       )}
+      {editNameUser && (
+        <EditDisplayNameSheet
+          user={editNameUser}
+          onClose={() => setEditNameUser(null)}
+          onSave={async (name) => {
+            await handleDisplayNameChange(editNameUser.sub, name)
+          }}
+        />
+      )}
     </Card>
   )
 }
@@ -811,6 +832,51 @@ function EditRoleSheet({
             onClick={async () => {
               setSaving(true)
               await onSave(role)
+              setSaving(false)
+            }}
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function EditDisplayNameSheet({
+  user,
+  onClose,
+  onSave,
+}: {
+  user: TenantUser
+  onClose: () => void
+  onSave: (name: string) => Promise<void>
+}) {
+  const [displayName, setDisplayName] = useState(user.name || "")
+  const [saving, setSaving] = useState(false)
+  const isTuser = user.type === "tuser"
+  const label = isTuser ? user.sub : (user.email || user.name || user.sub)
+  return (
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Edit display name: {label}</SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="text-sm font-medium">Display name</label>
+            <Input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={isTuser ? user.sub : "Display name"}
+              className="mt-1"
+            />
+          </div>
+          <Button
+            onClick={async () => {
+              setSaving(true)
+              await onSave(displayName.trim())
               setSaving(false)
             }}
             disabled={saving}

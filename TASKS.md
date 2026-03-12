@@ -146,6 +146,8 @@
 | 2.69 | **FIX: Superadmin Administer Tenant: add site does not save** | DONE | Adding a site in `/admin/tenants/<tenant>` does not save/update the UI. The payload seems correct in fetch/xhr. |
 | 2.70 | **FIX: Superadmin Administer Tenant: add user** | DONE | Support adding non-Cognito (TUSER) users and assigning custom tenant roles in the Add User slideout. |
 | 2.71 | **FIX: Add DB user (TUSER) 500** | DONE | POST /api/admin/tenants/{slug}/users with type=tuser returns 500: "cannot access local variable 'get_tuser_item'". Remove redundant in-function imports that shadow module-level import. |
+| 2.72 | Administer Tenant Users: edit user Display Name | DONE | Edit name button + EditDisplayNameSheet; updateAdminUser with name. |
+| 2.73 | Administer Tenant: Settings default, tab order | DONE | Settings default tab; order Settings, Users, Sites, Domains. |
 
 ### Agent 4 — Self-Serve (Future)
 
