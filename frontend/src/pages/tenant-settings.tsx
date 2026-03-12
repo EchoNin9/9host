@@ -1,5 +1,12 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams } from "react-router-dom"
 import { getToken } from "@/lib/api"
+import {
+  createBillingCheckout,
+  createBillingPortal,
+  patchTenantModuleOverrides,
+  putTransferOwner,
+} from "@/lib/api"
 import {
   Card,
   CardContent,
@@ -19,10 +26,17 @@ import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantUsers } from "@/hooks/use-tenant-users"
 import { useAuth } from "@/hooks/use-auth"
-import { patchTenantModuleOverrides, putTransferOwner } from "@/lib/api"
-import { Crown, Settings2 } from "lucide-react"
+import { Crown, CreditCard, Settings2 } from "lucide-react"
 
 const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
+
+const TIER_ORDER = ["free", "pro", "business"] as const
+type TierSlug = (typeof TIER_ORDER)[number]
+
+function tierRank(t: string): number {
+  const i = TIER_ORDER.indexOf(t.toLowerCase() as TierSlug)
+  return i >= 0 ? i : -1
+}
 
 function TenantSettings() {
   const { tenantSlug } = useTenant()
@@ -30,13 +44,30 @@ function TenantSettings() {
   const { tenant, loading, refetch } = useTenantMetadata(tenantSlug)
   const { users } = useTenantUsers(tenantSlug)
   const { userId } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [transferOpen, setTransferOpen] = useState(false)
   const [transferTarget, setTransferTarget] = useState("")
   const [transferring, setTransferring] = useState(false)
   const [transferError, setTransferError] = useState<string | null>(null)
   const [moduleOverridesSaving, setModuleOverridesSaving] = useState(false)
+  const [billingLoading, setBillingLoading] = useState<string | null>(null)
+  const [billingError, setBillingError] = useState<string | null>(null)
+  const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null)
 
   const isOwner = tenant?.owner_sub && userId && tenant.owner_sub === userId
+  const currentTier = (tenant?.tier?.toLowerCase() ?? "free") as TierSlug
+
+  useEffect(() => {
+    const status = searchParams.get("checkout")
+    if (status === "success") {
+      setCheckoutMessage("Subscription updated successfully.")
+      setSearchParams({}, { replace: true })
+      void refetch()
+    } else if (status === "cancel") {
+      setCheckoutMessage("Checkout cancelled.")
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams, refetch])
 
   const handleModuleOverrideToggle = async (
     key: string,
@@ -71,6 +102,43 @@ function TenantSettings() {
     }
   }
 
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : ""
+  const settingsPath = tenantSlug ? `/${tenantSlug}/settings` : "/settings"
+
+  const handleUpgrade = async (tier: "pro" | "business") => {
+    if (!tenantSlug || !canEdit) return
+    setBillingLoading(tier)
+    setBillingError(null)
+    const token = await getToken()
+    const result = await createBillingCheckout(tenantSlug, token, {
+      tier,
+      success_url: `${baseUrl}${settingsPath}?checkout=success`,
+      cancel_url: `${baseUrl}${settingsPath}?checkout=cancel`,
+    })
+    setBillingLoading(null)
+    if (result.ok) {
+      window.location.href = result.url
+    } else {
+      setBillingError(result.error)
+    }
+  }
+
+  const handleManageBilling = async () => {
+    if (!tenantSlug || !canEdit) return
+    setBillingLoading("portal")
+    setBillingError(null)
+    const token = await getToken()
+    const result = await createBillingPortal(tenantSlug, token, {
+      return_url: `${baseUrl}${settingsPath}`,
+    })
+    setBillingLoading(null)
+    if (result.ok) {
+      window.location.href = result.url
+    } else {
+      setBillingError(result.error)
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div>
@@ -79,6 +147,93 @@ function TenantSettings() {
           Configure {tenantSlug}
         </p>
       </div>
+
+      {checkoutMessage && (
+        <div
+          className={`rounded-lg border p-3 text-sm ${
+            checkoutMessage.includes("success")
+              ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
+              : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+          }`}
+        >
+          {checkoutMessage}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="size-4" />
+            Billing
+          </CardTitle>
+          <CardDescription>
+            Manage your subscription and tier
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Current tier:</span>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                    currentTier === "business"
+                      ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
+                      : currentTier === "pro"
+                        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                        : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
+                </span>
+              </div>
+              {billingError && (
+                <p className="text-sm text-destructive">{billingError}</p>
+              )}
+              {canEdit && (
+                <div className="flex flex-wrap gap-2">
+                  {tierRank(currentTier) < tierRank("pro") && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      disabled={!!billingLoading}
+                      onClick={() => handleUpgrade("pro")}
+                    >
+                      {billingLoading === "pro" ? "Redirecting…" : "Upgrade to Pro"}
+                    </Button>
+                  )}
+                  {tierRank(currentTier) < tierRank("business") && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      disabled={!!billingLoading}
+                      onClick={() => handleUpgrade("business")}
+                    >
+                      {billingLoading === "business"
+                        ? "Redirecting…"
+                        : "Upgrade to Business"}
+                    </Button>
+                  )}
+                  {tierRank(currentTier) >= tierRank("pro") && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!!billingLoading}
+                      onClick={handleManageBilling}
+                    >
+                      {billingLoading === "portal"
+                        ? "Opening…"
+                        : "Manage billing"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -117,9 +272,6 @@ function TenantSettings() {
                   )}
                 </div>
               )}
-              <p className="text-sm text-muted-foreground">
-                Tier: {tenant?.tier ?? "—"}
-              </p>
               {canEdit && (
                 <div className="rounded-lg border p-3">
                   <p className="text-sm font-medium flex items-center gap-2">

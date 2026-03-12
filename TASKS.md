@@ -98,8 +98,8 @@
 | 2.21 | Superadmin: templates management UI | DONE | /admin/templates. List, add, edit, delete. GET/POST/PUT/DELETE /api/admin/templates. |
 | 2.22 | Tenant Settings: module_overrides editor | DONE | PATCH /api/tenant. Toggles for custom_domains, advanced_analytics. admin/manager only. |
 | 2.23 | Site detail: show template used | DONE | Depends on 1.32. Display which template site was created from on site cards/detail. |
-| 2.24 | Billing / upgrade UI | TODO | Depends on 3.1, 3.2. Pricing page, upgrade/downgrade buttons, tier badge. |
-| 2.25 | Stripe checkout flow | TODO | Depends on 3.1. Checkout page or redirect for subscription. |
+| 2.24 | Billing / upgrade UI | DONE | Billing card in Settings: tier badge, upgrade buttons, manage billing. |
+| 2.25 | Stripe checkout flow | DONE | Redirect to Stripe Checkout; success/cancel URL params, refetch on return. |
 | 2.26 | Create Tenant UI (Superadmin) | DONE | Add `createAdminTenant` to `api.ts`, "Add Tenant" button + form on superadmin tenants page. Wire to `POST /api/admin/tenants`. Fields: slug (max 60 chars), display name, tier selector. |
 | 2.27 | Add Sign Out button | DONE | Add logout button at the bottom of the left navbar (`tenant-admin-sidebar.tsx`). |
 | 2.28 | Post-login navigation (Superadmin) | DONE | Redirect superadmin to `/admin` after successful login. |

@@ -1377,6 +1377,10 @@ export interface BillingPortalResponse {
   url: string
 }
 
+export type BillingCheckoutResult =
+  | { ok: true; url: string; session_id: string }
+  | { ok: false; error: string }
+
 /**
  * Create Stripe Checkout Session for subscription. Redirect user to returned url.
  */
@@ -1384,9 +1388,11 @@ export async function createBillingCheckout(
   tenantSlug: string,
   accessToken: string | null,
   body: { tier: "pro" | "business"; success_url: string; cancel_url: string }
-): Promise<BillingCheckoutResponse | null> {
+): Promise<BillingCheckoutResult> {
   const base = getApiUrl()
-  if (!base || !accessToken || !tenantSlug) return null
+  if (!base || !accessToken || !tenantSlug) {
+    return { ok: false, error: "API or auth not configured." }
+  }
 
   try {
     const res = await fetch(`${base}/api/tenant/billing/checkout`, {
@@ -1397,12 +1403,22 @@ export async function createBillingCheckout(
       },
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    return (await res.json()) as BillingCheckoutResponse
+    const data = (await res.json()) as BillingCheckoutResponse | { error?: string }
+    if (res.ok && "url" in data && data.url) {
+      return { ok: true, url: data.url, session_id: data.session_id }
+    }
+    return {
+      ok: false,
+      error: (data as { error?: string }).error ?? "Failed to start checkout.",
+    }
   } catch {
-    return null
+    return { ok: false, error: "Network error." }
   }
 }
+
+export type BillingPortalResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string }
 
 /**
  * Create Stripe Customer Portal session. Redirect user to returned url.
@@ -1411,9 +1427,11 @@ export async function createBillingPortal(
   tenantSlug: string,
   accessToken: string | null,
   body: { return_url: string }
-): Promise<BillingPortalResponse | null> {
+): Promise<BillingPortalResult> {
   const base = getApiUrl()
-  if (!base || !accessToken || !tenantSlug) return null
+  if (!base || !accessToken || !tenantSlug) {
+    return { ok: false, error: "API or auth not configured." }
+  }
 
   try {
     const res = await fetch(`${base}/api/tenant/billing/portal`, {
@@ -1424,10 +1442,16 @@ export async function createBillingPortal(
       },
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    return (await res.json()) as BillingPortalResponse
+    const data = (await res.json()) as BillingPortalResponse | { error?: string }
+    if (res.ok && "url" in data && data.url) {
+      return { ok: true, url: data.url }
+    }
+    return {
+      ok: false,
+      error: (data as { error?: string }).error ?? "Failed to open billing portal.",
+    }
   } catch {
-    return null
+    return { ok: false, error: "Network error." }
   }
 }
 
