@@ -50,11 +50,11 @@
 | 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | DONE | scripts/seed_templates.py. CI runs after tofu apply. |
 | 1.34 | Add POST /api/admin/tenants endpoint to create a new tenant | DONE | Superadmin only. Accepts slug (max 60 char), name, tier. Validates slug uniqueness. Creates Tenant, User, and membership records. |
 | 1.35 | **FIX: handler.py import shadowing — `patch_tenant_handler` overwritten** | DONE | Import alias `admin_patch_tenant_handler` for admin PATCH route. |
-| 1.36 | Superadmin: DELETE /api/admin/tenants/{slug} (delete tenant + cascade) | TODO | Cascade-delete all tenant sub-resources (sites, domains, users, memberships, settings). |
-| 1.37 | Superadmin: CRUD /api/admin/tenants/{slug}/domains | TODO | Admin-scoped domain management for any tenant, bypasses membership/tier checks. |
-| 1.38 | Superadmin: CRUD /api/admin/tenants/{slug}/sites | TODO | Admin-scoped site management for any tenant, bypasses membership. |
-| 1.39 | Superadmin: CRUD /api/admin/tenants/{slug}/users | TODO | Add/remove/role-change users in any tenant. Cognito group management. |
-| 1.40 | Superadmin: PUT /api/admin/tenants/{slug}/settings | TODO | Update any tenant settings (module_overrides, owner, etc.) via admin API. |
+| 1.36 | Superadmin: DELETE /api/admin/tenants/{slug} (delete tenant + cascade) | DONE | Cascade-delete all tenant sub-resources (sites, domains, users, memberships, settings). |
+| 1.37 | Superadmin: CRUD /api/admin/tenants/{slug}/domains | DONE | Admin-scoped domain management for any tenant, bypasses membership/tier checks. |
+| 1.38 | Superadmin: CRUD /api/admin/tenants/{slug}/sites | DONE | Admin-scoped site management for any tenant, bypasses membership. |
+| 1.39 | Superadmin: CRUD /api/admin/tenants/{slug}/users | DONE | Add/remove/role-change users in any tenant. DynamoDB profile + permissions. |
+| 1.40 | Superadmin: PUT /api/admin/tenants/{slug}/settings | DONE | Update any tenant settings (module_overrides, owner, etc.) via admin API. |
 | 1.41 | CI: add path filters to GHA workflows to skip builds on docs/config-only changes | DONE | Add `paths-ignore` to dev.yml/main.yml for TASKS.md, AGENTS.md, .cursor/**, *.md docs, etc. Avoid unnecessary builds on non-code pushes. |
 
 ### Agent 2 — Frontend / UI

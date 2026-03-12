@@ -13,6 +13,13 @@ from admin_handler import (
     list_all_tenants_handler,
     patch_tenant_handler as admin_patch_tenant_handler,
 )
+from admin_tenant_resources import (
+    admin_domains_handler,
+    admin_sites_handler,
+    admin_users_handler,
+    delete_tenant_handler,
+    put_tenant_settings_handler,
+)
 from admin_templates_handler import (
     create_template_handler,
     delete_template_handler,
@@ -121,13 +128,29 @@ def lambda_handler(event: dict, context: dict) -> dict:
     if method == "POST" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
         return _with_cors(create_tenant_handler(event, context))
     if path.startswith("/api/admin/tenants/"):
-        slug_part = path[len("/api/admin/tenants/"):].strip("/")
-        if slug_part and "/" not in slug_part:
-            slug_lower = slug_part.lower()
+        suffix = path[len("/api/admin/tenants/"):].strip("/")
+        parts = suffix.split("/") if suffix else []
+        slug_lower = (parts[0] or "").lower()
+        if not slug_lower:
+            pass  # fall through
+        elif len(parts) == 1:
             if method == "GET":
                 return _with_cors(get_tenant_by_slug_handler(event, context, slug_lower))
             if method == "PATCH":
                 return _with_cors(admin_patch_tenant_handler(event, context, slug_lower))
+            if method == "DELETE":
+                return _with_cors(delete_tenant_handler(event, context, slug_lower))
+        elif parts[1] == "domains":
+            return _with_cors(admin_domains_handler(event, context, slug_lower, "/".join(parts[1:])))
+        elif parts[1] == "sites":
+            return _with_cors(admin_sites_handler(event, context, slug_lower, "/".join(parts[1:])))
+        elif parts[1] == "users":
+            return _with_cors(admin_users_handler(event, context, slug_lower, "/".join(parts[1:])))
+        elif parts[1] == "settings" and len(parts) == 2:
+            if method == "PUT":
+                return _with_cors(put_tenant_settings_handler(event, context, slug_lower))
+        elif len(parts) >= 2:
+            return _json_response(404, {"error": "Not found"})
 
     # Superadmin templates (Task 1.31)
     if method == "GET" and path in ("/api/admin/templates", "/api/admin/templates/"):

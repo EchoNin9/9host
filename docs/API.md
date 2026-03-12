@@ -25,6 +25,23 @@ API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_acce
 | PATCH | /api/admin/tenants/{slug} | Yes | Update tenant tier/name/module_overrides (superadmin) |
 | GET | /api/admin/templates | Yes | List all templates (superadmin) |
 | POST | /api/admin/tenants | Yes | Create tenant (superadmin). Body: slug, name, tier. |
+| DELETE | /api/admin/tenants/{slug} | Yes | Delete tenant + cascade (superadmin) |
+| GET | /api/admin/tenants/{slug}/domains | Yes | List domains (superadmin) |
+| POST | /api/admin/tenants/{slug}/domains | Yes | Add domain (superadmin). Body: domain, site_id. |
+| DELETE | /api/admin/tenants/{slug}/domains/{domain} | Yes | Remove domain (superadmin) |
+| GET | /api/admin/tenants/{slug}/sites | Yes | List sites (superadmin) |
+| POST | /api/admin/tenants/{slug}/sites | Yes | Create site (superadmin). Body: name, slug?, template_id? |
+| GET | /api/admin/tenants/{slug}/sites/{id} | Yes | Get site (superadmin) |
+| PUT | /api/admin/tenants/{slug}/sites/{id} | Yes | Update site (superadmin) |
+| DELETE | /api/admin/tenants/{slug}/sites/{id} | Yes | Delete site (superadmin) |
+| GET | /api/admin/tenants/{slug}/users | Yes | List users (superadmin) |
+| POST | /api/admin/tenants/{slug}/users | Yes | Add user (superadmin). Body: sub, role?, email?, name? |
+| PUT | /api/admin/tenants/{slug}/users/{sub} | Yes | Update user role/email/name (superadmin) |
+| DELETE | /api/admin/tenants/{slug}/users/{sub} | Yes | Remove user (superadmin) |
+| GET | /api/admin/tenants/{slug}/users/{sub}/permissions | Yes | Get user permissions (superadmin) |
+| PUT | /api/admin/tenants/{slug}/users/{sub}/permissions | Yes | Update user permissions (superadmin) |
+| PUT | /api/admin/tenants/{slug}/settings | Yes | Update tenant settings (superadmin). Body: tier?, name?, module_overrides?, owner_sub? |
+| GET | /api/admin/templates | Yes | List all templates (superadmin) |
 | POST | /api/admin/templates | Yes | Create template (superadmin) |
 | GET | /api/admin/templates/{slug} | Yes | Get template (superadmin) |
 | PUT | /api/admin/templates/{slug} | Yes | Update template (superadmin) |

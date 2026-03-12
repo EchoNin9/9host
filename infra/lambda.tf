@@ -76,6 +76,7 @@ resource "aws_iam_role_policy" "api_lambda" {
         Effect = "Allow"
         Action = [
           "cognito-idp:GetUser",
+          "cognito-idp:AdminGetUser",
           "cognito-idp:AdminListGroupsForUser"
         ]
         Resource = aws_cognito_user_pool.main.arn
