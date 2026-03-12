@@ -4,6 +4,10 @@ name: Deploy Staging
 on:
   push:
     branches: [develop]
+    paths-ignore:
+      - '**/*.md'
+      - '.cursor/**'
+      - '.cursorrules'
 
 permissions:
   id-token: write

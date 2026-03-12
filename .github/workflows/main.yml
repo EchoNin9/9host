@@ -4,6 +4,10 @@ name: Deploy Production
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - '.cursor/**'
+      - '.cursorrules'
 
 permissions:
   id-token: write

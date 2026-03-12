@@ -50,6 +50,12 @@
 | 1.33 | Seed templates: musician-band, personal-tech, personal-resume, professional-services, business-generic | DONE | scripts/seed_templates.py. CI runs after tofu apply. |
 | 1.34 | Add POST /api/admin/tenants endpoint to create a new tenant | DONE | Superadmin only. Accepts slug (max 60 char), name, tier. Validates slug uniqueness. Creates Tenant, User, and membership records. |
 | 1.35 | **FIX: handler.py import shadowing — `patch_tenant_handler` overwritten** | DONE | Import alias `admin_patch_tenant_handler` for admin PATCH route. |
+| 1.36 | Superadmin: DELETE /api/admin/tenants/{slug} (delete tenant + cascade) | TODO | Cascade-delete all tenant sub-resources (sites, domains, users, memberships, settings). |
+| 1.37 | Superadmin: CRUD /api/admin/tenants/{slug}/domains | TODO | Admin-scoped domain management for any tenant, bypasses membership/tier checks. |
+| 1.38 | Superadmin: CRUD /api/admin/tenants/{slug}/sites | TODO | Admin-scoped site management for any tenant, bypasses membership. |
+| 1.39 | Superadmin: CRUD /api/admin/tenants/{slug}/users | TODO | Add/remove/role-change users in any tenant. Cognito group management. |
+| 1.40 | Superadmin: PUT /api/admin/tenants/{slug}/settings | TODO | Update any tenant settings (module_overrides, owner, etc.) via admin API. |
+| 1.41 | CI: add path filters to GHA workflows to skip builds on docs/config-only changes | DONE | Add `paths-ignore` to dev.yml/main.yml for TASKS.md, AGENTS.md, .cursor/**, *.md docs, etc. Avoid unnecessary builds on non-code pushes. |
 
 ### Agent 2 — Frontend / UI
 
@@ -91,6 +97,12 @@
 | 2.32 | Superadmin Portal: Administer Tenant | DONE | Dedicated view for superadmins to manage a specific tenant's domains, sites, and users. |
 | 2.33 | **FIX: Merge route trees to eliminate hasTenant race condition** | DONE | `AppRoutes` conditionally renders two `<Routes>` trees based on `hasTenant` from TenantContext. Because `TenantLocationSync` updates context in `useEffect` (after render), `hasTenant` is stale during the first render after navigation. This causes: (a) tenant user post-login redirect to `/{slug}` caught by platform catch-all → redirect back to `/`, (b) superadmin impersonation `navigate("/{slug}")` similarly fails, (c) "Back to platform" from tenant → `TenantRootRedirect` sends user back to `/{slug}`, (d) "Platform admin" from tenant → `/:tenantSlug` captures `admin` as a slug. **Fix:** merge all routes into one `<Routes>` tree — React Router v6 matches static routes (`/admin`, `/login`) before dynamic (`/:tenantSlug`). Remove conditional `hasTenant` branching and `TenantLocationSync`. |
 | 2.34 | **FIX: Hide "Platform admin" link for non-superadmin users** | TODO | Landing page (line 94-97) and tenant sidebar show "Platform admin" to all authenticated users. Non-superadmins get "Access denied". Only show link when user is superadmin. |
+| 2.35 | Superadmin: delete tenant UI with confirmation | TODO | Depends on 1.36. Delete button + cascade warning on admin tenant view. |
+| 2.36 | Superadmin: manage tenant domains UI (admin-scoped) | TODO | Depends on 1.37. Add/remove domains via /api/admin/tenants/{slug}/domains in administer-tenant view. |
+| 2.37 | Superadmin: manage tenant sites UI (admin-scoped) | TODO | Depends on 1.38. Full CRUD for sites via admin API in administer-tenant view. |
+| 2.38 | Superadmin: manage tenant users UI (admin-scoped) | TODO | Depends on 1.39. Add/remove/role-change users via admin API. |
+| 2.39 | Superadmin: manage tenant settings UI (admin-scoped) | TODO | Depends on 1.40. Edit all tenant settings via admin API. |
+| 2.40 | Superadmin: templates management UI enhancements | TODO | Extends 2.21. Improve create/modify/delete templates UX (preview, validation, ordering). |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -111,6 +123,31 @@
 ## Save Points
 
 > **Use when pausing work.** Document where you stopped and what to do next.
+
+### Next Task Batches (2026-03-11)
+
+| Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Agent 3 (Payments) | Concurrency |
+|-------|-------------------|--------------------|--------------------|----|
+| **1** | 1.41 CI path filters | 2.34 Hide "Platform admin" for non-superadmin | — | agent1 + agent2 **concurrent** |
+|       |                   | 2.26 Create Tenant UI (superadmin) |   |   |
+| **2** | 1.36 DELETE tenant + cascade | 2.40 Templates UI enhancements | — | agent1 + agent2 **concurrent** |
+|       | 1.37 Admin domains CRUD |   |   |   |
+|       | 1.38 Admin sites CRUD |   |   |   |
+|       | 1.39 Admin users CRUD |   |   |   |
+|       | 1.40 Admin settings PUT |   |   |   |
+| **3** | — | 2.35 Delete tenant UI (← 1.36) | 3.1 Stripe integration | agent2 + agent3 **concurrent** |
+|       |   | 2.36 Tenant domains UI (← 1.37) | | |
+|       |   | 2.37 Tenant sites UI (← 1.38) | | |
+|       |   | 2.38 Tenant users UI (← 1.39) | | |
+|       |   | 2.39 Tenant settings UI (← 1.40) | | |
+| **4** | — | 2.24 Billing / upgrade UI (← 3.1, 3.2) | 3.2 Map Stripe → tier | agent2 + agent3 **concurrent** |
+|       |   | 2.25 Stripe checkout flow (← 3.1) | 3.3 Upgrade/downgrade webhooks | |
+| **5** | — | — | — | future |
+|       |   | 4.1 Self-serve tenant signup |   | |
+
+> **Arrows (←)** = depends on. Batches are sequential; agents within a batch run concurrently.
+
+---
 
 ### Save Point: Navigation & CRUD bugfixes (2026-03-11)
 
