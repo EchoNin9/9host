@@ -1141,7 +1141,7 @@ export async function createAdminSite(
   accessToken: string | null,
   tenantSlug: string,
   body: { name: string; slug?: string; status?: string; template_id?: string }
-): Promise<Site | null> {
+): Promise<{ site?: Site; error?: string } | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug) return null
   try {
@@ -1150,11 +1150,13 @@ export async function createAdminSite(
       headers: adminResourceHeaders(accessToken),
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    const data = (await res.json()) as SiteResponse
-    return data.site ?? null
-  } catch {
-    return null
+    const data = await res.json()
+    if (!res.ok) {
+      return { error: data.error || "Failed to create site" }
+    }
+    return { site: data.site }
+  } catch (e: any) {
+    return { error: e.message || "Network error" }
   }
 }
 
@@ -1163,7 +1165,7 @@ export async function updateAdminSite(
   tenantSlug: string,
   siteId: string,
   body: { name?: string; slug?: string; status?: string }
-): Promise<Site | null> {
+): Promise<{ site?: Site; error?: string } | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug || !siteId) return null
   try {
@@ -1172,11 +1174,13 @@ export async function updateAdminSite(
       headers: adminResourceHeaders(accessToken),
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    const data = (await res.json()) as SiteResponse
-    return data.site ?? null
-  } catch {
-    return null
+    const data = await res.json()
+    if (!res.ok) {
+      return { error: data.error || "Failed to update site" }
+    }
+    return { site: data.site }
+  } catch (e: any) {
+    return { error: e.message || "Network error" }
   }
 }
 

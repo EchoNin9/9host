@@ -142,6 +142,9 @@
 | 2.65 | **FIX: /admin/tenants/{tenant}** — remove editable text box that shows Cognito ID | DONE | Removed editable input for owner_sub. |
 | 2.66 | **FIX: /admin/tenants** — remove Edit button (Administer button has all functionality) | DONE | Removed Edit button, TenantEditSheet; Administer has full CRUD. |
 | 2.67 | **FIX: /admin/tenants/{tenant}** — Users list should show email address or username if DB user | DONE | Modified admin_users_handler to fetch TUSERs and UI to render username. |
+| 2.68 | Superadmin Administer Tenant: add change owner UI | TODO | Settings tab: picker to change owner_sub; restrict to Cognito users only (exclude TUSERs). Backend: PUT /api/admin/tenants/{slug}/settings already accepts owner_sub. |
+| 2.69 | **FIX: Superadmin Administer Tenant: add site does not save** | DONE | Adding a site in `/admin/tenants/<tenant>` does not save/update the UI. The payload seems correct in fetch/xhr. |
+| 2.70 | **FIX: Superadmin Administer Tenant: add user** | TODO | Support adding non-Cognito (TUSER) users and assigning custom tenant roles in the Add User slideout. |
 
 ### Agent 4 — Self-Serve (Future)
 

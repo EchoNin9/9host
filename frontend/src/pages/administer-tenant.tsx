@@ -370,20 +370,25 @@ function AdminSitesTab({ tenantSlug }: { tenantSlug: string }) {
     setSheetOpen(true)
   }
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
   const handleSave = async () => {
     if (!name.trim()) return
     setSaving(true)
+    setErrorMsg(null)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
     if (editSite) {
       const result = await updateAdminSite(token, tenantSlug, editSite.id, { name, slug: slug || undefined })
-      if (result) { setSheetOpen(false); void load() }
+      if (result?.site) { setSheetOpen(false); void load() }
+      else if (result?.error) { setErrorMsg(result.error) }
     } else {
       const body: { name: string; slug?: string; template_id?: string } = { name: name.trim() }
       if (slug.trim()) body.slug = slug.trim().toLowerCase()
       if (templateId) body.template_id = templateId
       const result = await createAdminSite(token, tenantSlug, body)
-      if (result) { setSheetOpen(false); void load() }
+      if (result?.site) { setSheetOpen(false); void load() }
+      else if (result?.error) { setErrorMsg(result.error) }
     }
     setSaving(false)
   }
@@ -432,6 +437,11 @@ function AdminSitesTab({ tenantSlug }: { tenantSlug: string }) {
             <SheetTitle>{editSite ? "Edit site" : "Add site"}</SheetTitle>
           </SheetHeader>
           <div className="mt-4 space-y-4">
+            {errorMsg && (
+              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+                {errorMsg}
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium">Name</label>
               <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
