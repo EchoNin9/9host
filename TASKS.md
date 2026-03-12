@@ -67,6 +67,7 @@
 | 1.50 | Return owner_email in GET /api/tenant and admin tenant APIs | DONE | handler_example, admin_handler. |
 | 1.51 | **FIX: CORS after sign-in — commit billing_handler, stripe_helpers; add PATCH to API Gateway** | DONE | Lambda ImportError caused 502 → CORS preflight failed. |
 | 1.52 | **FIX: 500 errors on tenant routes** — GET /api/tenant, tenant settings return 500 (e.g. /{tenant}/settings) | DONE | Top-level try/except in handler; GET /api/admin/tenants/{slug}/settings; owner_email in PUT settings response. |
+| 1.53 | **FIX: 500 error on edit/save tenant** — PUT /api/admin/tenants/{slug}/settings returns 500 | DONE | Escaped reserved word 'name' in DynamoDB UpdateExpression. |
 
 ### Agent 2 — Frontend / UI
 
