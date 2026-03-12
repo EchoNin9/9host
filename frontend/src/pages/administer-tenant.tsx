@@ -542,8 +542,10 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
             {users.map((u) => (
               <div key={u.sub} className="flex items-center justify-between py-3">
                 <div>
-                  <span className="font-medium">{u.name || u.email || u.sub}</span>
-                  <span className="ml-2 text-sm text-muted-foreground">({u.role})</span>
+                  <span className="font-medium">
+                    {u.type === "tuser" ? (u.sub) : (u.email || u.name || u.sub)}
+                  </span>
+                  <span className="ml-2 text-sm text-muted-foreground">({u.role}{u.type === "tuser" ? " · DB user" : ""})</span>
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => setEditUser(u)}>Edit role</Button>
@@ -632,7 +634,7 @@ function EditRoleSheet({
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Edit role: {user.name || user.email || user.sub}</SheetTitle>
+          <SheetTitle>Edit role: {user.type === "tuser" ? user.sub : (user.email || user.name || user.sub)}</SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-4">
           <div>
@@ -704,7 +706,7 @@ function PermissionsSheet({
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Permissions: {user.name || user.email || user.sub}</SheetTitle>
+          <SheetTitle>Permissions: {user.type === "tuser" ? user.sub : (user.email || user.name || user.sub)}</SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-4">
           {loading ? (
@@ -740,7 +742,6 @@ function AdminSettingsTab({
 }) {
   const [name, setName] = useState(tenant.name)
   const [tier, setTier] = useState(tenant.tier)
-  const [ownerSub, setOwnerSub] = useState(tenant.owner_sub ?? "")
   const [moduleOverrides, setModuleOverrides] = useState<Record<string, boolean>>(
     tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false }
   )
@@ -750,9 +751,8 @@ function AdminSettingsTab({
   useEffect(() => {
     setName(tenant.name)
     setTier(tenant.tier)
-    setOwnerSub(tenant.owner_sub ?? "")
     setModuleOverrides(tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false })
-  }, [tenant.slug, tenant.name, tenant.tier, tenant.owner_sub, tenant.module_overrides])
+  }, [tenant.slug, tenant.name, tenant.tier, tenant.module_overrides])
 
   const handleSave = async () => {
     setSaveError(null)
@@ -762,7 +762,6 @@ function AdminSettingsTab({
     const result = await putAdminTenantSettings(token, tenant.slug, {
       name,
       tier,
-      owner_sub: ownerSub.trim() || undefined,
       module_overrides: moduleOverrides,
     })
     setSaving(false)
@@ -809,12 +808,6 @@ function AdminSettingsTab({
               <span className="text-muted-foreground">—</span>
             ) : null}
           </p>
-          <Input
-            value={ownerSub}
-            onChange={(e) => setOwnerSub(e.target.value)}
-            placeholder="Cognito sub (for transfer)"
-            className="mt-2"
-          />
         </div>
         <div>
           <label className="text-sm font-medium">Module overrides</label>

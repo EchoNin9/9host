@@ -136,11 +136,11 @@
 | 2.60 | **FIX: /admin/tenants/{tenant}** — Users add user slideout should close when pressing save | DONE | Closes on success; error shown on failure. |
 | 2.61 | **FIX: /admin/tenants/{tenant}** — Settings: changing settings are not saved when pressing save | DONE | putAdminTenantSettings; sync state; error display. |
 | 2.62 | **FIX: /admin/tenants/{tenant}** — Settings: Owner does not show Cognito ID | DONE | Show owner_email + owner_sub (Cognito ID). |
-| 2.63 | **FIX: /admin/tenants** — need delete tenant button with confirmation | TODO | |
-| 2.64 | **FIX: DialogContent a11y** — add `Description` or `aria-describedby={undefined}` to suppress Radix warning | TODO | Warning: Missing Description or aria-describedby for DialogContent. |
-| 2.65 | **FIX: /admin/tenants/{tenant}** — remove editable text box that shows Cognito ID | TODO | Superadmin Settings: Cognito ID should not be editable. |
+| 2.63 | **FIX: /admin/tenants** — need delete tenant button with confirmation | DONE | Added delete button with AlertDialog confirmation. |
+| 2.64 | **FIX: DialogContent a11y** — add `Description` or `aria-describedby={undefined}` to suppress Radix warning | DONE | Added aria-describedby={undefined} to SheetContent and AlertDialogContent. |
+| 2.65 | **FIX: /admin/tenants/{tenant}** — remove editable text box that shows Cognito ID | DONE | Removed editable input for owner_sub. |
 | 2.66 | **FIX: /admin/tenants** — remove Edit button (Administer button has all functionality) | DONE | Removed Edit button, TenantEditSheet; Administer has full CRUD. |
-| 2.67 | **FIX: /admin/tenants/{tenant}** — Users list should show email address or username if DB user | TODO | Non-Cognito (TUSER) users: show email or username from DB. |
+| 2.67 | **FIX: /admin/tenants/{tenant}** — Users list should show email address or username if DB user | DONE | Modified admin_users_handler to fetch TUSERs and UI to render username. |
 
 ### Agent 4 — Self-Serve (Future)
 

@@ -508,6 +508,7 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
     is_permissions = len(parts) >= 3 and parts[2] == "permissions"
 
     if method == "GET" and not target_sub:
+        # Fetch Cognito users (USER#)
         params = query_users_in_tenant(tenant_slug)
         resp = table.query(**params)
         users = []
@@ -523,12 +524,32 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
                     if n and not u.get("name"):
                         u["name"] = n
                 users.append(u)
+
+        # Fetch DB users (TUSER#)
+        from dynamodb_helpers import query_tusers_in_tenant
+        tuser_params = query_tusers_in_tenant(tenant_slug)
+        tuser_resp = table.query(**tuser_params)
+        for it in tuser_resp.get("Items", []):
+            sk = it.get("sk", "")
+            username = sk.replace("TUSER#", "") if sk.startswith("TUSER#") else ""
+            users.append({
+                "sub": username,  # Use username as sub for UI keying
+                "email": "",
+                "name": it.get("display_name") or username,
+                "role": it.get("role", "member"),
+                "created_at": it.get("created_at", ""),
+                "updated_at": it.get("updated_at", ""),
+                "type": "tuser"
+            })
+
         return _json_response(200, {"users": users})
 
     if method == "GET" and target_sub and is_permissions:
         key = get_user_permissions_item(tenant_slug, target_sub)
         if not table.get_item(Key=get_user_profile_item(tenant_slug, target_sub)).get("Item"):
-            return _json_response(404, {"error": "User not found in tenant."})
+            from dynamodb_helpers import get_tuser_item
+            if not table.get_item(Key=get_tuser_item(tenant_slug, target_sub)).get("Item"):
+                return _json_response(404, {"error": "User not found in tenant."})
         item = table.get_item(Key=key).get("Item")
         perms = (item or {}).get("permissions", {})
         result = {k: perms.get(k, True) for k in MODULE_KEYS}
@@ -536,7 +557,9 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
 
     if method == "PUT" and target_sub and is_permissions:
         if not table.get_item(Key=get_user_profile_item(tenant_slug, target_sub)).get("Item"):
-            return _json_response(404, {"error": "User not found in tenant."})
+            from dynamodb_helpers import get_tuser_item
+            if not table.get_item(Key=get_tuser_item(tenant_slug, target_sub)).get("Item"):
+                return _json_response(404, {"error": "User not found in tenant."})
         body = _parse_body(event) or {}
         perms = body.get("permissions", {})
         if not isinstance(perms, dict):
@@ -604,24 +627,52 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
     if method == "PUT" and target_sub and not is_permissions:
         key = get_user_profile_item(tenant_slug, target_sub)
         item = table.get_item(Key=key).get("Item")
+        is_tuser = False
+        if not item:
+            from dynamodb_helpers import get_tuser_item
+            key = get_tuser_item(tenant_slug, target_sub)
+            item = table.get_item(Key=key).get("Item")
+            is_tuser = True
+
         if not item:
             return _json_response(404, {"error": "User not found in tenant."})
+
         body = _parse_body(event) or {}
         if "role" in body:
             r = str(body["role"]).lower()
             if r in ("admin", "manager", "editor", "member"):
                 item["role"] = r
-        if "email" in body:
-            item["email"] = str(body["email"]).strip()
-        if "name" in body:
-            item["name"] = str(body["name"]).strip()
+        if not is_tuser:
+            if "email" in body:
+                item["email"] = str(body["email"]).strip()
+            if "name" in body:
+                item["name"] = str(body["name"]).strip()
+        else:
+            if "name" in body:
+                item["display_name"] = str(body["name"]).strip()
+
         item["updated_at"] = datetime.now(timezone.utc).isoformat()
         table.put_item(Item=item)
+        if is_tuser:
+            return _json_response(200, {"user": {
+                "sub": target_sub,
+                "email": "",
+                "name": item.get("display_name") or target_sub,
+                "role": item.get("role", "member"),
+                "created_at": item.get("created_at", ""),
+                "updated_at": item.get("updated_at", ""),
+                "type": "tuser"
+            }})
         return _json_response(200, {"user": _profile_to_response(item)})
 
     if method == "DELETE" and target_sub and not is_permissions:
         profile_key = get_user_profile_item(tenant_slug, target_sub)
         if not table.get_item(Key=profile_key).get("Item"):
+            from dynamodb_helpers import get_tuser_item
+            tuser_key = get_tuser_item(tenant_slug, target_sub)
+            if table.get_item(Key=tuser_key).get("Item"):
+                table.delete_item(Key=tuser_key)
+                return _json_response(204, {}, empty_body=True)
             return _json_response(404, {"error": "User not found in tenant."})
         table.delete_item(Key=profile_key)
         perm_key = get_user_permissions_item(tenant_slug, target_sub)

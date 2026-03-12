@@ -413,6 +413,7 @@ export interface TenantUser {
   role: string
   created_at?: string
   updated_at?: string
+  type?: string
 }
 
 export interface TenantUsersResponse {

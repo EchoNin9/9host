@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { fetchAuthSession } from "aws-amplify/auth"
 import {
   Card,
   CardContent,
@@ -13,14 +14,24 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import {
   createAdminTenant,
+  deleteAdminTenant,
   getToken,
 } from "@/lib/api"
-import { Plus } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 
 function CreateTenantSheet({
   onClose,
@@ -125,6 +136,21 @@ function SuperadminTenantsPage() {
   const { setImpersonate } = useImpersonation()
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
+  const [deleteSlug, setDeleteSlug] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = async () => {
+    if (!deleteSlug) return
+    setDeleting(true)
+    const session = await fetchAuthSession()
+    const token = session.tokens?.accessToken?.toString() ?? null
+    const ok = await deleteAdminTenant(token, deleteSlug)
+    setDeleting(false)
+    if (ok) {
+      setDeleteSlug(null)
+      void refetch()
+    }
+  }
 
   const handleImpersonate = (slug: string) => {
     setImpersonate(slug)
@@ -176,6 +202,14 @@ function SuperadminTenantsPage() {
                     >
                       Impersonate
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setDeleteSlug(t.slug)}
+                    >
+                      <Trash2 className="mr-2 size-4" />
+                      Delete
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -197,6 +231,23 @@ function SuperadminTenantsPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!deleteSlug} onOpenChange={(o) => !o && !deleting && setDeleteSlug(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete tenant "{deleteSlug}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the tenant and all its sites, domains, users, and settings. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete tenant"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
