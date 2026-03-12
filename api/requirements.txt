@@ -1,0 +1,6 @@
+# 9host API Lambda dependencies
+# stripe — Stripe API for tier subscriptions (Task 3.1)
+stripe>=11.0.0
+# Site login (Task 1.44) — bcrypt for password verify, PyJWT for custom tokens
+bcrypt>=4.0.0
+PyJWT>=2.8.0

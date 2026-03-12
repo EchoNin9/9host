@@ -7,6 +7,7 @@ subdomain, or path param) for tenant-scoped operations.
 
 import json
 
+from admin_users_handler import admin_stats_handler, admin_users_handler
 from admin_handler import (
     create_tenant_handler,
     get_tenant_by_slug_handler,
@@ -31,7 +32,11 @@ from analytics_handler import get_analytics_handler
 from domains_handler import domains_handler
 from handler_example import get_tenant_handler, patch_tenant_handler, put_tenant_handler
 from sites_handler import sites_handler
+from roles_handler import roles_handler
+from tenant_users_handler import tenant_users_handler
 from users_handler import users_handler
+from billing_handler import billing_checkout_handler, billing_portal_handler
+from site_auth_handler import site_login_handler
 from stripe_webhook_handler import stripe_webhook_handler
 from tenants_handler import get_tenants_handler
 from templates_handler import get_templates_handler
@@ -92,6 +97,9 @@ def lambda_handler(event: dict, context: dict) -> dict:
     if method == "GET" and path in ("/api/health", "/api/health/"):
         return _json_response(200, {"status": "ok", "service": "9host-api"})
 
+    if method == "POST" and path in ("/api/auth/site-login", "/api/auth/site-login/"):
+        return _with_cors(site_login_handler(event, context))
+
     if method == "GET" and path in ("/api/tenants", "/api/tenants/"):
         return _with_cors(get_tenants_handler(event, context))
 
@@ -115,6 +123,21 @@ def lambda_handler(event: dict, context: dict) -> dict:
     if path.startswith("/api/tenant/users"):
         return _with_cors(users_handler(event, context))
 
+    if path.startswith("/api/tenant/tusers"):
+        return _with_cors(tenant_users_handler(event, context))
+
+    if path.startswith("/api/tenant/roles"):
+        return _with_cors(roles_handler(event, context))
+
+    if path == "/api/tenant/billing/checkout":
+        if method == "POST":
+            return _with_cors(billing_checkout_handler(event, context))
+        return _json_response(405, {"error": "Method not allowed."})
+    if path == "/api/tenant/billing/portal":
+        if method == "POST":
+            return _with_cors(billing_portal_handler(event, context))
+        return _json_response(405, {"error": "Method not allowed."})
+
     if method == "GET" and path in ("/api/templates", "/api/templates/"):
         return _with_cors(get_templates_handler(event, context))
 
@@ -122,7 +145,11 @@ def lambda_handler(event: dict, context: dict) -> dict:
     if path.startswith("/api/webhooks/stripe"):
         return _with_cors(stripe_webhook_handler(event, context))
 
-    # Superadmin routes (Task 1.22, 1.29, 1.34)
+    # Superadmin routes (Task 1.22, 1.29, 1.34, 1.48)
+    if method == "GET" and path in ("/api/admin/users", "/api/admin/users/"):
+        return _with_cors(admin_users_handler(event, context))
+    if method == "GET" and path in ("/api/admin/stats", "/api/admin/stats/"):
+        return _with_cors(admin_stats_handler(event, context))
     if method == "GET" and path in ("/api/admin/tenants", "/api/admin/tenants/"):
         return _with_cors(list_all_tenants_handler(event, context))
     if method == "POST" and path in ("/api/admin/tenants", "/api/admin/tenants/"):

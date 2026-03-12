@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import { fetchAnalytics, type AnalyticsResponse } from "@/lib/api"
 
 export interface UseAnalyticsResult {
@@ -29,8 +29,7 @@ export function useAnalytics(tenantSlug: string | null): UseAnalyticsResult {
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const result = await fetchAnalytics(tenantSlug, token)
       setData(result)
     } catch (e) {

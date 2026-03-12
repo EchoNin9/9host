@@ -1,6 +1,19 @@
 # Dependencies
 node_modules/
 
+# Lambda Python deps (installed by CI before tofu apply)
+api/stripe/
+api/requests/
+api/urllib3/
+api/certifi/
+api/charset_normalizer/
+api/idna/
+api/typing_extensions.py
+api/bin/
+api/*.dist-info/
+api/__pycache__/
+*.so
+
 # OpenTofu (Terraform-compatible)
 infra/.terraform/
 infra/api.zip

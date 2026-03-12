@@ -33,7 +33,7 @@ import os
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token
+from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
 from dynamodb_helpers import get_tenant_item, query_tenants_for_user
 from middleware import extract_tenant_slug, with_tenant
 
@@ -47,12 +47,13 @@ def _json_response(status: int, body: dict) -> dict:
 
 
 def _user_is_tenant_member(table, sub: str, tenant_slug: str) -> bool:
-    """Check if user is a member of the tenant via GSI byUser."""
+    """Check if Cognito user is a member of the tenant via GSI byUser."""
+    from dynamodb_helpers import query_tenants_for_user
+
     params = query_tenants_for_user(sub)
     resp = table.query(**params)
     for item in resp.get("Items", []):
-        gsi1sk = item.get("gsi1sk", "")
-        if f"TENANT#{tenant_slug}#PROFILE" == gsi1sk:
+        if item.get("gsi1sk") == f"TENANT#{tenant_slug}#PROFILE":
             return True
     return False
 
@@ -70,14 +71,6 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
             {"error": "Missing tenant. Use subdomain (acme.echo9.net) or X-Tenant-Slug header."},
         )
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
-        )
-
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
         return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
@@ -85,8 +78,11 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    if not _user_is_tenant_member(table, sub, tenant_slug):
-        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    auth_result = require_tenant_auth(event, table, tenant_slug, region)
+    if auth_result[0] is not True:
+        _, err_resp = auth_result
+        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
 
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
     item = resp.get("Item")
@@ -95,6 +91,24 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
 
     tier = item.get("tier", "FREE")
     module_overrides = item.get("module_overrides") or {}
+    owner_sub = item.get("owner_sub")
+
+    # Resolve owner email from Cognito (Task 1.50)
+    owner_email = ""
+    if owner_sub:
+        try:
+            import boto3
+            client = boto3.client("cognito-idp", region_name=region)
+            resp = client.admin_get_user(
+                UserPoolId=os.environ.get("USER_POOL_ID", ""),
+                Username=owner_sub,
+            )
+            for attr in resp.get("UserAttributes", []):
+                if attr.get("Name") == "email":
+                    owner_email = attr.get("Value", "")
+                    break
+        except Exception:
+            pass
 
     # Resolved features: tier base + module_overrides override (Task 1.28)
     resolved_features = {}
@@ -108,7 +122,8 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
         "tenant_slug": tenant_slug,
         "name": item.get("name", tenant_slug),
         "tier": tier,
-        "owner_sub": item.get("owner_sub"),
+        "owner_sub": owner_sub,
+        "owner_email": owner_email,
         "module_overrides": module_overrides,
         "resolved_features": resolved_features,
         "created_at": item.get("created_at"),
@@ -134,21 +149,13 @@ def _parse_body(event: dict) -> dict | None:
 def put_tenant_handler(event: dict, context: dict) -> dict:
     """
     PUT /api/tenant — transfer owner (Task 2.17). Requires current user to be owner.
-    Body: { "owner_sub": "<new_owner_sub>" }.
+    Body: { "owner_sub": "<new_owner_sub>" }. Only Cognito users can be owner.
     """
     tenant_slug = event.get("tenant_slug")
     if not tenant_slug:
         return _json_response(
             400,
             {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
         )
 
     table_name = os.environ.get("DYNAMODB_TABLE")
@@ -158,8 +165,19 @@ def put_tenant_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    if not _user_is_tenant_member(table, sub, tenant_slug):
-        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    auth_result = require_tenant_auth(event, table, tenant_slug, region)
+    if auth_result[0] is not True:
+        _, err_resp = auth_result
+        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
+    _, sub_or_username, role, is_cognito = auth_result
+    sub = sub_or_username if is_cognito else None
+
+    if not is_cognito:
+        return _json_response(
+            403,
+            {"error": "Only Cognito account owners can transfer ownership."},
+        )
 
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
     item = resp.get("Item")
@@ -214,29 +232,27 @@ def patch_tenant_handler(event: dict, context: dict) -> dict:
             {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
         )
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
-        )
-
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
         return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
 
-    from auth_helpers import require_tenant_admin_or_manager
-
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    if not _user_is_tenant_member(table, sub, tenant_slug):
-        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    auth_result = require_tenant_auth(event, table, tenant_slug, region)
+    if auth_result[0] is not True:
+        _, err_resp = auth_result
+        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
+    _, sub_or_username, role, is_cognito = auth_result
+    sub = sub_or_username if is_cognito else None
 
-    ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
-    if not ok:
-        return _json_response(403, {"error": err or "Forbidden."})
+    if is_cognito:
+        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+        if not ok:
+            return _json_response(403, {"error": err or "Forbidden."})
+    elif not role_is_admin_or_manager(role):
+        return _json_response(403, {"error": "Admin or manager role required."})
 
     body = _parse_body(event) or {}
     mo = body.get("module_overrides")

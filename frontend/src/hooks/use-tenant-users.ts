@@ -1,12 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import {
   fetchTenantUsers,
+  fetchTenantTUsers,
+  fetchTenantRoles,
   fetchUserPermissions,
   updateUserPermissions as updateUserPermissionsApi,
   type TenantUser,
+  type TenantTUser,
+  type TenantRole,
   type ModulePermissions,
 } from "@/lib/api"
 
@@ -34,8 +38,7 @@ export function useTenantUsers(tenantSlug: string | null): UseTenantUsersResult 
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const list = await fetchTenantUsers(tenantSlug, token)
       setUsers(list)
     } catch (e) {
@@ -81,8 +84,7 @@ export function useUserPermissions(
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const perms = await fetchUserPermissions(tenantSlug, token, userSub)
       setPermissions(perms)
     } catch (e) {
@@ -100,8 +102,7 @@ export function useUserPermissions(
   const update = useCallback(
     async (perms: Partial<ModulePermissions>) => {
       if (!tenantSlug || !userSub) return false
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const result = await updateUserPermissionsApi(
         tenantSlug,
         token,
@@ -118,4 +119,88 @@ export function useUserPermissions(
   )
 
   return { permissions, loading, error, refetch: load, update }
+}
+
+export interface UseTenantTUsersResult {
+  tusers: TenantTUser[]
+  loading: boolean
+  error: string | null
+  refetch: () => Promise<void>
+}
+
+/**
+ * Fetches non-Cognito tenant users from /api/tenant/tusers (admin/manager only).
+ */
+export function useTenantTUsers(tenantSlug: string | null): UseTenantTUsersResult {
+  const [tusers, setTusers] = useState<TenantTUser[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!tenantSlug) {
+      setTusers([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const token = await getToken()
+      const list = await fetchTenantTUsers(tenantSlug, token)
+      setTusers(list)
+    } catch (e) {
+      setTusers([])
+      setError(e instanceof Error ? e.message : "Failed to load tenant users")
+    } finally {
+      setLoading(false)
+    }
+  }, [tenantSlug])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return { tusers, loading, error, refetch: load }
+}
+
+export interface UseTenantRolesResult {
+  roles: TenantRole[]
+  loading: boolean
+  error: string | null
+  refetch: () => Promise<void>
+}
+
+/**
+ * Fetches custom roles from /api/tenant/roles (admin/manager only).
+ */
+export function useTenantRoles(tenantSlug: string | null): UseTenantRolesResult {
+  const [roles, setRoles] = useState<TenantRole[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    if (!tenantSlug) {
+      setRoles([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const token = await getToken()
+      const list = await fetchTenantRoles(tenantSlug, token)
+      setRoles(list)
+    } catch (e) {
+      setRoles([])
+      setError(e instanceof Error ? e.message : "Failed to load roles")
+    } finally {
+      setLoading(false)
+    }
+  }, [tenantSlug])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return { roles, loading, error, refetch: load }
 }

@@ -23,6 +23,65 @@ function getApiUrl(): string {
   return url.replace(/\/$/, "")
 }
 
+/** Storage key for site-login JWT (non-Cognito tenant user). */
+export const SITE_TOKEN_KEY = "9host-site-token"
+
+/** Site login response from POST /api/auth/site-login */
+export interface SiteLoginResponse {
+  token: string
+  tenant_slug: string
+  role: string
+}
+
+/**
+ * Get auth token for API calls. Returns site JWT if present, else Cognito access token.
+ * Use this for all tenant-scoped and admin API requests.
+ */
+export async function getToken(): Promise<string | null> {
+  const siteToken = localStorage.getItem(SITE_TOKEN_KEY)
+  if (siteToken) return siteToken
+  try {
+    const { fetchAuthSession } = await import("aws-amplify/auth")
+    const session = await fetchAuthSession()
+    return session.tokens?.accessToken?.toString() ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Check if user is authenticated via site login (non-Cognito). */
+export function isSiteUser(): boolean {
+  return !!localStorage.getItem(SITE_TOKEN_KEY)
+}
+
+/** Clear site token (call on sign out for site users). */
+export function clearSiteToken(): void {
+  localStorage.removeItem(SITE_TOKEN_KEY)
+}
+
+/**
+ * Site login — authenticate non-Cognito tenant user.
+ * Returns { token, tenant_slug, role } on success.
+ */
+export async function siteLogin(
+  body: { username: string; password: string; site: string }
+): Promise<SiteLoginResponse | null> {
+  const base = getApiUrl()
+  if (!base) return null
+
+  try {
+    const res = await fetch(`${base}/api/auth/site-login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as SiteLoginResponse
+  } catch {
+    return null
+  }
+}
+
 export interface Tenant {
   slug: string
   name: string
@@ -47,6 +106,68 @@ export interface AdminTenantsResponse {
 export interface FetchAllTenantsResult {
   tenants: AdminTenant[]
   isSuperadmin: boolean
+}
+
+export interface AdminStats {
+  total_users: number
+  total_tenants: number
+  total_cognito_users: number
+  total_tenant_users: number
+}
+
+export interface AdminUserItem {
+  type: "cognito" | "tenant_user"
+  sub?: string
+  username?: string
+  email?: string | null
+  name?: string
+  display_name?: string
+  role: string
+}
+
+export interface AdminUsersResponse {
+  users_by_tenant: Record<string, AdminUserItem[]>
+  orphaned: AdminUserItem[]
+}
+
+/**
+ * Fetch all users across tenants (superadmin only). GET /api/admin/users
+ */
+export async function fetchAdminUsers(
+  accessToken: string | null
+): Promise<AdminUsersResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminUsersResponse
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fetch admin stats (superadmin only). GET /api/admin/stats
+ */
+export async function fetchAdminStats(
+  accessToken: string | null
+): Promise<AdminStats | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return null
+
+  try {
+    const res = await fetch(`${base}/api/admin/stats`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminStats
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -174,6 +295,7 @@ export interface AdminTenantDetail {
   name: string
   tier: string
   owner_sub?: string | null
+  owner_email?: string | null
   module_overrides?: Record<string, boolean>
   created_at?: string
   updated_at?: string
@@ -297,9 +419,26 @@ export interface TenantUsersResponse {
   users: TenantUser[]
 }
 
-export const MODULE_KEYS = ["sites", "domains", "analytics", "settings"] as const
+export const MODULE_KEYS = ["sites", "domains", "analytics", "settings", "users"] as const
 
 export type ModulePermissions = Record<(typeof MODULE_KEYS)[number], boolean>
+
+/** Non-Cognito tenant user (TUSER) */
+export interface TenantTUser {
+  username: string
+  display_name: string
+  role: string
+  created_at?: string
+  updated_at?: string
+}
+
+/** Custom role for tenant */
+export interface TenantRole {
+  name: string
+  permissions: Record<string, boolean>
+  created_at?: string
+  updated_at?: string
+}
 
 /**
  * Fetch tenants for the authenticated user.
@@ -400,6 +539,224 @@ export async function updateUserPermissions(
     return data.permissions ?? null
   } catch {
     return null
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Non-Cognito tenant users (TUSER) and custom roles
+// -----------------------------------------------------------------------------
+
+/**
+ * Fetch non-Cognito tenant users (admin/manager only).
+ */
+export async function fetchTenantTUsers(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<TenantTUser[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+
+  try {
+    const res = await fetch(`${base}/api/tenant/tusers`, {
+      headers: tenantHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { users: TenantTUser[] }
+    return data.users ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Create non-Cognito tenant user (admin/manager only).
+ */
+export async function createTenantTUser(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { username: string; password: string; display_name?: string; role: string }
+): Promise<TenantTUser | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/tusers`, {
+      method: "POST",
+      headers: {
+        ...tenantHeaders(tenantSlug, accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { user: TenantTUser }
+    return data.user ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Update non-Cognito tenant user (admin/manager only).
+ */
+export async function updateTenantTUser(
+  tenantSlug: string,
+  accessToken: string | null,
+  username: string,
+  body: { role?: string; display_name?: string; password?: string }
+): Promise<TenantTUser | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !username) return null
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/tusers/${encodeURIComponent(username)}`,
+      {
+        method: "PUT",
+        headers: {
+          ...tenantHeaders(tenantSlug, accessToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { user: TenantTUser }
+    return data.user ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Delete non-Cognito tenant user (admin/manager only).
+ */
+export async function deleteTenantTUser(
+  tenantSlug: string,
+  accessToken: string | null,
+  username: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !username) return false
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/tusers/${encodeURIComponent(username)}`,
+      {
+        method: "DELETE",
+        headers: tenantHeaders(tenantSlug, accessToken),
+      }
+    )
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Fetch custom roles for tenant (admin/manager only).
+ */
+export async function fetchTenantRoles(
+  tenantSlug: string,
+  accessToken: string | null
+): Promise<TenantRole[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+
+  try {
+    const res = await fetch(`${base}/api/tenant/roles`, {
+      headers: tenantHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { roles: TenantRole[] }
+    return data.roles ?? []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Create custom role (admin/manager only).
+ */
+export async function createTenantRole(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { name: string; permissions: Record<string, boolean> }
+): Promise<TenantRole | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/roles`, {
+      method: "POST",
+      headers: {
+        ...tenantHeaders(tenantSlug, accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { role: TenantRole }
+    return data.role ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Update custom role (admin/manager only).
+ */
+export async function updateTenantRole(
+  tenantSlug: string,
+  accessToken: string | null,
+  roleName: string,
+  body: { permissions: Record<string, boolean> }
+): Promise<TenantRole | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !roleName) return null
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/roles/${encodeURIComponent(roleName)}`,
+      {
+        method: "PUT",
+        headers: {
+          ...tenantHeaders(tenantSlug, accessToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { role: TenantRole }
+    return data.role ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Delete custom role (admin/manager only). Fails if users are assigned.
+ */
+export async function deleteTenantRole(
+  tenantSlug: string,
+  accessToken: string | null,
+  roleName: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !roleName) return false
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/roles/${encodeURIComponent(roleName)}`,
+      {
+        method: "DELETE",
+        headers: tenantHeaders(tenantSlug, accessToken),
+      }
+    )
+    return res.ok
+  } catch {
+    return false
   }
 }
 
@@ -511,16 +868,19 @@ export async function fetchSites(
 export async function createSite(
   tenantSlug: string,
   accessToken: string | null,
-  body: { name: string; slug?: string; status?: string; template_id?: string }
+  body: { name: string; slug?: string; status?: string; template_id?: string | null }
 ): Promise<Site | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug) return null
+
+  const payload = { ...body }
+  if (payload.template_id === null) delete payload.template_id
 
   try {
     const res = await fetch(`${base}/api/tenant/sites`, {
       method: "POST",
       headers: sitesHeaders(tenantSlug, accessToken),
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) return null
     const data = (await res.json()) as SiteResponse
@@ -537,7 +897,7 @@ export async function updateSite(
   tenantSlug: string,
   accessToken: string | null,
   siteId: string,
-  body: { name?: string; slug?: string; status?: string }
+  body: { name?: string; slug?: string; status?: string; template_id?: string | null }
 ): Promise<Site | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug || !siteId) return null
@@ -837,8 +1197,8 @@ export async function deleteAdminSite(
   }
 }
 
-/** Admin users: list, add, update, delete, permissions */
-export async function fetchAdminUsers(
+/** Admin tenant users: list users in a tenant (superadmin). GET /api/admin/tenants/{slug}/users */
+export async function fetchAdminTenantUsers(
   accessToken: string | null,
   tenantSlug: string
 ): Promise<TenantUser[]> {
@@ -859,7 +1219,7 @@ export async function fetchAdminUsers(
 export async function createAdminUser(
   accessToken: string | null,
   tenantSlug: string,
-  body: { sub: string; role?: string; email?: string; name?: string }
+  body: { sub?: string; email?: string; role?: string; name?: string }
 ): Promise<TenantUser | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug) return null
@@ -986,6 +1346,73 @@ export async function putAdminTenantSettings(
     })
     if (!res.ok) return null
     return (await res.json()) as AdminTenantDetail
+  } catch {
+    return null
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Billing (Stripe Checkout + Customer Portal) — Task 3.1
+// -----------------------------------------------------------------------------
+
+export interface BillingCheckoutResponse {
+  url: string
+  session_id: string
+}
+
+export interface BillingPortalResponse {
+  url: string
+}
+
+/**
+ * Create Stripe Checkout Session for subscription. Redirect user to returned url.
+ */
+export async function createBillingCheckout(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { tier: "pro" | "business"; success_url: string; cancel_url: string }
+): Promise<BillingCheckoutResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/billing/checkout`, {
+      method: "POST",
+      headers: {
+        ...tenantHeaders(tenantSlug, accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as BillingCheckoutResponse
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Create Stripe Customer Portal session. Redirect user to returned url.
+ */
+export async function createBillingPortal(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { return_url: string }
+): Promise<BillingPortalResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/billing/portal`, {
+      method: "POST",
+      headers: {
+        ...tenantHeaders(tenantSlug, accessToken),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as BillingPortalResponse
   } catch {
     return null
   }

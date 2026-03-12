@@ -5,6 +5,7 @@ import { signOut } from "aws-amplify/auth"
 import {
   LayoutDashboard,
   Users,
+  UserRound,
   Layers,
   LogOut,
   type LucideIcon,
@@ -38,6 +39,7 @@ function SuperadminSidebar() {
   const mainNav: NavItem[] = [
     { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { title: "Tenants", href: "/admin/tenants", icon: Users },
+    { title: "Users", href: "/admin/users", icon: UserRound },
     { title: "Templates", href: "/admin/templates", icon: Layers },
   ]
 

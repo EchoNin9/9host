@@ -17,6 +17,8 @@ from dynamodb_helpers import (
     get_tenant_item,
     gsi1pk_user,
     gsi1sk_tenant_profile,
+    gsi3pk_entity_user,
+    gsi3sk_user,
     pk_tenant,
     sk_tenant,
     sk_user_profile,
@@ -56,6 +58,24 @@ def _require_superadmin(event: dict) -> tuple[str | None, dict | None]:
 
 # Slug: lowercase alphanumeric + hyphen, max 60 chars
 TENANT_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
+
+
+def _get_email_from_cognito_sub(sub: str, region: str) -> str:
+    """Resolve Cognito sub to email via AdminGetUser."""
+    if not sub:
+        return ""
+    try:
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.admin_get_user(
+            UserPoolId=os.environ.get("USER_POOL_ID", ""),
+            Username=sub,
+        )
+        for attr in resp.get("UserAttributes", []):
+            if attr.get("Name") == "email":
+                return attr.get("Value", "")
+    except Exception:
+        pass
+    return ""
 
 
 def _get_user_email_name(event: dict, region: str) -> tuple[str, str]:
@@ -145,6 +165,8 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
         "sk": sk_user_profile(sub),
         "gsi1pk": gsi1pk_user(sub),
         "gsi1sk": gsi1sk_tenant_profile(slug),
+        "gsi3pk": gsi3pk_entity_user(),
+        "gsi3sk": gsi3sk_user(slug, sub),
         "sub": sub,
         "email": email,
         "name": user_name or name,
@@ -240,13 +262,18 @@ def get_tenant_by_slug_handler(event: dict, context: dict, tenant_slug: str) -> 
     if not item:
         return _json_response(404, {"error": f"Tenant not found: {tenant_slug}"})
 
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    owner_sub = item.get("owner_sub")
+    owner_email = _get_email_from_cognito_sub(owner_sub or "", region) if owner_sub else ""
+
     return _json_response(
         200,
         {
             "slug": tenant_slug,
             "name": item.get("name", tenant_slug),
             "tier": item.get("tier", "FREE"),
-            "owner_sub": item.get("owner_sub"),
+            "owner_sub": owner_sub,
+            "owner_email": owner_email,
             "module_overrides": item.get("module_overrides") or {},
             "created_at": item.get("created_at"),
             "updated_at": item.get("updated_at"),

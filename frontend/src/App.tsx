@@ -21,7 +21,9 @@ import { SuperadminDashboard } from "@/pages/superadmin-dashboard"
 import { SuperadminTenantsPage } from "@/pages/superadmin-tenants"
 import { AdministerTenantPage } from "@/pages/administer-tenant"
 import { AdminTemplatesPage } from "@/pages/admin-templates"
+import { AdminUsersPage } from "@/pages/admin-users"
 import { Login } from "@/pages/login"
+import { SiteLogin } from "@/pages/site-login"
 import { Signup } from "@/pages/signup"
 import { AuthConfirm } from "@/pages/auth-confirm"
 import { useTenants } from "@/hooks/use-tenants"
@@ -159,8 +161,10 @@ function AppRoutes() {
           <Route index element={<SuperadminTenantsPage />} />
           <Route path=":slug" element={<AdministerTenantPage />} />
         </Route>
+        <Route path="users" element={<AdminUsersPage />} />
         <Route path="templates" element={<AdminTemplatesPage />} />
       </Route>
+      <Route path="/login/site" element={<SiteLogin />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/auth/confirm" element={<AuthConfirm />} />

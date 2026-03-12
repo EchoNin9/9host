@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import {
   Card,
   CardContent,
@@ -45,8 +45,7 @@ function TenantSettings() {
     if (!tenantSlug || !tenant) return
     const next = { ...(tenant.module_overrides ?? {}), [key]: value }
     setModuleOverridesSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
+    const token = await getToken()
     const result = await patchTenantModuleOverrides(
       tenantSlug,
       token,
@@ -60,8 +59,7 @@ function TenantSettings() {
     if (!tenantSlug || !transferTarget) return
     setTransferring(true)
     setTransferError(null)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
+    const token = await getToken()
     const ok = await putTransferOwner(tenantSlug, token, transferTarget)
     setTransferring(false)
     if (ok) {

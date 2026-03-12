@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token
-from dynamodb_helpers import get_tenant_item, query_tenants_for_user
+from auth_helpers import require_tenant_auth
+from dynamodb_helpers import get_tenant_item
 from middleware import extract_tenant_slug, with_tenant
 
 # Tiers that have advanced_analytics (Pro+)
@@ -25,17 +25,6 @@ def _json_response(status: int, body: dict) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body),
     }
-
-
-def _user_is_tenant_member(table, sub: str, tenant_slug: str) -> bool:
-    """Check if user is a member of the tenant via GSI byUser."""
-    params = query_tenants_for_user(sub)
-    resp = table.query(**params)
-    for item in resp.get("Items", []):
-        gsi1sk = item.get("gsi1sk", "")
-        if f"TENANT#{tenant_slug}#PROFILE" == gsi1sk:
-            return True
-    return False
 
 
 def _generate_placeholder_analytics(tenant_slug: str) -> dict:
@@ -75,14 +64,6 @@ def get_analytics_handler(event: dict, context: dict) -> dict:
             {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
         )
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
-        )
-
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
         return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
@@ -90,8 +71,11 @@ def get_analytics_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    if not _user_is_tenant_member(table, sub, tenant_slug):
-        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    auth_result = require_tenant_auth(event, table, tenant_slug, region)
+    if auth_result[0] is not True:
+        _, err_resp = auth_result
+        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
 
     # Get tenant to check tier
     tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))

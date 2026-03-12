@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import {
   fetchDomains,
   createDomain,
@@ -35,8 +35,7 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const list = await fetchDomains(tenantSlug, token)
       setDomains(list)
     } catch (e) {
@@ -54,8 +53,7 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
   const add = useCallback(
     async (body: { domain: string; site_id: string; status?: string }) => {
       if (!tenantSlug) return null
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const domain = await createDomain(tenantSlug, token, body)
       if (domain) void load()
       return domain
@@ -66,8 +64,7 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
   const remove = useCallback(
     async (domain: string) => {
       if (!tenantSlug) return false
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const ok = await deleteDomainApi(tenantSlug, token, domain)
       if (ok) void load()
       return ok

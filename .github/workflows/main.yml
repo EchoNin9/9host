@@ -40,6 +40,9 @@ jobs:
         with:
           tofu_wrapper: false
 
+      - name: Install Lambda Python dependencies
+        run: pip install -r api/requirements.txt -t api/
+
       - name: OpenTofu init (remote state)
         working-directory: infra
         run: |

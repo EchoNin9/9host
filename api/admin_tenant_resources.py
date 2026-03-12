@@ -28,6 +28,8 @@ from dynamodb_helpers import (
     get_user_profile_item,
     gsi1pk_user,
     gsi1sk_tenant_profile,
+    gsi3pk_entity_user,
+    gsi3sk_user,
     get_template_item,
     pk_tenant,
     query_domains_in_tenant,
@@ -425,6 +427,30 @@ def _get_user_email_name_from_cognito(sub: str, region: str) -> tuple[str, str]:
         return "", ""
 
 
+def _get_cognito_sub_by_email(email: str, region: str) -> str | None:
+    """Look up Cognito user sub by email. Returns sub or None if not found."""
+    user_pool_id = os.environ.get("USER_POOL_ID", "")
+    if not user_pool_id or not email:
+        return None
+    try:
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.list_users(
+            UserPoolId=user_pool_id,
+            Filter=f'email = "{email}"',
+            Limit=1,
+        )
+        users = resp.get("Users", [])
+        if not users:
+            return None
+        u = users[0]
+        for attr in u.get("Attributes", []):
+            if attr.get("Name") == "sub":
+                return attr.get("Value")
+        return u.get("Username")
+    except Exception:
+        return None
+
+
 def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffix: str) -> dict:
     """GET/POST /api/admin/tenants/{slug}/users, GET/PUT/DELETE /api/admin/tenants/{slug}/users/{sub}."""
     _, err = _require_superadmin(event)
@@ -498,15 +524,19 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         email = (body.get("email") or "").strip()
         name = (body.get("name") or "").strip()
 
+        region = os.environ.get("AWS_REGION", "us-east-1")
+        if not sub and email:
+            sub = _get_cognito_sub_by_email(email, region) or ""
+            if not sub:
+                return _json_response(404, {"error": f"No Cognito user found with email: {email}"})
         if not sub:
-            return _json_response(400, {"error": "sub is required."})
+            return _json_response(400, {"error": "sub or email is required."})
         if role not in ("admin", "manager", "editor", "member"):
             return _json_response(400, {"error": "role must be admin, manager, editor, or member."})
 
         if table.get_item(Key=get_user_profile_item(tenant_slug, sub)).get("Item"):
             return _json_response(409, {"error": "User already in tenant."})
 
-        region = os.environ.get("AWS_REGION", "us-east-1")
         if not email or not name:
             e, n = _get_user_email_name_from_cognito(sub, region)
             email = email or e
@@ -518,6 +548,8 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
             "sk": sk_user_profile(sub),
             "gsi1pk": gsi1pk_user(sub),
             "gsi1sk": gsi1sk_tenant_profile(tenant_slug),
+            "gsi3pk": gsi3pk_entity_user(),
+            "gsi3sk": gsi3sk_user(tenant_slug, sub),
             "sub": sub,
             "email": email,
             "name": name or sub[:8],

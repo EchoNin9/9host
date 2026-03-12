@@ -77,9 +77,19 @@ resource "aws_iam_role_policy" "api_lambda" {
         Action = [
           "cognito-idp:GetUser",
           "cognito-idp:AdminGetUser",
-          "cognito-idp:AdminListGroupsForUser"
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsers"
         ]
         Resource = aws_cognito_user_pool.main.arn
+      },
+      {
+        Sid    = "SecretsManager"
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [
+          aws_secretsmanager_secret.stripe.arn,
+          aws_secretsmanager_secret.jwt_signing.arn
+        ]
       }
     ]
   })
@@ -99,9 +109,11 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = aws_dynamodb_table.main.name
-      DOMAINS        = join(",", var.domains)
-      USER_POOL_ID   = aws_cognito_user_pool.main.id
+      DYNAMODB_TABLE    = aws_dynamodb_table.main.name
+      DOMAINS          = join(",", var.domains)
+      USER_POOL_ID     = aws_cognito_user_pool.main.id
+      STRIPE_SECRET_ARN = aws_secretsmanager_secret.stripe.arn
+      JWT_SECRET_ARN   = aws_secretsmanager_secret.jwt_signing.arn
     }
   }
 

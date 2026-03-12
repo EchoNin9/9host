@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import {
   fetchSites,
   createSite,
@@ -15,10 +15,10 @@ export interface UseSitesResult {
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
-  create: (body: { name: string; slug?: string; status?: string; template_id?: string }) => Promise<Site | null>
+  create: (body: { name: string; slug?: string; status?: string; template_id?: string | null }) => Promise<Site | null>
   update: (
     siteId: string,
-    body: { name?: string; slug?: string; status?: string }
+    body: { name?: string; slug?: string; status?: string; template_id?: string | null }
   ) => Promise<Site | null>
   remove: (siteId: string) => Promise<boolean>
 }
@@ -40,8 +40,7 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const list = await fetchSites(tenantSlug, token)
       setSites(list)
     } catch (e) {
@@ -57,10 +56,9 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
   }, [load])
 
   const create = useCallback(
-    async (body: { name: string; slug?: string; status?: string; template_id?: string }) => {
+    async (body: { name: string; slug?: string; status?: string; template_id?: string | null }) => {
       if (!tenantSlug) return null
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const site = await createSite(tenantSlug, token, body)
       if (site) void load()
       return site
@@ -71,11 +69,10 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
   const update = useCallback(
     async (
       siteId: string,
-      body: { name?: string; slug?: string; status?: string }
+      body: { name?: string; slug?: string; status?: string; template_id?: string | null }
     ) => {
       if (!tenantSlug) return null
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const site = await updateSite(tenantSlug, token, siteId, body)
       if (site) void load()
       return site
@@ -86,8 +83,7 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
   const remove = useCallback(
     async (siteId: string) => {
       if (!tenantSlug) return false
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const ok = await deleteSiteApi(tenantSlug, token, siteId)
       if (ok) void load()
       return ok

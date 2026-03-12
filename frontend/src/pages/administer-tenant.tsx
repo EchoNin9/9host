@@ -40,7 +40,7 @@ import {
   createAdminSite,
   updateAdminSite,
   deleteAdminSite,
-  fetchAdminUsers,
+  fetchAdminTenantUsers,
   createAdminUser,
   updateAdminUser,
   deleteAdminUser,
@@ -254,14 +254,39 @@ function AdminDomainsTab({ tenantSlug }: { tenantSlug: string }) {
         ) : domains.length === 0 ? (
           <p className="text-sm text-muted-foreground">No domains yet.</p>
         ) : (
-          <div className="divide-y">
-            {domains.map((d) => (
-              <div key={d.domain} className="flex items-center justify-between py-3">
-                <span>{d.domain}</span>
-                <span className="text-sm text-muted-foreground">→ {sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}</span>
-                <Button size="sm" variant="ghost" onClick={() => handleRemove(d.domain)}>Remove</Button>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="pb-2 text-left font-medium">Domain</th>
+                  <th className="pb-2 text-left font-medium">Site</th>
+                  <th className="pb-2 text-left font-medium">Status</th>
+                  <th className="pb-2 text-right font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {domains.map((d) => (
+                  <tr key={d.domain} className="border-b">
+                    <td className="py-3">{d.domain}</td>
+                    <td className="py-3">{sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}</td>
+                    <td className="py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          d.status === "verified"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {d.status}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => handleRemove(d.domain)}>Remove</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </CardContent>
@@ -446,14 +471,14 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [permUser, setPermUser] = useState<TenantUser | null>(null)
   const [editUser, setEditUser] = useState<TenantUser | null>(null)
-  const [addSub, setAddSub] = useState("")
+  const [addEmail, setAddEmail] = useState("")
   const [addRole, setAddRole] = useState("member")
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
-    const list = await fetchAdminUsers(token, tenantSlug)
+    const list = await fetchAdminTenantUsers(token, tenantSlug)
     setUsers(list)
   }, [tenantSlug])
 
@@ -462,16 +487,16 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   }, [load])
 
   const handleAdd = async () => {
-    const sub = addSub.trim()
-    if (!sub) return
+    const email = addEmail.trim()
+    if (!email) return
     setSaving(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await createAdminUser(token, tenantSlug, { sub, role: addRole })
+    const result = await createAdminUser(token, tenantSlug, { email, role: addRole })
     setSaving(false)
     if (result) {
       setSheetOpen(false)
-      setAddSub("")
+      setAddEmail("")
       setAddRole("member")
       void load()
     }
@@ -533,8 +558,17 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
           </SheetHeader>
           <div className="mt-4 space-y-4">
             <div>
-              <label className="text-sm font-medium">Cognito sub</label>
-              <Input value={addSub} onChange={(e) => setAddSub(e.target.value)} placeholder="uuid" className="mt-1" />
+              <label className="text-sm font-medium">Email</label>
+              <Input
+                type="email"
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="user@example.com"
+                className="mt-1"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Cognito user email. User must have an account.
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium">Role</label>
@@ -549,7 +583,7 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
                 <option value="member">member</option>
               </select>
             </div>
-            <Button onClick={handleAdd} disabled={saving || !addSub.trim()}>
+            <Button onClick={handleAdd} disabled={saving || !addEmail.trim()}>
               {saving ? "Adding…" : "Add"}
             </Button>
           </div>
@@ -643,7 +677,7 @@ function PermissionsSheet({
       const session = await fetchAuthSession()
       const token = session.tokens?.accessToken?.toString() ?? null
       const p = await fetchAdminUserPermissions(token, tenantSlug, user.sub)
-      setPerms(p ?? { sites: true, domains: true, analytics: true, settings: true })
+      setPerms(p ?? { sites: true, domains: true, analytics: true, settings: true, users: true })
       setLoading(false)
     }
     void load()
@@ -743,8 +777,20 @@ function AdminSettingsTab({
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium">Owner sub</label>
-          <Input value={ownerSub} onChange={(e) => setOwnerSub(e.target.value)} placeholder="Cognito sub" className="mt-1" />
+          <label className="text-sm font-medium">Owner</label>
+          <p className="text-xs text-muted-foreground mt-1">
+            {tenant.owner_email ? (
+              <span>{tenant.owner_email}</span>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </p>
+          <Input
+            value={ownerSub}
+            onChange={(e) => setOwnerSub(e.target.value)}
+            placeholder="Cognito sub (for transfer)"
+            className="mt-2"
+          />
         </div>
         <div>
           <label className="text-sm font-medium">Module overrides</label>

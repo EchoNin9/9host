@@ -41,6 +41,17 @@ resource "aws_dynamodb_table" "main" {
     type = "S"
   }
 
+  # GSI3: byEntity — "List all users across tenants" (superadmin)
+  attribute {
+    name = "gsi3pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "gsi3sk"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "byUser"
     projection_type = "ALL"
@@ -63,6 +74,19 @@ resource "aws_dynamodb_table" "main" {
     }
     key_schema {
       attribute_name = "gsi2sk"
+      key_type       = "RANGE"
+    }
+  }
+
+  global_secondary_index {
+    name            = "byEntity"
+    projection_type = "ALL"
+    key_schema {
+      attribute_name = "gsi3pk"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "gsi3sk"
       key_type       = "RANGE"
     }
   }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import { fetchAllTenants, type AdminTenant } from "@/lib/api"
 
 export interface UseAdminTenantsResult {
@@ -26,8 +26,7 @@ export function useAdminTenants(): UseAdminTenantsResult {
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const { tenants: list, isSuperadmin: ok } = await fetchAllTenants(token)
       setTenants(list)
       setIsSuperadmin(ok)

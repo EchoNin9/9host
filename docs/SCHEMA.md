@@ -26,6 +26,8 @@
 | Custom Domain | `TENANT#{slug}`  | `DOMAIN#{domain}`      | Domain → site mapping (Pro+)   |
 | User Permissions | `TENANT#{slug}`  | `USER#{sub}#PERMISSIONS` | Per-user module access (Task 1.25) |
 | Site Template | `TENANT#_platform` | `TEMPLATE#{slug}`   | Platform site templates (Task 1.30) |
+| Tenant User (non-Cognito) | `TENANT#{slug}`  | `TUSER#{username}`   | DB-authenticated tenant user (Task 1.42) |
+| Custom Role | `TENANT#{slug}`  | `ROLE#{name}`   | Tenant-defined role with permissions (Task 1.43) |
 
 **Slug rules:** Lowercase, alphanumeric + hyphen. Example: `acme-corp`, `my-band`.
 
@@ -43,7 +45,8 @@ name: string           # Display name
 tier: string           # FREE | PRO | BUSINESS
 owner_sub: string      # Cognito sub of primary tenantadmin (Task 1.26)
 module_overrides: map  # (optional) Task 1.28. Override tier features: { custom_domains: true, advanced_analytics: true }
-stripe_customer_id: S   # (optional) For agent3
+stripe_customer_id: S      # (optional) Stripe customer ID (Task 3.1)
+stripe_subscription_id: S # (optional) Active subscription ID
 created_at: string     # ISO8601
 updated_at: string
 ```
@@ -121,6 +124,38 @@ updated_at: string
 
 Tenantadmin configures what tenantuser can access. If missing, all modules allowed (role-based).
 
+### Tenant User (non-Cognito) (Task 1.42)
+
+```
+PK: TENANT#acme
+SK: TUSER#jane
+---
+username: string       # Unique per tenant; same username can exist in different tenants
+password_hash: string  # bcrypt hash
+display_name: string   # Optional display name
+role: string           # manager | member | {custom_role_name}
+created_at: string
+updated_at: string
+gsi3pk: string         # ENTITY#USER (for superadmin global listing)
+gsi3sk: string         # TENANT#{slug}#TUSER#{username}
+```
+
+No Cognito sub. Authenticated via POST /api/auth/site-login. Same username can exist in different tenants.
+
+### Custom Role (Task 1.43)
+
+```
+PK: TENANT#acme
+SK: ROLE#content-editor
+---
+name: string           # Role name (slug format, unique per tenant)
+permissions: map        # { sites: bool, domains: bool, analytics: bool, settings: bool, users: bool }
+created_at: string
+updated_at: string
+```
+
+Built-in roles `manager` and `member` are implicit (not stored). Custom roles are created by tenant admin. Role name cannot be `manager` or `member`.
+
 ---
 
 ## Access Patterns
@@ -136,6 +171,11 @@ Tenantadmin configures what tenantuser can access. If missing, all modules allow
 | List tenants for user (by sub)  | Query GSI | GSI1PK=`USER#{sub}`, SK begins_with `TENANT#` |
 | Get user permissions            | GetItem   | PK=`TENANT#{slug}`, SK=`USER#{sub}#PERMISSIONS` |
 | List templates (platform)       | Query     | PK=`TENANT#_platform`, SK begins_with `TEMPLATE#` |
+| List all users (superadmin)     | Query GSI | GSI3PK=`ENTITY#USER` |
+| Get tenant user (non-Cognito)   | GetItem   | PK=`TENANT#{slug}`, SK=`TUSER#{username}` |
+| List tenant users (non-Cognito) | Query     | PK=`TENANT#{slug}`, SK begins_with `TUSER#` |
+| Get custom role                | GetItem   | PK=`TENANT#{slug}`, SK=`ROLE#{name}` |
+| List custom roles              | Query     | PK=`TENANT#{slug}`, SK begins_with `ROLE#` |
 
 ---
 
@@ -166,6 +206,19 @@ Tenantadmin configures what tenantuser can access. If missing, all modules allow
 **Projection:** ALL
 
 **Query:** `gsi2pk = DOMAIN#example.com` → returns tenant + site for custom domain.
+
+### GSI3: byEntity (all users across tenants)
+
+**Purpose:** "List all users across all tenants" (superadmin global user list)
+
+| Attribute | Key Type | Example |
+|-----------|----------|---------|
+| gsi3pk    | Partition| `ENTITY#USER` |
+| gsi3sk    | Sort     | `TENANT#{slug}#USER#{sub}` or `TENANT#{slug}#TUSER#{username}` |
+
+**Projection:** ALL
+
+**Query:** `gsi3pk = ENTITY#USER` → returns all Cognito and non-Cognito users. USER# items use `gsi3sk = TENANT#{slug}#USER#{sub}`; TUSER# items use `gsi3sk = TENANT#{slug}#TUSER#{username}`.
 
 ---
 

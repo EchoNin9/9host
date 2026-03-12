@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import { fetchTenants, type Tenant } from "@/lib/api"
 
 export interface UseTenantsResult {
@@ -24,8 +24,7 @@ export function useTenants(): UseTenantsResult {
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const list = await fetchTenants(token)
       setTenants(list)
     } catch (e) {

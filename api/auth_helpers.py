@@ -1,8 +1,12 @@
 """
 Auth helpers for 9host API.
 
-Uses Cognito GetUser to validate access tokens (no JWT lib required).
+Supports dual-mode auth: Cognito (GetUser) and custom JWT (tenant_user).
 """
+
+import os
+
+import jwt
 
 
 def _get_header(event: dict, name: str) -> str:
@@ -33,10 +37,29 @@ def _get_auth_header(event: dict) -> str:
     return ""
 
 
-def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | None:
+def _get_jwt_secret() -> str | None:
+    """Fetch JWT signing key from Secrets Manager."""
+    import boto3
+
+    arn = os.environ.get("JWT_SECRET_ARN")
+    if not arn:
+        return None
+    try:
+        client = boto3.client("secretsmanager")
+        resp = client.get_secret_value(SecretId=arn)
+        return resp.get("SecretString", "").strip() or None
+    except Exception:
+        return None
+
+
+def get_auth_context(event: dict, region: str = "us-east-1") -> dict | None:
     """
-    Extract Cognito sub from Bearer token via GetUser.
-    Returns sub or None if missing/invalid.
+    Extract auth identity from Bearer token. Dual-mode: Cognito or custom JWT.
+
+    Returns:
+      - Cognito: {"user_type": "cognito", "sub": str}
+      - Tenant user: {"user_type": "tenant_user", "username": str, "tenant_slug": str, "role": str}
+      - None if missing/invalid
     """
     import boto3
 
@@ -47,15 +70,45 @@ def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | N
     if not token:
         return None
 
+    # Try Cognito first
     try:
         client = boto3.client("cognito-idp", region_name=region)
         resp = client.get_user(AccessToken=token)
         for attr in resp.get("UserAttributes", []):
             if attr.get("Name") == "sub":
-                return attr.get("Value")
-        return resp.get("Username")  # fallback
+                return {"user_type": "cognito", "sub": attr.get("Value")}
+        return {"user_type": "cognito", "sub": resp.get("Username", "")}
     except Exception:
+        pass
+
+    # Try custom JWT (tenant_user)
+    secret = _get_jwt_secret()
+    if not secret or secret == "REPLACE_ME":
         return None
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        if payload.get("user_type") == "tenant_user":
+            return {
+                "user_type": "tenant_user",
+                "username": payload.get("username", ""),
+                "tenant_slug": payload.get("tenant_slug", ""),
+                "role": payload.get("role", "member"),
+            }
+    except Exception:
+        pass
+
+    return None
+
+
+def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | None:
+    """
+    Extract Cognito sub from Bearer token via GetUser.
+    Returns sub or None if missing/invalid. Does not support tenant_user JWT.
+    """
+    ctx = get_auth_context(event, region)
+    if ctx and ctx.get("user_type") == "cognito":
+        return ctx.get("sub")
+    return None
 
 
 def get_user_role_in_tenant(table, sub: str, tenant_slug: str) -> str | None:
@@ -73,6 +126,55 @@ def get_user_role_in_tenant(table, sub: str, tenant_slug: str) -> str | None:
     return (item.get("role") or "member").lower()
 
 
+def require_tenant_auth(
+    event: dict,
+    table,
+    tenant_slug: str,
+    region: str = "us-east-1",
+) -> tuple[bool, str | None, str | None, bool] | tuple[None, dict]:
+    """
+    Require tenant auth (Cognito or tenant_user JWT). Returns:
+      - (True, sub_or_username, role, is_cognito) if authenticated
+      - (None, error_response) if not
+    """
+    ctx = get_auth_context(event, region)
+    if not ctx:
+        return None, {
+            "statusCode": 401,
+            "body": '{"error": "Unauthorized. Provide Authorization: Bearer <access_token>."}',
+        }
+
+    if ctx.get("user_type") == "tenant_user":
+        if ctx.get("tenant_slug") != tenant_slug:
+            return None, {
+                "statusCode": 403,
+                "body": '{"error": "Forbidden. Tenant user is locked to their tenant."}',
+            }
+        role = (ctx.get("role") or "member").lower()
+        return True, ctx.get("username", ""), role, False
+
+    # Cognito
+    sub = ctx.get("sub")
+    if not sub:
+        return None, {
+            "statusCode": 401,
+            "body": '{"error": "Unauthorized. Provide Authorization: Bearer <access_token>."}',
+        }
+    from dynamodb_helpers import query_tenants_for_user
+
+    params = query_tenants_for_user(sub)
+    resp = table.query(**params)
+    for item in resp.get("Items", []):
+        if item.get("gsi1sk") == f"TENANT#{tenant_slug}#PROFILE":
+            role = (item.get("role") or "member").lower()
+            return True, sub, role, True
+
+    return None, {
+        "statusCode": 403,
+        "body": '{"error": "Forbidden. Not a member of this tenant."}',
+    }
+
+
 def require_tenant_admin_or_manager(table, sub: str, tenant_slug: str) -> tuple[bool, str | None]:
     """
     Require admin or manager role for tenant. Returns (True, None) if ok,
@@ -84,6 +186,15 @@ def require_tenant_admin_or_manager(table, sub: str, tenant_slug: str) -> tuple[
     if role in ("admin", "manager"):
         return True, None
     return False, "Admin or manager role required for this action."
+
+
+def role_is_admin_or_manager(role: str) -> bool:
+    """Check if role has admin/manager permissions (includes custom roles with equivalent)."""
+    r = (role or "").lower()
+    if r in ("admin", "manager"):
+        return True
+    # Custom roles: check via table if needed; for now only built-in manager counts
+    return False
 
 
 def is_superadmin(

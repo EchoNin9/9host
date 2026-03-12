@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom"
 
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenants } from "@/hooks/use-tenants"
+import { useAuth } from "@/hooks/use-auth"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -16,9 +17,14 @@ import {
 function TenantSwitcher() {
   const { tenantSlug, getSwitchTenantUrl } = useTenant()
   const { tenants, loading } = useTenants()
+  const { isSiteUser } = useAuth()
   const navigate = useNavigate()
 
   if (!tenantSlug) return null
+
+  if (isSiteUser) {
+    return <span className="px-2 py-2 font-semibold text-sidebar-foreground">{tenantSlug}</span>
+  }
 
   const handleSwitch = (newSlug: string) => {
     const url = getSwitchTenantUrl(newSlug)

@@ -1,12 +1,13 @@
 # 9host API
 
-API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_access_token>` unless noted.
+API Gateway HTTP API — routes require `Authorization: Bearer <token>` (Cognito or custom JWT) unless noted.
 
 ## Endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | /api/health | No | Health check |
+| POST | /api/auth/site-login | No | Non-Cognito tenant user login. Body: username, password, site (tenant_slug). Returns token. |
 | GET | /api/tenants | Yes | List tenants for authenticated user |
 | GET | /api/tenant | Yes | Tenant metadata (requires X-Tenant-Slug or subdomain) |
 | GET | /api/tenant/analytics | Yes | Analytics placeholder (Pro+ tier; requires X-Tenant-Slug or subdomain) |
@@ -19,7 +20,20 @@ API Gateway HTTP API — all routes require `Authorization: Bearer <cognito_acce
 | POST | /api/tenant/domains | Yes | Add domain |
 | GET | /api/tenant/domains/{domain} | Yes | Get domain |
 | DELETE | /api/tenant/domains/{domain} | Yes | Remove domain |
+| GET | /api/tenant/users | Yes | List Cognito users (admin/manager) |
+| GET | /api/tenant/users/{sub}/permissions | Yes | Get/put user permissions |
+| GET | /api/tenant/tusers | Yes | List non-Cognito tenant users (admin/manager) |
+| POST | /api/tenant/tusers | Yes | Create non-Cognito user. Body: username, password, display_name, role. |
+| PUT | /api/tenant/tusers/{username} | Yes | Update non-Cognito user |
+| DELETE | /api/tenant/tusers/{username} | Yes | Delete non-Cognito user |
+| GET | /api/tenant/roles | Yes | List custom roles (admin/manager) |
+| POST | /api/tenant/roles | Yes | Create custom role. Body: name, permissions. |
+| PUT | /api/tenant/roles/{name} | Yes | Update custom role permissions |
+| DELETE | /api/tenant/roles/{name} | Yes | Delete custom role (fail if users assigned) |
 | GET | /api/templates | Yes | List templates (tier-filtered; requires X-Tenant-Slug or subdomain) |
+| POST | /api/tenant/billing/checkout | Yes | Create Stripe Checkout Session for subscription (admin/manager) |
+| POST | /api/tenant/billing/portal | Yes | Create Stripe Customer Portal session (admin/manager) |
+| POST | /api/webhooks/stripe | No | Stripe webhook (signature-verified) |
 | GET | /api/admin/tenants | Yes | List all tenants (superadmin) |
 | GET | /api/admin/tenants/{slug} | Yes | Get tenant (superadmin) |
 | PATCH | /api/admin/tenants/{slug} | Yes | Update tenant tier/name/module_overrides (superadmin) |

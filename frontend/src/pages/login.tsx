@@ -93,7 +93,7 @@ export function Login() {
       if (isSuperadmin) return "/admin"
 
       const tenants = await fetchTenants(token)
-      if (tenants.length === 1) return `/${tenants[0].slug}`
+      if (tenants.length >= 1) return `/${tenants[0].slug}`
       return "/"
     } catch {
       return "/"
@@ -195,15 +195,25 @@ export function Login() {
                   : "Sign in"}
             </Button>
             {!needsNewPassword && (
-              <p className="text-center text-sm text-muted-foreground">
-                Don&apos;t have an account?{" "}
-                <Link
-                  to="/signup"
-                  className="underline hover:text-foreground"
-                >
-                  Sign up
-                </Link>
-              </p>
+              <>
+                <p className="text-center text-sm text-muted-foreground">
+                  Don&apos;t have an account?{" "}
+                  <Link
+                    to="/signup"
+                    className="underline hover:text-foreground"
+                  >
+                    Sign up
+                  </Link>
+                </p>
+                <p className="text-center text-sm text-muted-foreground">
+                  <Link
+                    to="/login/site"
+                    className="underline hover:text-foreground"
+                  >
+                    Sign in to your site
+                  </Link>
+                </p>
+              </>
             )}
           </CardFooter>
         </form>

@@ -56,6 +56,15 @@
 | 1.39 | Superadmin: CRUD /api/admin/tenants/{slug}/users | DONE | Add/remove/role-change users in any tenant. DynamoDB profile + permissions. |
 | 1.40 | Superadmin: PUT /api/admin/tenants/{slug}/settings | DONE | Update any tenant settings (module_overrides, owner, etc.) via admin API. |
 | 1.41 | CI: add path filters to GHA workflows to skip builds on docs/config-only changes | DONE | Add `paths-ignore` to dev.yml/main.yml for TASKS.md, AGENTS.md, .cursor/**, *.md docs, etc. Avoid unnecessary builds on non-code pushes. |
+| 1.42 | Schema: non-Cognito tenant user (TUSER) + GSI3 | DONE | docs/SCHEMA.md, infra/dynamodb.tf, dynamodb_helpers, backfill script. |
+| 1.43 | Schema: custom role entity (ROLE) | DONE | docs/SCHEMA.md. |
+| 1.44 | POST /api/auth/site-login (bcrypt, custom JWT) | DONE | api/site_auth_handler.py, JWT from Secrets Manager. |
+| 1.45 | Dual-mode auth middleware (Cognito + custom JWT) | DONE | api/auth_helpers.py, require_tenant_auth. |
+| 1.46 | Tenant user CRUD: GET/POST/PUT/DELETE /api/tenant/tusers | DONE | api/tenant_users_handler.py. |
+| 1.47 | Custom role CRUD: GET/POST/PUT/DELETE /api/tenant/roles | DONE | api/roles_handler.py. |
+| 1.48 | Superadmin: GET /api/admin/users + GET /api/admin/stats | DONE | api/admin_users_handler.py. |
+| 1.49 | Admin add-user by email (POST accepts email) | DONE | api/admin_tenant_resources.py. |
+| 1.50 | Return owner_email in GET /api/tenant and admin tenant APIs | DONE | handler_example, admin_handler. |
 
 ### Agent 2 — Frontend / UI
 
@@ -104,6 +113,19 @@
 | 2.39 | Superadmin: manage tenant settings UI (admin-scoped) | DONE | Edit tier, name, owner_sub, module_overrides via PUT /api/admin/tenants/{slug}/settings. |
 | 2.40 | Superadmin: templates management UI enhancements | DONE | Extends 2.21. Validation (slug format, required fields, API errors), preview (components summary in edit), ordering (sort by name/slug/tier), delete confirmation AlertDialog. |
 | 2.41 | **FIX: Templates/Administer pages redirect to /admin on load** | DONE | AdminTemplatesPage and AdministerTenantPage use useAdminTenants() but redirected on !isSuperadmin before loading completed. Initial state loading=true, isSuperadmin=false → immediate redirect. Now wait for superadminLoading before redirect. |
+| 2.42 | Superadmin dashboard: Total Users box | DONE | fetchAdminStats, Total Users card. |
+| 2.43 | Superadmin sidebar: Users nav item | DONE | /admin/users. |
+| 2.44 | Superadmin Users page: global list, sort, group by tenant, orphaned | DONE | admin-users.tsx, collapsible groups. |
+| 2.45 | Administer tenant Users: add user by email | DONE | AdminUsersTab uses email input. |
+| 2.46 | Administer tenant Settings: Owner label + email display | DONE | AdminSettingsTab shows owner_email. |
+| 2.47 | Administer tenant Domains: table with Domain, Site, Status | DONE | AdminDomainsTab table + status badge. |
+| 2.48 | Tenant dashboard: live site/domain counts | DONE | useSites, useDomains for counts. |
+| 2.49 | Tenant sites: tier-filtered template selector on edit | DONE | SiteForm shows template on edit, PUT template_id. |
+| 2.50 | Tenant users: add/edit/delete non-Cognito users | DONE | AddTUserForm, EditTUserForm, tusers list. |
+| 2.51 | Login page: "Sign in to your site" link | DONE | Link to /login/site. |
+| 2.52 | Site login page (/login/site) | DONE | site-login.tsx, username/password/site, JWT storage. |
+| 2.53 | Auth context dual-mode (Cognito + custom JWT) | DONE | getToken(), isSiteUser, clearSiteToken, tenant-admin-sidebar. |
+| 2.54 | Tenant custom roles CRUD UI | DONE | AddRoleForm, EditRoleForm, roles list in tenant-users. |
 
 ### Agent 4 — Self-Serve (Future)
 

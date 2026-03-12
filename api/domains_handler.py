@@ -13,14 +13,13 @@ from urllib.parse import unquote
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token, require_tenant_admin_or_manager
+from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
 from dynamodb_helpers import (
     get_domain_item,
     get_site_item,
     get_tenant_item,
     pk_tenant,
     query_domains_in_tenant,
-    query_tenants_for_user,
     sk_domain,
 )
 from middleware import with_tenant
@@ -38,17 +37,6 @@ def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": "" if empty_body else json.dumps(body),
     }
-
-
-def _user_is_tenant_member(table, sub: str, tenant_slug: str) -> bool:
-    """Check if user is a member of the tenant via GSI byUser."""
-    params = query_tenants_for_user(sub)
-    resp = table.query(**params)
-    for item in resp.get("Items", []):
-        gsi1sk = item.get("gsi1sk", "")
-        if f"TENANT#{tenant_slug}#PROFILE" == gsi1sk:
-            return True
-    return False
 
 
 def _parse_body(event: dict) -> dict | None:
@@ -179,14 +167,6 @@ def domains_handler(event: dict, context: dict) -> dict:
             {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
         )
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
-        )
-
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
         return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
@@ -194,8 +174,13 @@ def domains_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    if not _user_is_tenant_member(table, sub, tenant_slug):
-        return _json_response(403, {"error": "Forbidden. Not a member of this tenant."})
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    auth_result = require_tenant_auth(event, table, tenant_slug, region)
+    if auth_result[0] is not True:
+        _, err_resp = auth_result
+        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
+    _, sub_or_username, role, is_cognito = auth_result
+    sub = sub_or_username if is_cognito else None
 
     # Get tenant to check tier (Pro+ for custom domains)
     tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
@@ -231,9 +216,12 @@ def domains_handler(event: dict, context: dict) -> dict:
 
     # POST/DELETE require admin or manager (Task 1.24)
     if method in ("POST", "DELETE"):
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
+        if is_cognito:
+            ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+            if not ok:
+                return _json_response(403, {"error": err or "Forbidden."})
+        elif not role_is_admin_or_manager(role):
+            return _json_response(403, {"error": "Admin or manager role required for this action."})
 
     if method == "POST" and is_list_or_create:
         body = _parse_body(event) or {}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import { fetchTenant, type TenantMetadata } from "@/lib/api"
 
 export interface UseTenantMetadataResult {
@@ -30,8 +30,7 @@ export function useTenantMetadata(
     setLoading(true)
     setError(null)
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const data = await fetchTenant(tenantSlug, token)
       setTenant(data)
     } catch (e) {

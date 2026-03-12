@@ -2,6 +2,8 @@
 
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { signOut } from "aws-amplify/auth"
+import { clearSiteToken } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
 import {
   LayoutDashboard,
   BarChart3,
@@ -44,14 +46,20 @@ function TenantAdminSidebar() {
   const { impersonateTenant, clearImpersonate, isImpersonating } =
     useImpersonation()
   const { isSuperadmin } = useAdminTenants()
+  const { isSiteUser } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const base = tenantBasePath || `/${tenantSlug}`
 
   const handleSignOut = async () => {
     try {
-      await signOut()
-      navigate("/login")
+      if (isSiteUser) {
+        clearSiteToken()
+        navigate("/login")
+      } else {
+        await signOut()
+        navigate("/login")
+      }
     } catch (error) {
       console.error("Error signing out: ", error)
     }
@@ -118,7 +126,7 @@ function TenantAdminSidebar() {
           </div>
         )}
         <div className="flex flex-col gap-1">
-          {isSuperadmin && (
+          {isSuperadmin && !isSiteUser && (
             <Link
               to="/admin"
               className="flex items-center gap-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
@@ -127,12 +135,14 @@ function TenantAdminSidebar() {
               Platform admin
             </Link>
           )}
-          <Link
-            to="/"
-            className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
-          >
-            ← Back to platform
-          </Link>
+          {!isSiteUser && (
+            <Link
+              to="/"
+              className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
+            >
+              ← Back to platform
+            </Link>
+          )}
           <button
             onClick={handleSignOut}
             className="flex items-center gap-2 mt-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground text-left"

@@ -50,6 +50,51 @@ def gsi2sk_tenant(slug: str) -> str:
     return f"TENANT#{slug}"
 
 
+# GSI3 keys for byEntity (all users across tenants — superadmin)
+ENTITY_USER = "ENTITY#USER"
+
+
+def gsi3pk_entity_user() -> str:
+    return ENTITY_USER
+
+
+def gsi3sk_user(tenant_slug: str, sub: str) -> str:
+    """For Cognito USER# items."""
+    return f"TENANT#{tenant_slug}#USER#{sub}"
+
+
+def gsi3sk_tuser(tenant_slug: str, username: str) -> str:
+    """For non-Cognito TUSER# items."""
+    return f"TENANT#{tenant_slug}#TUSER#{username}"
+
+
+def sk_tuser(username: str) -> str:
+    return f"TUSER#{username}"
+
+
+def sk_role(name: str) -> str:
+    return f"ROLE#{name}"
+
+
+def get_role_item(tenant_slug: str, name: str) -> dict[str, Any]:
+    """GetItem params for custom role in tenant."""
+    return {
+        "pk": pk_tenant(tenant_slug),
+        "sk": sk_role(name),
+    }
+
+
+def query_roles_in_tenant(tenant_slug: str) -> dict[str, Any]:
+    """Query params: list custom roles in tenant."""
+    return {
+        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "ExpressionAttributeValues": {
+            ":pk": pk_tenant(tenant_slug),
+            ":sk_prefix": "ROLE#",
+        },
+    }
+
+
 def get_tenant_item(tenant_slug: str) -> dict[str, Any]:
     """GetItem params for tenant metadata."""
     return {
@@ -71,6 +116,25 @@ def get_site_item(tenant_slug: str, site_id: str) -> dict[str, Any]:
     return {
         "pk": pk_tenant(tenant_slug),
         "sk": sk_site(site_id),
+    }
+
+
+def get_tuser_item(tenant_slug: str, username: str) -> dict[str, Any]:
+    """GetItem params for non-Cognito tenant user."""
+    return {
+        "pk": pk_tenant(tenant_slug),
+        "sk": sk_tuser(username),
+    }
+
+
+def query_tusers_in_tenant(tenant_slug: str) -> dict[str, Any]:
+    """Query params: list non-Cognito users in tenant."""
+    return {
+        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "ExpressionAttributeValues": {
+            ":pk": pk_tenant(tenant_slug),
+            ":sk_prefix": "TUSER#",
+        },
     }
 
 
@@ -158,5 +222,16 @@ def query_templates() -> dict[str, Any]:
         "ExpressionAttributeValues": {
             ":pk": pk_tenant(PLATFORM_TENANT),
             ":sk_prefix": "TEMPLATE#",
+        },
+    }
+
+
+def query_all_users_by_entity() -> dict[str, Any]:
+    """Query GSI byEntity: list all users across tenants (superadmin)."""
+    return {
+        "IndexName": "byEntity",
+        "KeyConditionExpression": "gsi3pk = :pk",
+        "ExpressionAttributeValues": {
+            ":pk": gsi3pk_entity_user(),
         },
     }

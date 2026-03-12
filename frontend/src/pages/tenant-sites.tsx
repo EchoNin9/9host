@@ -25,7 +25,7 @@ import {
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import { fetchTemplates, type Site, type Template } from "@/lib/api"
 
 function SiteForm({
@@ -34,7 +34,7 @@ function SiteForm({
   onClose,
 }: {
   site: Site | null
-  onSubmit: (body: { name: string; slug?: string; status?: string; template_id?: string }) => Promise<Site | null>
+  onSubmit: (body: { name: string; slug?: string; status?: string; template_id?: string | null }) => Promise<Site | null>
   onClose: () => void
 }) {
   const [name, setName] = useState(site?.name ?? "")
@@ -46,12 +46,10 @@ function SiteForm({
   const [templates, setTemplates] = useState<Template[]>([])
 
   useEffect(() => {
-    if (site) return
     async function loadTemplates() {
       if (!tenantSlug) return
       try {
-        const session = await fetchAuthSession()
-        const token = session.tokens?.accessToken?.toString() ?? null
+        const token = await getToken()
         const list = await fetchTemplates(tenantSlug, token)
         setTemplates(list)
       } catch (e) {
@@ -59,19 +57,20 @@ function SiteForm({
       }
     }
     void loadTemplates()
-  }, [tenantSlug, site])
+  }, [tenantSlug])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
     setSaving(true)
     try {
-      const body: { name: string; slug?: string; status?: string; template_id?: string } = {
+      const body: { name: string; slug?: string; status?: string; template_id?: string | null } = {
         name: name.trim(),
         status,
       }
       if (slug.trim()) body.slug = slug.trim().toLowerCase()
-      if (!site && templateId) body.template_id = templateId
+      if (site) body.template_id = templateId || null
+      else if (templateId) body.template_id = templateId
       const result = await onSubmit(body)
       if (result) onClose()
     } finally {
@@ -109,26 +108,27 @@ function SiteForm({
           Lowercase letters, numbers, hyphens only
         </p>
       </div>
-      {!site && (
-        <div>
-          <label htmlFor="site-template" className="text-sm font-medium">
-            Template (optional)
-          </label>
-          <select
-            id="site-template"
-            value={templateId}
-            onChange={(e) => setTemplateId(e.target.value)}
-            className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-          >
-            <option value="">No template (Blank site)</option>
-            {templates.map((t) => (
-              <option key={t.slug} value={t.slug}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+      <div>
+        <label htmlFor="site-template" className="text-sm font-medium">
+          Template (optional)
+        </label>
+        <select
+          id="site-template"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+          className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+        >
+          <option value="">No template (Blank site)</option>
+          {templates.map((t) => (
+            <option key={t.slug} value={t.slug}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Templates are filtered by your tier. Pro+ sees more options.
+        </p>
+      </div>
       {site && (
         <div>
           <label htmlFor="site-status" className="text-sm font-medium">
@@ -183,7 +183,7 @@ function TenantSites() {
     name: string
     slug?: string
     status?: string
-    template_id?: string
+    template_id?: string | null
   }) => {
     if (editingSite) {
       return update(editingSite.id, body)
