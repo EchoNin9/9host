@@ -103,6 +103,7 @@
 | 2.38 | Superadmin: manage tenant users UI (admin-scoped) | DONE | Add/remove/role-change users via admin API. Permissions sheet. |
 | 2.39 | Superadmin: manage tenant settings UI (admin-scoped) | DONE | Edit tier, name, owner_sub, module_overrides via PUT /api/admin/tenants/{slug}/settings. |
 | 2.40 | Superadmin: templates management UI enhancements | DONE | Extends 2.21. Validation (slug format, required fields, API errors), preview (components summary in edit), ordering (sort by name/slug/tier), delete confirmation AlertDialog. |
+| 2.41 | **FIX: Templates/Administer pages redirect to /admin on load** | DONE | AdminTemplatesPage and AdministerTenantPage use useAdminTenants() but redirected on !isSuperadmin before loading completed. Initial state loading=true, isSuperadmin=false → immediate redirect. Now wait for superadminLoading before redirect. |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -114,7 +115,7 @@
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
-| 3.1 | Integrate Stripe for tier subscriptions (Free, Pro, Business) | TODO | |
+| 3.1 | Integrate Stripe for tier subscriptions (Free, Pro, Business) | DONE | Checkout, portal, webhook. docs/STRIPE.md. |
 | 3.2 | Map Stripe subscription status → FeatureFlag tier | TODO | |
 | 3.3 | Implement upgrade/downgrade flows and webhooks | TODO | |
 

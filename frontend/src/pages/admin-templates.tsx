@@ -142,7 +142,7 @@ function EditTemplateForm({
 
 function AdminTemplatesPage() {
   const { isAuthenticated, loading: authLoading } = useAuth()
-  const { isSuperadmin } = useAdminTenants()
+  const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
   const [templates, setTemplates] = useState<AdminTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [editTemplate, setEditTemplate] = useState<AdminTemplate | null>(null)
@@ -176,7 +176,7 @@ function AdminTemplatesPage() {
     return copy
   }, [templates, sortBy])
 
-  if (authLoading) {
+  if (authLoading || superadminLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <span className="text-muted-foreground">Loading…</span>
@@ -185,9 +185,7 @@ function AdminTemplatesPage() {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (!isSuperadmin) {
-    return <Navigate to="/" replace />
-  }
+  if (!isSuperadmin) return <Navigate to="/" replace />
 
   const handleCreate = async () => {
     setCreateError(null)

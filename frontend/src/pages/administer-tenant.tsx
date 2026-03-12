@@ -63,7 +63,7 @@ type TabId = "domains" | "sites" | "users" | "settings"
 function AdministerTenantPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
-  const { isSuperadmin } = useAdminTenants()
+  const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
   const { setImpersonate } = useImpersonation()
   const [tenant, setTenant] = useState<AdminTenantDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -100,6 +100,7 @@ function AdministerTenantPage() {
     }
   }
 
+  if (superadminLoading) return <div className="flex min-h-screen items-center justify-center">Loading…</div>
   if (!isSuperadmin) return <Navigate to="/" replace />
   if (!slug) return <Navigate to="/admin/tenants" replace />
   if (loading) return <div className="flex min-h-screen items-center justify-center">Loading…</div>
