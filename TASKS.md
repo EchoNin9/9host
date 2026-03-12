@@ -102,7 +102,7 @@
 | 2.37 | Superadmin: manage tenant sites UI (admin-scoped) | TODO | Depends on 1.38. Full CRUD for sites via admin API in administer-tenant view. |
 | 2.38 | Superadmin: manage tenant users UI (admin-scoped) | TODO | Depends on 1.39. Add/remove/role-change users via admin API. |
 | 2.39 | Superadmin: manage tenant settings UI (admin-scoped) | TODO | Depends on 1.40. Edit all tenant settings via admin API. |
-| 2.40 | Superadmin: templates management UI enhancements | TODO | Extends 2.21. Improve create/modify/delete templates UX (preview, validation, ordering). |
+| 2.40 | Superadmin: templates management UI enhancements | DONE | Extends 2.21. Validation (slug format, required fields, API errors), preview (components summary in edit), ordering (sort by name/slug/tier), delete confirmation AlertDialog. |
 
 ### Agent 4 — Self-Serve (Future)
 

@@ -758,12 +758,16 @@ export async function fetchAdminTemplate(
   }
 }
 
+export type CreateAdminTemplateResult =
+  | { success: true; template: AdminTemplate }
+  | { success: false; error: string }
+
 export async function createAdminTemplate(
   accessToken: string | null,
   body: { slug: string; name: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
-): Promise<AdminTemplate | null> {
+): Promise<CreateAdminTemplateResult> {
   const base = getApiUrl()
-  if (!base || !accessToken) return null
+  if (!base || !accessToken) return { success: false, error: "Not configured" }
 
   try {
     const res = await fetch(`${base}/api/admin/templates`, {
@@ -771,10 +775,14 @@ export async function createAdminTemplate(
       headers: adminHeaders(accessToken),
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    return (await res.json()) as AdminTemplate
-  } catch {
-    return null
+    const data = (await res.json()) as AdminTemplate | { error?: string }
+    if (!res.ok) {
+      const msg = (data as { error?: string }).error ?? `Request failed (${res.status})`
+      return { success: false, error: msg }
+    }
+    return { success: true, template: data as AdminTemplate }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed to create template" }
   }
 }
 

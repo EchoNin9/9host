@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { Navigate } from "react-router-dom"
 import { fetchAuthSession } from "aws-amplify/auth"
 import {
@@ -16,6 +16,15 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   fetchAdminTemplates,
   createAdminTemplate,
   updateAdminTemplate,
@@ -25,6 +34,42 @@ import {
 import { useAuth } from "@/hooks/use-auth"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { Pencil, Trash2 } from "lucide-react"
+
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/
+const TIERS = ["FREE", "PRO", "BUSINESS"] as const
+
+type SortBy = "name" | "slug" | "tier"
+
+function slugError(slug: string): string | null {
+  const s = slug.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+  if (!s) return "Slug is required"
+  if (s.length > 60) return "Slug must be at most 60 characters"
+  if (!SLUG_PATTERN.test(s)) return "Slug must be lowercase letters, numbers, hyphens (e.g. my-template)"
+  return null
+}
+
+function TemplatePreview({ template }: { template: AdminTemplate }) {
+  const comp = template.components ?? {}
+  const pages = (comp.pages as string[] | undefined) ?? []
+  const sections = (comp.sections as Record<string, string[]> | undefined) ?? {}
+  const sectionCount = Object.values(sections).flat().length
+  return (
+    <div className="rounded-md border bg-muted/50 p-3 text-sm">
+      <p className="font-medium text-muted-foreground">Preview</p>
+      <p className="mt-1">
+        {pages.length} page(s): {pages.length ? pages.join(", ") : "—"}
+      </p>
+      <p className="mt-1 text-muted-foreground">
+        {sectionCount} section(s) total
+      </p>
+      {Object.keys(comp).length > 0 && (
+        <pre className="mt-2 max-h-32 overflow-auto rounded bg-background p-2 text-xs">
+          {JSON.stringify(comp, null, 2)}
+        </pre>
+      )}
+    </div>
+  )
+}
 
 function EditTemplateForm({
   template,
@@ -40,6 +85,7 @@ function EditTemplateForm({
   const [name, setName] = useState(template.name)
   const [description, setDescription] = useState(template.description)
   const [tierRequired, setTierRequired] = useState(template.tier_required)
+  const [error, setError] = useState<string | null>(null)
   return (
     <div className="mt-4 space-y-4">
       <div>
@@ -65,20 +111,27 @@ function EditTemplateForm({
           onChange={(e) => setTierRequired(e.target.value)}
           className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
         >
-          <option value="FREE">Free</option>
-          <option value="PRO">Pro</option>
-          <option value="BUSINESS">Business</option>
+          {TIERS.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
         </select>
       </div>
+      <TemplatePreview template={{ ...template, name, description, tier_required: tierRequired }} />
+      {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button
-          disabled={saving}
-          onClick={() =>
+          disabled={saving || !name.trim()}
+          onClick={() => {
+            if (!name.trim()) {
+              setError("Name is required")
+              return
+            }
+            setError(null)
             onSave({ name, description, tier_required: tierRequired })
-          }
+          }}
         >
           {saving ? "Saving…" : "Save"}
         </Button>
@@ -98,7 +151,11 @@ function AdminTemplatesPage() {
   const [createName, setCreateName] = useState("")
   const [createDesc, setCreateDesc] = useState("")
   const [createTier, setCreateTier] = useState("FREE")
+  const [createError, setCreateError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleteSlug, setDeleteSlug] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [sortBy, setSortBy] = useState<SortBy>("name")
 
   const load = useCallback(async () => {
     const session = await fetchAuthSession()
@@ -110,6 +167,14 @@ function AdminTemplatesPage() {
   useEffect(() => {
     void load().finally(() => setLoading(false))
   }, [load])
+
+  const sortedTemplates = useMemo(() => {
+    const copy = [...templates]
+    if (sortBy === "name") copy.sort((a, b) => (a.name || a.slug).localeCompare(b.name || b.slug))
+    else if (sortBy === "slug") copy.sort((a, b) => a.slug.localeCompare(b.slug))
+    else if (sortBy === "tier") copy.sort((a, b) => a.tier_required.localeCompare(b.tier_required))
+    return copy
+  }, [templates, sortBy])
 
   if (authLoading) {
     return (
@@ -125,25 +190,37 @@ function AdminTemplatesPage() {
   }
 
   const handleCreate = async () => {
-    if (!createSlug.trim() || !createName.trim()) return
+    setCreateError(null)
+    const slugNorm = createSlug.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+    const err = slugError(slugNorm || createSlug)
+    if (err) {
+      setCreateError(err)
+      return
+    }
+    if (!createName.trim()) {
+      setCreateError("Name is required")
+      return
+    }
     setSaving(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
-    const t = await createAdminTemplate(token, {
-      slug: createSlug.trim().toLowerCase().replace(/\s+/g, "-"),
+    const result = await createAdminTemplate(token, {
+      slug: slugNorm,
       name: createName.trim(),
       description: createDesc.trim(),
       tier_required: createTier,
       components: {},
     })
     setSaving(false)
-    if (t) {
+    if (result.success) {
       setCreateOpen(false)
       setCreateSlug("")
       setCreateName("")
       setCreateDesc("")
       setCreateTier("FREE")
       void load()
+    } else {
+      setCreateError(result.error)
     }
   }
 
@@ -164,11 +241,16 @@ function AdminTemplatesPage() {
     }
   }
 
-  const handleDelete = async (slug: string) => {
-    if (!confirm(`Delete template "${slug}"?`)) return
+  const handleDeleteClick = (slug: string) => setDeleteSlug(slug)
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteSlug) return
+    setDeleting(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
-    const ok = await deleteAdminTemplate(token, slug)
+    const ok = await deleteAdminTemplate(token, deleteSlug)
+    setDeleting(false)
+    setDeleteSlug(null)
     if (ok) void load()
   }
 
@@ -191,37 +273,51 @@ function AdminTemplatesPage() {
           ) : templates.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground">No templates yet.</div>
           ) : (
-            <div className="divide-y">
-              {templates.map((t) => (
-                <div
-                  key={t.slug}
-                  className="flex items-center justify-between p-4"
+            <>
+              <div className="flex items-center justify-between border-b px-4 py-2">
+                <span className="text-sm text-muted-foreground">Sort by</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
+                  className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
                 >
-                  <div>
-                    <span className="font-medium">{t.name}</span>
-                    <span className="ml-2 text-sm text-muted-foreground">
-                      ({t.slug}) · {t.tier_required}
-                    </span>
+                  <option value="name">Name</option>
+                  <option value="slug">Slug</option>
+                  <option value="tier">Tier</option>
+                </select>
+              </div>
+              <div className="divide-y">
+                {sortedTemplates.map((t) => (
+                  <div
+                    key={t.slug}
+                    className="flex items-center justify-between p-4"
+                  >
+                    <div>
+                      <span className="font-medium">{t.name}</span>
+                      <span className="ml-2 text-sm text-muted-foreground">
+                        ({t.slug}) · {t.tier_required}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditTemplate(t)}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteClick(t.slug)}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditTemplate(t)}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(t.slug)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -236,10 +332,18 @@ function AdminTemplatesPage() {
               <label className="text-sm font-medium">Slug</label>
               <Input
                 value={createSlug}
-                onChange={(e) => setCreateSlug(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+                  setCreateSlug(v.slice(0, 60))
+                  setCreateError(null)
+                }}
                 placeholder="my-template"
+                maxLength={60}
                 className="mt-1"
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Lowercase letters, numbers, hyphens. Max 60 chars.
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium">Name</label>
@@ -266,12 +370,16 @@ function AdminTemplatesPage() {
                 onChange={(e) => setCreateTier(e.target.value)}
                 className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
               >
-                <option value="FREE">Free</option>
-                <option value="PRO">Pro</option>
-                <option value="BUSINESS">Business</option>
+                {TIERS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </select>
             </div>
-            <Button onClick={handleCreate} disabled={saving || !createSlug.trim() || !createName.trim()}>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+            <Button
+              onClick={handleCreate}
+              disabled={saving || !createSlug.trim() || !createName.trim()}
+            >
               {saving ? "Creating…" : "Create"}
             </Button>
           </div>
@@ -296,6 +404,29 @@ function AdminTemplatesPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <AlertDialog open={!!deleteSlug} onOpenChange={(o) => !o && !deleting && setDeleteSlug(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete template &quot;{deleteSlug}&quot;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the template. Sites already created from this template will keep their content, but new sites will no longer be able to use it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                await handleDeleteConfirm()
+              }}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
