@@ -65,6 +65,7 @@
 | 1.48 | Superadmin: GET /api/admin/users + GET /api/admin/stats | DONE | api/admin_users_handler.py. |
 | 1.49 | Admin add-user by email (POST accepts email) | DONE | api/admin_tenant_resources.py. |
 | 1.50 | Return owner_email in GET /api/tenant and admin tenant APIs | DONE | handler_example, admin_handler. |
+| 1.51 | **FIX: CORS after sign-in — commit billing_handler, stripe_helpers; add PATCH to API Gateway** | DONE | Lambda ImportError caused 502 → CORS preflight failed. |
 
 ### Agent 2 — Frontend / UI
 
