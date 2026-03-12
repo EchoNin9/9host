@@ -19,6 +19,7 @@ from admin_handler import (
 )
 from admin_tenant_resources import (
     admin_domains_handler,
+    admin_roles_handler,
     admin_sites_handler,
     admin_users_handler,
     delete_tenant_handler,
@@ -192,6 +193,8 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
             return _with_cors(admin_sites_handler(event, context, slug_lower, "/".join(parts[1:])))
         elif parts[1] == "users":
             return _with_cors(admin_users_handler(event, context, slug_lower, "/".join(parts[1:])))
+        elif parts[1] == "roles" and len(parts) == 2 and method == "GET":
+            return _with_cors(admin_roles_handler(event, context, slug_lower))
         elif parts[1] == "settings" and len(parts) == 2:
             if method == "GET":
                 return _with_cors(get_tenant_by_slug_handler(event, context, slug_lower))

@@ -17,29 +17,37 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
+import bcrypt
 import boto3
 
 from auth_helpers import get_sub_from_access_token, is_superadmin
 from dynamodb_helpers import (
     get_domain_item,
+    get_role_item,
     get_site_item,
     get_tenant_item,
+    get_tuser_item,
     get_user_permissions_item,
     get_user_profile_item,
     gsi1pk_user,
     gsi1sk_tenant_profile,
     gsi3pk_entity_user,
+    gsi3sk_tuser,
     gsi3sk_user,
     get_template_item,
     pk_tenant,
     query_domains_in_tenant,
+    query_roles_in_tenant,
     query_sites_in_tenant,
     query_users_in_tenant,
     sk_domain,
     sk_site,
+    sk_tuser,
     sk_user_permissions,
     sk_user_profile,
 )
+
+USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
 
 
 def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
@@ -583,6 +591,58 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
 
     if method == "POST" and not target_sub:
         body = _parse_body(event) or {}
+        user_type = (body.get("type") or "cognito").lower()
+
+        if user_type == "tuser":
+            # Task 2.70: Create non-Cognito (TUSER) user
+            username_val = (body.get("username") or "").strip()
+            password = body.get("password") or ""
+            display_name = (body.get("display_name") or "").strip()
+            role_val = (body.get("role") or "member").lower()
+
+            if not username_val:
+                return _json_response(400, {"error": "username is required for DB user."})
+            if not password or len(password) < 8:
+                return _json_response(400, {"error": "password is required and must be at least 8 characters."})
+            if not USERNAME_PATTERN.match(username_val):
+                return _json_response(400, {"error": "username must be alphanumeric, dots, underscores, hyphens."})
+            if role_val not in ("manager", "member"):
+                role_key = get_role_item(tenant_slug, role_val)
+                if not table.get_item(Key=role_key).get("Item"):
+                    return _json_response(400, {"error": "role must be manager, member, or an existing custom role."})
+
+            key = get_tuser_item(tenant_slug, username_val)
+            if table.get_item(Key=key).get("Item"):
+                return _json_response(409, {"error": f"User {username_val} already exists in this tenant."})
+
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            now = datetime.now(timezone.utc).isoformat()
+            item = {
+                "pk": pk_tenant(tenant_slug),
+                "sk": sk_tuser(username_val),
+                "username": username_val,
+                "password_hash": password_hash,
+                "display_name": display_name,
+                "role": role_val,
+                "created_at": now,
+                "updated_at": now,
+                "gsi3pk": gsi3pk_entity_user(),
+                "gsi3sk": gsi3sk_tuser(tenant_slug, username_val),
+            }
+            table.put_item(Item=item)
+            return _json_response(201, {
+                "user": {
+                    "sub": username_val,
+                    "email": "",
+                    "name": display_name or username_val,
+                    "role": role_val,
+                    "created_at": now,
+                    "updated_at": now,
+                    "type": "tuser",
+                },
+            })
+
+        # Cognito user
         sub = (body.get("sub") or "").strip()
         role = (body.get("role") or "member").lower()
         email = (body.get("email") or "").strip()
@@ -680,6 +740,41 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         return _json_response(204, {}, empty_body=True)
 
     return _json_response(405, {"error": "Method not allowed."})
+
+
+# --- Task 2.70: GET /api/admin/tenants/{slug}/roles (superadmin list roles) ---
+
+ADMIN_ROLE_MODULE_KEYS = ("sites", "domains", "analytics", "settings", "users")
+
+
+def admin_roles_handler(event: dict, context: dict, tenant_slug: str) -> dict:
+    """GET /api/admin/tenants/{slug}/roles — list custom roles (superadmin)."""
+    _, err = _require_superadmin(event)
+    if err:
+        return err
+
+    table, err = _get_table()
+    if err:
+        return err
+
+    resp = table.get_item(Key=get_tenant_item(tenant_slug))
+    if not resp.get("Item"):
+        return _json_response(404, {"error": f"Tenant not found: {tenant_slug}"})
+
+    params = query_roles_in_tenant(tenant_slug)
+    resp = table.query(**params)
+    roles = []
+    for it in resp.get("Items", []):
+        sk = it.get("sk", "")
+        name = sk.replace("ROLE#", "") if sk.startswith("ROLE#") else ""
+        perms = it.get("permissions", {})
+        roles.append({
+            "name": name or it.get("name", ""),
+            "permissions": {k: bool(perms.get(k, False)) for k in ADMIN_ROLE_MODULE_KEYS},
+            "created_at": it.get("created_at", ""),
+            "updated_at": it.get("updated_at", ""),
+        })
+    return _json_response(200, {"roles": roles})
 
 
 # --- Task 1.40: PUT /api/admin/tenants/{slug}/settings ---

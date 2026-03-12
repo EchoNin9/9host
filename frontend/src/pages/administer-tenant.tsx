@@ -41,6 +41,7 @@ import {
   updateAdminSite,
   deleteAdminSite,
   fetchAdminTenantUsers,
+  fetchAdminTenantRoles,
   createAdminUser,
   updateAdminUser,
   deleteAdminUser,
@@ -51,6 +52,7 @@ import {
   type Domain,
   type Site,
   type TenantUser,
+  type TenantRole,
   type ModulePermissions,
   MODULE_KEYS,
 } from "@/lib/api"
@@ -477,11 +479,16 @@ function AdminSitesTab({ tenantSlug }: { tenantSlug: string }) {
 
 function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   const [users, setUsers] = useState<TenantUser[]>([])
+  const [roles, setRoles] = useState<TenantRole[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [permUser, setPermUser] = useState<TenantUser | null>(null)
   const [editUser, setEditUser] = useState<TenantUser | null>(null)
+  const [addMode, setAddMode] = useState<"cognito" | "tuser">("cognito")
   const [addEmail, setAddEmail] = useState("")
+  const [addUsername, setAddUsername] = useState("")
+  const [addPassword, setAddPassword] = useState("")
+  const [addDisplayName, setAddDisplayName] = useState("")
   const [addRole, setAddRole] = useState("member")
   const [saving, setSaving] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
@@ -489,8 +496,12 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   const load = useCallback(async () => {
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
-    const list = await fetchAdminTenantUsers(token, tenantSlug)
+    const [list, rolesList] = await Promise.all([
+      fetchAdminTenantUsers(token, tenantSlug),
+      fetchAdminTenantRoles(token, tenantSlug),
+    ])
     setUsers(list)
+    setRoles(rolesList)
   }, [tenantSlug])
 
   useEffect(() => {
@@ -498,21 +509,53 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   }, [load])
 
   const handleAdd = async () => {
-    const email = addEmail.trim()
-    if (!email) return
     setAddError(null)
     setSaving(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await createAdminUser(token, tenantSlug, { email, role: addRole })
-    setSaving(false)
-    if (result.success) {
-      setSheetOpen(false)
-      setAddEmail("")
-      setAddRole("member")
-      void load()
+
+    if (addMode === "tuser") {
+      const username = addUsername.trim()
+      if (!username || !addPassword || addPassword.length < 8) {
+        setAddError("Username and password (min 8 chars) are required.")
+        setSaving(false)
+        return
+      }
+      const result = await createAdminUser(token, tenantSlug, {
+        type: "tuser",
+        username,
+        password: addPassword,
+        display_name: addDisplayName.trim() || undefined,
+        role: addRole,
+      })
+      setSaving(false)
+      if (result.success) {
+        setSheetOpen(false)
+        setAddUsername("")
+        setAddPassword("")
+        setAddDisplayName("")
+        setAddRole("member")
+        void load()
+      } else {
+        setAddError(result.error)
+      }
     } else {
-      setAddError(result.error)
+      const email = addEmail.trim()
+      if (!email) {
+        setAddError("Email is required.")
+        setSaving(false)
+        return
+      }
+      const result = await createAdminUser(token, tenantSlug, { email, role: addRole })
+      setSaving(false)
+      if (result.success) {
+        setSheetOpen(false)
+        setAddEmail("")
+        setAddRole("member")
+        void load()
+      } else {
+        setAddError(result.error)
+      }
     }
   }
 
@@ -574,35 +617,123 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
           </SheetHeader>
           <div className="mt-4 space-y-4">
             <div>
-              <label className="text-sm font-medium">Email</label>
-              <Input
-                type="email"
-                value={addEmail}
-                onChange={(e) => setAddEmail(e.target.value)}
-                placeholder="user@example.com"
-                className="mt-1"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Cognito user email. User must have an account.
-              </p>
+              <label className="text-sm font-medium">User type</label>
+              <div className="mt-2 flex gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="addMode"
+                    checked={addMode === "cognito"}
+                    onChange={() => setAddMode("cognito")}
+                    className="h-4 w-4"
+                  />
+                  Cognito user
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="addMode"
+                    checked={addMode === "tuser"}
+                    onChange={() => setAddMode("tuser")}
+                    className="h-4 w-4"
+                  />
+                  DB user (TUSER)
+                </label>
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium">Role</label>
-              <select
-                value={addRole}
-                onChange={(e) => setAddRole(e.target.value)}
-                className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-              >
-                <option value="admin">admin</option>
-                <option value="manager">manager</option>
-                <option value="editor">editor</option>
-                <option value="member">member</option>
-              </select>
-            </div>
+
+            {addMode === "cognito" ? (
+              <>
+                <div>
+                  <label className="text-sm font-medium">Email</label>
+                  <Input
+                    type="email"
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Cognito user email. User must have an account.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Role</label>
+                  <select
+                    value={addRole}
+                    onChange={(e) => setAddRole(e.target.value)}
+                    className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
+                  >
+                    <option value="admin">admin</option>
+                    <option value="manager">manager</option>
+                    <option value="editor">editor</option>
+                    <option value="member">member</option>
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm font-medium">Username</label>
+                  <Input
+                    value={addUsername}
+                    onChange={(e) => setAddUsername(e.target.value)}
+                    placeholder="jdoe"
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Alphanumeric, dots, underscores, hyphens.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Password</label>
+                  <Input
+                    type="password"
+                    value={addPassword}
+                    onChange={(e) => setAddPassword(e.target.value)}
+                    placeholder="min 8 characters"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Display name (optional)</label>
+                  <Input
+                    value={addDisplayName}
+                    onChange={(e) => setAddDisplayName(e.target.value)}
+                    placeholder="Jane Doe"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Role</label>
+                  <select
+                    value={addRole}
+                    onChange={(e) => setAddRole(e.target.value)}
+                    className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
+                  >
+                    <option value="member">member</option>
+                    <option value="manager">manager</option>
+                    {roles.map((r) => (
+                      <option key={r.name} value={r.name}>{r.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    manager, member, or custom role.
+                  </p>
+                </div>
+              </>
+            )}
+
             {addError && (
               <p className="text-sm text-destructive">{addError}</p>
             )}
-            <Button onClick={handleAdd} disabled={saving || !addEmail.trim()}>
+            <Button
+              onClick={handleAdd}
+              disabled={
+                saving ||
+                (addMode === "cognito" ? !addEmail.trim() : !addUsername.trim() || addPassword.length < 8)
+              }
+            >
               {saving ? "Adding…" : "Add"}
             </Button>
           </div>
@@ -611,6 +742,7 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
       {editUser && (
         <EditRoleSheet
           user={editUser}
+          roles={roles}
           onClose={() => setEditUser(null)}
           onSave={async (role) => {
             await handleRoleChange(editUser.sub, role)
@@ -631,20 +763,23 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
 
 function EditRoleSheet({
   user,
+  roles,
   onClose,
   onSave,
 }: {
   user: TenantUser
+  roles: TenantRole[]
   onClose: () => void
   onSave: (role: string) => Promise<void>
 }) {
   const [role, setRole] = useState(user.role)
   const [saving, setSaving] = useState(false)
+  const isTuser = user.type === "tuser"
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Edit role: {user.type === "tuser" ? user.sub : (user.email || user.name || user.sub)}</SheetTitle>
+          <SheetTitle>Edit role: {isTuser ? user.sub : (user.email || user.name || user.sub)}</SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-4">
           <div>
@@ -654,10 +789,22 @@ function EditRoleSheet({
               onChange={(e) => setRole(e.target.value)}
               className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
             >
-              <option value="admin">admin</option>
-              <option value="manager">manager</option>
-              <option value="editor">editor</option>
-              <option value="member">member</option>
+              {isTuser ? (
+                <>
+                  <option value="member">member</option>
+                  <option value="manager">manager</option>
+                  {roles.map((r) => (
+                    <option key={r.name} value={r.name}>{r.name}</option>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <option value="admin">admin</option>
+                  <option value="manager">manager</option>
+                  <option value="editor">editor</option>
+                  <option value="member">member</option>
+                </>
+              )}
             </select>
           </div>
           <Button
@@ -752,6 +899,8 @@ function AdminSettingsTab({
 }) {
   const [name, setName] = useState(tenant.name)
   const [tier, setTier] = useState(tenant.tier)
+  const [ownerSub, setOwnerSub] = useState<string>(tenant.owner_sub ?? "")
+  const [cognitoUsers, setCognitoUsers] = useState<{ sub: string; email: string; name: string }[]>([])
   const [moduleOverrides, setModuleOverrides] = useState<Record<string, boolean>>(
     tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false }
   )
@@ -761,8 +910,24 @@ function AdminSettingsTab({
   useEffect(() => {
     setName(tenant.name)
     setTier(tenant.tier)
+    setOwnerSub(tenant.owner_sub ?? "")
     setModuleOverrides(tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false })
-  }, [tenant.slug, tenant.name, tenant.tier, tenant.module_overrides])
+  }, [tenant.slug, tenant.name, tenant.tier, tenant.owner_sub, tenant.module_overrides])
+
+  useEffect(() => {
+    async function loadUsers() {
+      const session = await fetchAuthSession()
+      const token = session.tokens?.accessToken?.toString() ?? null
+      const list = await fetchAdminTenantUsers(token, tenant.slug)
+      const cognito = (list ?? []).filter((u) => u.type !== "tuser").map((u) => ({
+        sub: u.sub,
+        email: u.email ?? "",
+        name: u.name ?? u.email ?? u.sub,
+      }))
+      setCognitoUsers(cognito)
+    }
+    void loadUsers()
+  }, [tenant.slug])
 
   const handleSave = async () => {
     setSaveError(null)
@@ -773,6 +938,7 @@ function AdminSettingsTab({
       name,
       tier,
       module_overrides: moduleOverrides,
+      owner_sub: ownerSub || undefined,
     })
     setSaving(false)
     if (result) {
@@ -807,17 +973,21 @@ function AdminSettingsTab({
         </div>
         <div>
           <label className="text-sm font-medium">Owner</label>
-          <p className="text-xs text-muted-foreground mt-1 space-y-0.5">
-            {tenant.owner_email ? (
-              <span className="block">{tenant.owner_email}</span>
-            ) : null}
-            {tenant.owner_sub ? (
-              <span className="block text-muted-foreground">Cognito ID: {tenant.owner_sub}</span>
-            ) : null}
-            {!tenant.owner_email && !tenant.owner_sub ? (
-              <span className="text-muted-foreground">—</span>
-            ) : null}
+          <p className="text-xs text-muted-foreground mt-1 mb-2">
+            Cognito users only. DB users (TUSER) cannot be owner.
           </p>
+          <select
+            value={ownerSub}
+            onChange={(e) => setOwnerSub(e.target.value)}
+            className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
+          >
+            <option value="">— No owner —</option>
+            {cognitoUsers.map((u) => (
+              <option key={u.sub} value={u.sub}>
+                {u.email || u.name || u.sub}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="text-sm font-medium">Module overrides</label>

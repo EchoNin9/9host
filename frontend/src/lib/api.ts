@@ -1225,10 +1225,13 @@ export type CreateAdminUserResult =
   | { success: true; user: TenantUser }
   | { success: false; error: string }
 
+/** Create Cognito user (email/role) or TUSER (type: "tuser", username, password, display_name, role). */
 export async function createAdminUser(
   accessToken: string | null,
   tenantSlug: string,
-  body: { sub?: string; email?: string; role?: string; name?: string }
+  body:
+    | { sub?: string; email?: string; role?: string; name?: string }
+    | { type: "tuser"; username: string; password: string; display_name?: string; role: string }
 ): Promise<CreateAdminUserResult> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug) {
@@ -1247,6 +1250,25 @@ export async function createAdminUser(
     return data.user ? { success: true, user: data.user } : { success: false, error: "No user returned" }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Failed to add user" }
+  }
+}
+
+/** Fetch custom roles for tenant (superadmin). GET /api/admin/tenants/{slug}/roles */
+export async function fetchAdminTenantRoles(
+  accessToken: string | null,
+  tenantSlug: string
+): Promise<TenantRole[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/roles`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { roles: TenantRole[] }
+    return data.roles ?? []
+  } catch {
+    return []
   }
 }
 
