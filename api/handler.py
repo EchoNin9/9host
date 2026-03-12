@@ -72,6 +72,15 @@ def _json_response(status: int, body: dict, headers: dict | None = None) -> dict
     }
 
 
+def _error_500(message: str = "Internal server error") -> dict:
+    """Return 500 with CORS headers (Task 1.52: prevent 502 on unhandled exceptions)."""
+    return {
+        "statusCode": 500,
+        "headers": {**CORS_HEADERS, "Content-Type": "application/json"},
+        "body": json.dumps({"error": message}),
+    }
+
+
 def lambda_handler(event: dict, context: dict) -> dict:
     """
     API Gateway HTTP API (v2) proxy integration entry point.
@@ -85,6 +94,13 @@ def lambda_handler(event: dict, context: dict) -> dict:
       GET /api/admin/tenants/{slug} — get any tenant (superadmin)
       $default — fallback to tenant handler for now
     """
+    try:
+        return _lambda_handler_impl(event, context)
+    except Exception as e:
+        return _error_500(str(e))
+
+
+def _lambda_handler_impl(event: dict, context: dict) -> dict:
     path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
     method = (event.get("requestContext", {}).get("http", {}).get("method") or
               event.get("httpMethod") or "GET")
@@ -177,6 +193,8 @@ def lambda_handler(event: dict, context: dict) -> dict:
         elif parts[1] == "users":
             return _with_cors(admin_users_handler(event, context, slug_lower, "/".join(parts[1:])))
         elif parts[1] == "settings" and len(parts) == 2:
+            if method == "GET":
+                return _with_cors(get_tenant_by_slug_handler(event, context, slug_lower))
             if method == "PUT":
                 return _with_cors(put_tenant_settings_handler(event, context, slug_lower))
         elif len(parts) >= 2:

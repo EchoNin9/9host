@@ -66,6 +66,7 @@
 | 1.49 | Admin add-user by email (POST accepts email) | DONE | api/admin_tenant_resources.py. |
 | 1.50 | Return owner_email in GET /api/tenant and admin tenant APIs | DONE | handler_example, admin_handler. |
 | 1.51 | **FIX: CORS after sign-in — commit billing_handler, stripe_helpers; add PATCH to API Gateway** | DONE | Lambda ImportError caused 502 → CORS preflight failed. |
+| 1.52 | **FIX: 500 errors on tenant routes** — GET /api/tenant, tenant settings return 500 (e.g. /{tenant}/settings) | DONE | Top-level try/except in handler; GET /api/admin/tenants/{slug}/settings; owner_email in PUT settings response. |
 
 ### Agent 2 — Frontend / UI
 
@@ -135,6 +136,11 @@
 | 2.60 | **FIX: /admin/tenants/{tenant}** — Users add user slideout should close when pressing save | DONE | Closes on success; error shown on failure. |
 | 2.61 | **FIX: /admin/tenants/{tenant}** — Settings: changing settings are not saved when pressing save | DONE | putAdminTenantSettings; sync state; error display. |
 | 2.62 | **FIX: /admin/tenants/{tenant}** — Settings: Owner does not show Cognito ID | DONE | Show owner_email + owner_sub (Cognito ID). |
+| 2.63 | **FIX: /admin/tenants** — need delete tenant button with confirmation | TODO | |
+| 2.64 | **FIX: DialogContent a11y** — add `Description` or `aria-describedby={undefined}` to suppress Radix warning | TODO | Warning: Missing Description or aria-describedby for DialogContent. |
+| 2.65 | **FIX: /admin/tenants/{tenant}** — remove editable text box that shows Cognito ID | TODO | Superadmin Settings: Cognito ID should not be editable. |
+| 2.66 | **FIX: /admin/tenants** — remove Edit button (Administer button has all functionality) | DONE | Removed Edit button, TenantEditSheet; Administer has full CRUD. |
+| 2.67 | **FIX: /admin/tenants/{tenant}** — Users list should show email address or username if DB user | TODO | Non-Cognito (TUSER) users: show email or username from DB. |
 
 ### Agent 4 — Self-Serve (Future)
 

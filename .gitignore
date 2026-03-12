@@ -3,6 +3,8 @@ node_modules/
 
 # Lambda Python deps (installed by CI before tofu apply)
 api/stripe/
+api/bcrypt/
+api/jwt/
 api/requests/
 api/urllib3/
 api/certifi/

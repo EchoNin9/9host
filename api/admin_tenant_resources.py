@@ -90,6 +90,24 @@ def _get_table():
     return boto3.resource("dynamodb").Table(table_name), None
 
 
+def _get_email_from_cognito_sub(sub: str, region: str) -> str:
+    """Resolve Cognito sub to email via AdminGetUser (Task 1.50)."""
+    if not sub:
+        return ""
+    try:
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.admin_get_user(
+            UserPoolId=os.environ.get("USER_POOL_ID", ""),
+            Username=sub,
+        )
+        for attr in resp.get("UserAttributes", []):
+            if attr.get("Name") == "email":
+                return attr.get("Value", "")
+    except Exception:
+        pass
+    return ""
+
+
 # --- Task 1.36: DELETE /api/admin/tenants/{slug} (cascade) ---
 
 def delete_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
@@ -680,13 +698,17 @@ def put_tenant_settings_handler(event: dict, context: dict, tenant_slug: str) ->
 
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
     updated = resp.get("Item", {})
+    owner_sub = updated.get("owner_sub")
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    owner_email = _get_email_from_cognito_sub(owner_sub or "", region) if owner_sub else ""
     return _json_response(
         200,
         {
             "slug": tenant_slug,
             "name": updated.get("name", tenant_slug),
             "tier": updated.get("tier", "FREE"),
-            "owner_sub": updated.get("owner_sub"),
+            "owner_sub": owner_sub,
+            "owner_email": owner_email,
             "module_overrides": updated.get("module_overrides") or {},
             "updated_at": updated.get("updated_at"),
         },
