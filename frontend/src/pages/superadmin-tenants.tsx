@@ -125,21 +125,6 @@ function SuperadminTenantsPage() {
   const { setImpersonate } = useImpersonation()
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
-  const [deleteSlug, setDeleteSlug] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-
-  const handleDelete = async () => {
-    if (!deleteSlug) return
-    setDeleting(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const ok = await deleteAdminTenant(token, deleteSlug)
-    setDeleting(false)
-    if (ok) {
-      setDeleteSlug(null)
-      void refetch()
-    }
-  }
 
   const handleImpersonate = (slug: string) => {
     setImpersonate(slug)
