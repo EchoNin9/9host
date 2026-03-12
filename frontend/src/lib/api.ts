@@ -1216,24 +1216,32 @@ export async function fetchAdminTenantUsers(
   }
 }
 
+export type CreateAdminUserResult =
+  | { success: true; user: TenantUser }
+  | { success: false; error: string }
+
 export async function createAdminUser(
   accessToken: string | null,
   tenantSlug: string,
   body: { sub?: string; email?: string; role?: string; name?: string }
-): Promise<TenantUser | null> {
+): Promise<CreateAdminUserResult> {
   const base = getApiUrl()
-  if (!base || !accessToken || !tenantSlug) return null
+  if (!base || !accessToken || !tenantSlug) {
+    return { success: false, error: "Not configured" }
+  }
   try {
     const res = await fetch(`${adminBase(tenantSlug)}/users`, {
       method: "POST",
       headers: adminResourceHeaders(accessToken),
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    const data = (await res.json()) as { user: TenantUser }
-    return data.user ?? null
-  } catch {
-    return null
+    const data = (await res.json()) as { user?: TenantUser; error?: string }
+    if (!res.ok) {
+      return { success: false, error: data.error ?? `Request failed (${res.status})` }
+    }
+    return data.user ? { success: true, user: data.user } : { success: false, error: "No user returned" }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed to add user" }
   }
 }
 

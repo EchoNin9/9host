@@ -130,11 +130,11 @@
 | 2.55 | **FIX: /admin/users** — users list not populating when logged in as superadmin | DONE | handler.py: admin_users_handler import shadowed by admin_tenant_resources; alias admin_global_users_handler. admin-users: use getToken(). |
 | 2.56 | **FIX: /admin/tenants** — edit tenant does not save any changes | DONE | Use getToken(), add error display. Root cause was 2.55 handler shadowing; PATCH works. |
 | 2.57 | **FIX: /admin/tenants** — edit tenant slideout should close after pressing save | DONE | onClose() called on success; fixed with 2.56. |
-| 2.58 | **FIX: /admin/tenants/{tenant}** — Users list should show Cognito email addr or username from db | TODO | |
-| 2.59 | **FIX: /admin/tenants/{tenant}** — Users add user does not save any info | TODO | |
-| 2.60 | **FIX: /admin/tenants/{tenant}** — Users add user slideout should close when pressing save | TODO | |
-| 2.61 | **FIX: /admin/tenants/{tenant}** — Settings: changing settings are not saved when pressing save | TODO | |
-| 2.62 | **FIX: /admin/tenants/{tenant}** — Settings: Owner does not show Cognito ID | TODO | |
+| 2.58 | **FIX: /admin/tenants/{tenant}** — Users list should show Cognito email addr or username from db | DONE | Backend enriches from Cognito when DB empty. |
+| 2.59 | **FIX: /admin/tenants/{tenant}** — Users add user does not save any info | DONE | Email lookup fallback (admin_get_user). Error display. |
+| 2.60 | **FIX: /admin/tenants/{tenant}** — Users add user slideout should close when pressing save | DONE | Closes on success; error shown on failure. |
+| 2.61 | **FIX: /admin/tenants/{tenant}** — Settings: changing settings are not saved when pressing save | DONE | putAdminTenantSettings; sync state; error display. |
+| 2.62 | **FIX: /admin/tenants/{tenant}** — Settings: Owner does not show Cognito ID | DONE | Show owner_email + owner_sub (Cognito ID). |
 
 ### Agent 4 — Self-Serve (Future)
 

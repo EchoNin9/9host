@@ -422,6 +422,8 @@ def _get_user_email_name_from_cognito(sub: str, region: str) -> tuple[str, str]:
             elif attr.get("Name") in ("name", "preferred_username"):
                 if not name:
                     name = attr.get("Value", "")
+        if not name and resp.get("Username"):
+            name = resp.get("Username", "")
         return email, name
     except Exception:
         return "", ""
@@ -434,6 +436,7 @@ def _get_cognito_sub_by_email(email: str, region: str) -> str | None:
         return None
     try:
         client = boto3.client("cognito-idp", region_name=region)
+        # Try filter by email attribute first
         resp = client.list_users(
             UserPoolId=user_pool_id,
             Filter=f'email = "{email}"',
@@ -441,7 +444,18 @@ def _get_cognito_sub_by_email(email: str, region: str) -> str | None:
         )
         users = resp.get("Users", [])
         if not users:
-            return None
+            # Fallback: when "email as username" is enabled, try Username directly
+            try:
+                admin_resp = client.admin_get_user(
+                    UserPoolId=user_pool_id,
+                    Username=email,
+                )
+                for attr in admin_resp.get("UserAttributes", []):
+                    if attr.get("Name") == "sub":
+                        return attr.get("Value")
+                return admin_resp.get("Username")
+            except Exception:
+                return None
         u = users[0]
         for attr in u.get("Attributes", []):
             if attr.get("Name") == "sub":
@@ -479,9 +493,18 @@ def admin_users_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         params = query_users_in_tenant(tenant_slug)
         resp = table.query(**params)
         users = []
+        region = os.environ.get("AWS_REGION", "us-east-1")
         for it in resp.get("Items", []):
             if it.get("sk", "").endswith("#PROFILE"):
-                users.append(_profile_to_response(it))
+                u = _profile_to_response(it)
+                sub = u.get("sub", "")
+                if sub and (not u.get("email") or not u.get("name")):
+                    e, n = _get_user_email_name_from_cognito(sub, region)
+                    if e and not u.get("email"):
+                        u["email"] = e
+                    if n and not u.get("name"):
+                        u["name"] = n
+                users.append(u)
         return _json_response(200, {"users": users})
 
     if method == "GET" and target_sub and is_permissions:
@@ -637,9 +660,10 @@ def put_tenant_settings_handler(event: dict, context: dict, tenant_slug: str) ->
         expr_vals[":mo"] = clean_mo
 
     if "owner_sub" in body:
-        owner = (body.get("owner_sub") or "").strip()
-        updates.append("owner_sub = :owner")
-        expr_vals[":owner"] = owner
+        owner = (body.get("owner_sub") or "").strip() if body.get("owner_sub") else ""
+        if owner:
+            updates.append("owner_sub = :owner")
+            expr_vals[":owner"] = owner
 
     if not updates:
         return _json_response(400, {"error": "Provide at least one of: tier, name, module_overrides, owner_sub"})

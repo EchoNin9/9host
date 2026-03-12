@@ -474,6 +474,7 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   const [addEmail, setAddEmail] = useState("")
   const [addRole, setAddRole] = useState("member")
   const [saving, setSaving] = useState(false)
+  const [addError, setAddError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const session = await fetchAuthSession()
@@ -489,16 +490,19 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
   const handleAdd = async () => {
     const email = addEmail.trim()
     if (!email) return
+    setAddError(null)
     setSaving(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
     const result = await createAdminUser(token, tenantSlug, { email, role: addRole })
     setSaving(false)
-    if (result) {
+    if (result.success) {
       setSheetOpen(false)
       setAddEmail("")
       setAddRole("member")
       void load()
+    } else {
+      setAddError(result.error)
     }
   }
 
@@ -526,7 +530,7 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
           <CardTitle>Users</CardTitle>
           <CardDescription>Manage users in this tenant</CardDescription>
         </div>
-        <Button onClick={() => setSheetOpen(true)}>Add user</Button>
+        <Button onClick={() => { setAddError(null); setSheetOpen(true) }}>Add user</Button>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -583,6 +587,9 @@ function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
                 <option value="member">member</option>
               </select>
             </div>
+            {addError && (
+              <p className="text-sm text-destructive">{addError}</p>
+            )}
             <Button onClick={handleAdd} disabled={saving || !addEmail.trim()}>
               {saving ? "Adding…" : "Add"}
             </Button>
@@ -738,19 +745,32 @@ function AdminSettingsTab({
     tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false }
   )
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setName(tenant.name)
+    setTier(tenant.tier)
+    setOwnerSub(tenant.owner_sub ?? "")
+    setModuleOverrides(tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false })
+  }, [tenant.slug, tenant.name, tenant.tier, tenant.owner_sub, tenant.module_overrides])
 
   const handleSave = async () => {
+    setSaveError(null)
     setSaving(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
     const result = await putAdminTenantSettings(token, tenant.slug, {
       name,
       tier,
-      owner_sub: ownerSub || null,
+      owner_sub: ownerSub.trim() || undefined,
       module_overrides: moduleOverrides,
     })
     setSaving(false)
-    if (result) void onSaved()
+    if (result) {
+      void onSaved()
+    } else {
+      setSaveError("Failed to save settings. Please try again.")
+    }
   }
 
   return (
@@ -778,12 +798,16 @@ function AdminSettingsTab({
         </div>
         <div>
           <label className="text-sm font-medium">Owner</label>
-          <p className="text-xs text-muted-foreground mt-1">
+          <p className="text-xs text-muted-foreground mt-1 space-y-0.5">
             {tenant.owner_email ? (
-              <span>{tenant.owner_email}</span>
-            ) : (
+              <span className="block">{tenant.owner_email}</span>
+            ) : null}
+            {tenant.owner_sub ? (
+              <span className="block text-muted-foreground">Cognito ID: {tenant.owner_sub}</span>
+            ) : null}
+            {!tenant.owner_email && !tenant.owner_sub ? (
               <span className="text-muted-foreground">—</span>
-            )}
+            ) : null}
           </p>
           <Input
             value={ownerSub}
@@ -808,6 +832,9 @@ function AdminSettingsTab({
             ))}
           </div>
         </div>
+        {saveError && (
+          <p className="text-sm text-destructive">{saveError}</p>
+        )}
         <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
       </CardContent>
     </Card>
