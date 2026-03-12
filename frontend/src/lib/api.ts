@@ -180,6 +180,26 @@ export interface AdminTenantDetail {
 }
 
 /**
+ * DELETE tenant (superadmin only). Cascade-deletes all sub-resources.
+ */
+export async function deleteAdminTenant(
+  accessToken: string | null,
+  slug: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !slug) return false
+  try {
+    const res = await fetch(`${base}/api/admin/tenants/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+/**
  * PATCH tenant (superadmin only). Body: tier, name, module_overrides.
  */
 export async function patchAdminTenant(
@@ -661,6 +681,313 @@ export async function deleteDomain(
     return res.status === 204
   } catch {
     return false
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Admin-scoped tenant sub-resources (superadmin only)
+// -----------------------------------------------------------------------------
+
+function adminResourceHeaders(accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  }
+}
+
+function adminBase(tenantSlug: string) {
+  return `${getApiUrl()}/api/admin/tenants/${encodeURIComponent(tenantSlug)}`
+}
+
+/** Admin domains: list, add, remove */
+export async function fetchAdminDomains(
+  accessToken: string | null,
+  tenantSlug: string
+): Promise<Domain[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/domains`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as DomainsResponse
+    return data.domains ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createAdminDomain(
+  accessToken: string | null,
+  tenantSlug: string,
+  body: { domain: string; site_id: string; status?: string }
+): Promise<Domain | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/domains`, {
+      method: "POST",
+      headers: adminResourceHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as DomainResponse
+    return data.domain ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteAdminDomain(
+  accessToken: string | null,
+  tenantSlug: string,
+  domain: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !domain) return false
+  try {
+    const res = await fetch(
+      `${adminBase(tenantSlug)}/domains/${encodeURIComponent(domain)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+/** Admin sites: list, create, update, delete */
+export async function fetchAdminSites(
+  accessToken: string | null,
+  tenantSlug: string
+): Promise<Site[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/sites`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as SitesResponse
+    return data.sites ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createAdminSite(
+  accessToken: string | null,
+  tenantSlug: string,
+  body: { name: string; slug?: string; status?: string; template_id?: string }
+): Promise<Site | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/sites`, {
+      method: "POST",
+      headers: adminResourceHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as SiteResponse
+    return data.site ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function updateAdminSite(
+  accessToken: string | null,
+  tenantSlug: string,
+  siteId: string,
+  body: { name?: string; slug?: string; status?: string }
+): Promise<Site | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/sites/${siteId}`, {
+      method: "PUT",
+      headers: adminResourceHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as SiteResponse
+    return data.site ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteAdminSite(
+  accessToken: string | null,
+  tenantSlug: string,
+  siteId: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return false
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/sites/${siteId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+/** Admin users: list, add, update, delete, permissions */
+export async function fetchAdminUsers(
+  accessToken: string | null,
+  tenantSlug: string
+): Promise<TenantUser[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return []
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/users`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as TenantUsersResponse
+    return data.users ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createAdminUser(
+  accessToken: string | null,
+  tenantSlug: string,
+  body: { sub: string; role?: string; email?: string; name?: string }
+): Promise<TenantUser | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/users`, {
+      method: "POST",
+      headers: adminResourceHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { user: TenantUser }
+    return data.user ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function updateAdminUser(
+  accessToken: string | null,
+  tenantSlug: string,
+  userSub: string,
+  body: { role?: string; email?: string; name?: string }
+): Promise<TenantUser | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !userSub) return null
+  try {
+    const res = await fetch(
+      `${adminBase(tenantSlug)}/users/${encodeURIComponent(userSub)}`,
+      {
+        method: "PUT",
+        headers: adminResourceHeaders(accessToken),
+        body: JSON.stringify(body),
+      }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { user: TenantUser }
+    return data.user ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteAdminUser(
+  accessToken: string | null,
+  tenantSlug: string,
+  userSub: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !userSub) return false
+  try {
+    const res = await fetch(
+      `${adminBase(tenantSlug)}/users/${encodeURIComponent(userSub)}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+export async function fetchAdminUserPermissions(
+  accessToken: string | null,
+  tenantSlug: string,
+  userSub: string
+): Promise<ModulePermissions | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !userSub) return null
+  try {
+    const res = await fetch(
+      `${adminBase(tenantSlug)}/users/${encodeURIComponent(userSub)}/permissions`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { permissions: ModulePermissions }
+    return data.permissions ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function updateAdminUserPermissions(
+  accessToken: string | null,
+  tenantSlug: string,
+  userSub: string,
+  permissions: Partial<ModulePermissions>
+): Promise<ModulePermissions | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !userSub) return null
+  try {
+    const res = await fetch(
+      `${adminBase(tenantSlug)}/users/${encodeURIComponent(userSub)}/permissions`,
+      {
+        method: "PUT",
+        headers: adminResourceHeaders(accessToken),
+        body: JSON.stringify({ permissions }),
+      }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { permissions: ModulePermissions }
+    return data.permissions ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Admin settings: update tenant tier, name, module_overrides, owner_sub */
+export async function putAdminTenantSettings(
+  accessToken: string | null,
+  tenantSlug: string,
+  body: {
+    tier?: string
+    name?: string
+    module_overrides?: Record<string, boolean>
+    owner_sub?: string | null
+  }
+): Promise<AdminTenantDetail | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+  try {
+    const res = await fetch(`${adminBase(tenantSlug)}/settings`, {
+      method: "PUT",
+      headers: adminResourceHeaders(accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as AdminTenantDetail
+  } catch {
+    return null
   }
 }
 

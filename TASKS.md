@@ -97,11 +97,11 @@
 | 2.32 | Superadmin Portal: Administer Tenant | DONE | Dedicated view for superadmins to manage a specific tenant's domains, sites, and users. |
 | 2.33 | **FIX: Merge route trees to eliminate hasTenant race condition** | DONE | `AppRoutes` conditionally renders two `<Routes>` trees based on `hasTenant` from TenantContext. Because `TenantLocationSync` updates context in `useEffect` (after render), `hasTenant` is stale during the first render after navigation. This causes: (a) tenant user post-login redirect to `/{slug}` caught by platform catch-all → redirect back to `/`, (b) superadmin impersonation `navigate("/{slug}")` similarly fails, (c) "Back to platform" from tenant → `TenantRootRedirect` sends user back to `/{slug}`, (d) "Platform admin" from tenant → `/:tenantSlug` captures `admin` as a slug. **Fix:** merge all routes into one `<Routes>` tree — React Router v6 matches static routes (`/admin`, `/login`) before dynamic (`/:tenantSlug`). Remove conditional `hasTenant` branching and `TenantLocationSync`. |
 | 2.34 | **FIX: Hide "Platform admin" link for non-superadmin users** | DONE | Landing page and tenant sidebar show "Platform admin" only when isSuperadmin. |
-| 2.35 | Superadmin: delete tenant UI with confirmation | TODO | Depends on 1.36. Delete button + cascade warning on admin tenant view. |
-| 2.36 | Superadmin: manage tenant domains UI (admin-scoped) | TODO | Depends on 1.37. Add/remove domains via /api/admin/tenants/{slug}/domains in administer-tenant view. |
-| 2.37 | Superadmin: manage tenant sites UI (admin-scoped) | TODO | Depends on 1.38. Full CRUD for sites via admin API in administer-tenant view. |
-| 2.38 | Superadmin: manage tenant users UI (admin-scoped) | TODO | Depends on 1.39. Add/remove/role-change users via admin API. |
-| 2.39 | Superadmin: manage tenant settings UI (admin-scoped) | TODO | Depends on 1.40. Edit all tenant settings via admin API. |
+| 2.35 | Superadmin: delete tenant UI with confirmation | DONE | Delete button + AlertDialog cascade warning on Administer Tenant page. |
+| 2.36 | Superadmin: manage tenant domains UI (admin-scoped) | DONE | Add/remove domains via /api/admin/tenants/{slug}/domains in administer-tenant view. |
+| 2.37 | Superadmin: manage tenant sites UI (admin-scoped) | DONE | Full CRUD for sites via admin API in administer-tenant view. |
+| 2.38 | Superadmin: manage tenant users UI (admin-scoped) | DONE | Add/remove/role-change users via admin API. Permissions sheet. |
+| 2.39 | Superadmin: manage tenant settings UI (admin-scoped) | DONE | Edit tier, name, owner_sub, module_overrides via PUT /api/admin/tenants/{slug}/settings. |
 | 2.40 | Superadmin: templates management UI enhancements | DONE | Extends 2.21. Validation (slug format, required fields, API errors), preview (components summary in edit), ordering (sort by name/slug/tier), delete confirmation AlertDialog. |
 
 ### Agent 4 — Self-Serve (Future)

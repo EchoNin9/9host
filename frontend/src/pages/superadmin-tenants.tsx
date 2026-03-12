@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { fetchAuthSession } from "aws-amplify/auth"
 import {
   Card,
@@ -271,6 +271,9 @@ function SuperadminTenantsPage() {
                     </span>
                   </div>
                   <div className="flex gap-2">
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to={`/admin/tenants/${t.slug}`}>Administer</Link>
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"

@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, BrowserRouter, Routes, useParams } from "react-router-dom"
+import { Link, Navigate, Outlet, Route, BrowserRouter, Routes, useParams } from "react-router-dom"
 import { useCallback, useEffect, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { TenantUsers } from "@/pages/tenant-users"
 import { SuperadminLayout } from "@/components/superadmin-layout"
 import { SuperadminDashboard } from "@/pages/superadmin-dashboard"
 import { SuperadminTenantsPage } from "@/pages/superadmin-tenants"
+import { AdministerTenantPage } from "@/pages/administer-tenant"
 import { AdminTemplatesPage } from "@/pages/admin-templates"
 import { Login } from "@/pages/login"
 import { Signup } from "@/pages/signup"
@@ -154,7 +155,10 @@ function AppRoutes() {
       <Route path="/" element={<RootRoute />} />
       <Route path="/admin" element={<SuperadminLayout />}>
         <Route index element={<SuperadminDashboard />} />
-        <Route path="tenants" element={<SuperadminTenantsPage />} />
+        <Route path="tenants" element={<Outlet />}>
+          <Route index element={<SuperadminTenantsPage />} />
+          <Route path=":slug" element={<AdministerTenantPage />} />
+        </Route>
         <Route path="templates" element={<AdminTemplatesPage />} />
       </Route>
       <Route path="/login" element={<Login />} />
