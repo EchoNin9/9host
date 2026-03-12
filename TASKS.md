@@ -153,8 +153,8 @@
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
 | 3.1 | Integrate Stripe for tier subscriptions (Free, Pro, Business) | DONE | Checkout, portal, webhook. docs/STRIPE.md. |
-| 3.2 | Map Stripe subscription status → FeatureFlag tier | TODO | |
-| 3.3 | Implement upgrade/downgrade flows and webhooks | TODO | |
+| 3.2 | Map Stripe subscription status → FeatureFlag tier | DONE | |
+| 3.3 | Implement upgrade/downgrade flows and webhooks | DONE | |
 
 ---
 
