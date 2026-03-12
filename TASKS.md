@@ -127,6 +127,14 @@
 | 2.52 | Site login page (/login/site) | DONE | site-login.tsx, username/password/site, JWT storage. |
 | 2.53 | Auth context dual-mode (Cognito + custom JWT) | DONE | getToken(), isSiteUser, clearSiteToken, tenant-admin-sidebar. |
 | 2.54 | Tenant custom roles CRUD UI | DONE | AddRoleForm, EditRoleForm, roles list in tenant-users. |
+| 2.55 | **FIX: /admin/users** — users list not populating when logged in as superadmin | DONE | handler.py: admin_users_handler import shadowed by admin_tenant_resources; alias admin_global_users_handler. admin-users: use getToken(). |
+| 2.56 | **FIX: /admin/tenants** — edit tenant does not save any changes | DONE | Use getToken(), add error display. Root cause was 2.55 handler shadowing; PATCH works. |
+| 2.57 | **FIX: /admin/tenants** — edit tenant slideout should close after pressing save | DONE | onClose() called on success; fixed with 2.56. |
+| 2.58 | **FIX: /admin/tenants/{tenant}** — Users list should show Cognito email addr or username from db | TODO | |
+| 2.59 | **FIX: /admin/tenants/{tenant}** — Users add user does not save any info | TODO | |
+| 2.60 | **FIX: /admin/tenants/{tenant}** — Users add user slideout should close when pressing save | TODO | |
+| 2.61 | **FIX: /admin/tenants/{tenant}** — Settings: changing settings are not saved when pressing save | TODO | |
+| 2.62 | **FIX: /admin/tenants/{tenant}** — Settings: Owner does not show Cognito ID | TODO | |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -148,42 +156,34 @@
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Next Task Batches (2026-03-11)
+### Next Task Batches (2026-03-12)
 
 | Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Agent 3 (Payments) | Concurrency |
 |-------|-------------------|--------------------|--------------------|----|
-| **1** | 1.41 CI path filters | 2.34 Hide "Platform admin" for non-superadmin | — | agent1 + agent2 **concurrent** |
-|       |                   | 2.26 Create Tenant UI (superadmin) |   |   |
-| **2** | 1.36 DELETE tenant + cascade | 2.40 Templates UI enhancements | — | agent1 + agent2 **concurrent** |
-|       | 1.37 Admin domains CRUD |   |   |   |
-|       | 1.38 Admin sites CRUD |   |   |   |
-|       | 1.39 Admin users CRUD |   |   |   |
-|       | 1.40 Admin settings PUT |   |   |   |
-| **3** | — | 2.35 Delete tenant UI (← 1.36) | 3.1 Stripe integration | agent2 + agent3 **concurrent** |
-|       |   | 2.36 Tenant domains UI (← 1.37) | | |
-|       |   | 2.37 Tenant sites UI (← 1.38) | | |
-|       |   | 2.38 Tenant users UI (← 1.39) | | |
-|       |   | 2.39 Tenant settings UI (← 1.40) | | |
-| **4** | — | 2.24 Billing / upgrade UI (← 3.1, 3.2) | 3.2 Map Stripe → tier | agent2 + agent3 **concurrent** |
+| **1** | — | 2.24 Billing / upgrade UI (← 3.1, 3.2) | 3.2 Map Stripe → tier | agent2 + agent3 **concurrent** |
 |       |   | 2.25 Stripe checkout flow (← 3.1) | 3.3 Upgrade/downgrade webhooks | |
-| **5** | — | — | — | future |
+| **2** | — | — | — | future |
 |       |   | 4.1 Self-serve tenant signup |   | |
 
 > **Arrows (←)** = depends on. Batches are sequential; agents within a batch run concurrently.
 
 ---
 
-### Save Point: Navigation & CRUD bugfixes (2026-03-11)
+### Save Point: CORS fix deployed (2026-03-12)
 
-**Status:** Critical bugs identified blocking core workflows: (1) routing race condition in `AppRoutes` prevents cross-boundary navigation (platform ↔ tenant), (2) `handler.py` import shadowing breaks `PATCH /api/admin/tenants/{slug}`, (3) Create Tenant UI (2.26) still TODO, (4) "Platform admin" link visible to non-superadmins.
+**Status:** Task 1.51 complete. CORS errors after sign-in resolved — Lambda was failing with ImportError (billing_handler, stripe_helpers untracked). Committed both files, added PATCH to API Gateway CORS allow_methods. Deploy Staging succeeded. stage.echo9.net operational.
 
-**Blocking:** Sites, domains, post-login redirect, superadmin impersonation, and tenant creation all broken or missing due to these bugs.
+**Completed:** 1.0–1.51, 2.0–2.54, 3.1. Stripe checkout/portal backend in place.
 
 **Next (priority order):**
-1. **1.35** — Fix handler.py import alias (agent1, 5 min)
-2. **2.33** — Merge route trees to fix navigation (agent2, core fix)
-3. **2.26** — Create Tenant UI for superadmin (agent2)
-4. **2.34** — Hide "Platform admin" link for non-superadmins (agent2, minor)
+1. **3.2** — Map Stripe subscription status → FeatureFlag tier (agent3)
+2. **3.3** — Upgrade/downgrade flows and webhooks (agent3)
+3. **2.24** — Billing / upgrade UI (agent2, depends on 3.1, 3.2)
+4. **2.25** — Stripe checkout flow (agent2, depends on 3.1)
+
+### ~~Save Point: Navigation & CRUD bugfixes (2026-03-11)~~ Superseded
+
+**Status:** 1.35, 2.33, 2.26, 2.34 complete. Superseded by CORS fix save point.
 
 ### ~~Save Point: Superadmin Portal & Post-Login Routing (2026-03-11)~~ Superseded
 

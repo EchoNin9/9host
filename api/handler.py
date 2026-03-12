@@ -7,7 +7,10 @@ subdomain, or path param) for tenant-scoped operations.
 
 import json
 
-from admin_users_handler import admin_stats_handler, admin_users_handler
+from admin_users_handler import (
+    admin_stats_handler,
+    admin_users_handler as admin_global_users_handler,
+)
 from admin_handler import (
     create_tenant_handler,
     get_tenant_by_slug_handler,
@@ -147,7 +150,7 @@ def lambda_handler(event: dict, context: dict) -> dict:
 
     # Superadmin routes (Task 1.22, 1.29, 1.34, 1.48)
     if method == "GET" and path in ("/api/admin/users", "/api/admin/users/"):
-        return _with_cors(admin_users_handler(event, context))
+        return _with_cors(admin_global_users_handler(event, context))
     if method == "GET" and path in ("/api/admin/stats", "/api/admin/stats/"):
         return _with_cors(admin_stats_handler(event, context))
     if method == "GET" and path in ("/api/admin/tenants", "/api/admin/tenants/"):

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react"
 import { Link } from "react-router-dom"
-import { fetchAuthSession } from "aws-amplify/auth"
+import { getToken } from "@/lib/api"
 import {
   Card,
   CardContent,
@@ -38,8 +38,7 @@ function AdminUsersPage() {
 
   useEffect(() => {
     async function load() {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken()
       const d = await fetchAdminUsers(token)
       setData(d ?? { users_by_tenant: {}, orphaned: [] })
       setLoading(false)

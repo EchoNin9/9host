@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { fetchAuthSession } from "aws-amplify/auth"
 import {
   Card,
   CardContent,
@@ -21,6 +20,7 @@ import {
   fetchAdminTenant,
   patchAdminTenant,
   createAdminTenant,
+  getToken,
   type AdminTenantDetail,
 } from "@/lib/api"
 import { Pencil, Plus } from "lucide-react"
@@ -42,11 +42,12 @@ function TenantEditSheet({
     tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false }
   )
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSave = async () => {
+    setError(null)
     setSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
+    const token = await getToken()
     const result = await patchAdminTenant(token, tenant.slug, {
       name,
       tier,
@@ -56,6 +57,8 @@ function TenantEditSheet({
     if (result) {
       onSaved()
       onClose()
+    } else {
+      setError("Failed to save changes")
     }
   }
 
@@ -102,6 +105,7 @@ function TenantEditSheet({
           ))}
         </div>
       </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex gap-2">
         <Button variant="outline" onClick={onClose}>
           Cancel
@@ -148,8 +152,7 @@ function CreateTenantSheet({
       return
     }
     setSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
+    const token = await getToken()
     const result = await createAdminTenant(token, {
       slug: s,
       name: name.trim() || s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -222,8 +225,7 @@ function SuperadminTenantsPage() {
   const [createOpen, setCreateOpen] = useState(false)
 
   const handleEdit = async (slug: string) => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
+    const token = await getToken()
     const t = await fetchAdminTenant(token, slug)
     if (t) {
       setEditTenant(t)
