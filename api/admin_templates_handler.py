@@ -206,10 +206,12 @@ def update_template_handler(event: dict, context: dict, slug: str) -> dict:
 
     updates = []
     expr_vals = {}
+    expr_names = {}
 
     if "name" in body:
         name = (body.get("name") or "").strip() or slug
-        updates.append("name = :name")
+        updates.append("#n = :name")
+        expr_names["#n"] = "name"
         expr_vals[":name"] = name
     if "description" in body:
         updates.append("description = :desc")
@@ -234,11 +236,15 @@ def update_template_handler(event: dict, context: dict, slug: str) -> dict:
     updates.append("updated_at = :u")
     expr_vals[":u"] = now
 
-    table.update_item(
-        Key=get_template_item(slug),
-        UpdateExpression="SET " + ", ".join(updates),
-        ExpressionAttributeValues=expr_vals,
-    )
+    kwargs = {
+        "Key": get_template_item(slug),
+        "UpdateExpression": "SET " + ", ".join(updates),
+        "ExpressionAttributeValues": expr_vals,
+    }
+    if expr_names:
+        kwargs["ExpressionAttributeNames"] = expr_names
+
+    table.update_item(**kwargs)
 
     resp = table.get_item(Key=get_template_item(slug))
     updated = resp.get("Item", {})

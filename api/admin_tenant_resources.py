@@ -716,7 +716,8 @@ def put_tenant_settings_handler(event: dict, context: dict, tenant_slug: str) ->
 
     if "name" in body:
         name = (body.get("name") or "").strip()
-        updates.append("name = :name")
+        updates.append("#n = :name")
+        expr_names["#n"] = "name"
         expr_vals[":name"] = name if name else tenant_slug
 
     if "module_overrides" in body:
@@ -741,11 +742,15 @@ def put_tenant_settings_handler(event: dict, context: dict, tenant_slug: str) ->
     updates.append("updated_at = :u")
     expr_vals[":u"] = now
 
-    table.update_item(
-        Key=get_tenant_item(tenant_slug),
-        UpdateExpression="SET " + ", ".join(updates),
-        ExpressionAttributeValues=expr_vals,
-    )
+    kwargs = {
+        "Key": get_tenant_item(tenant_slug),
+        "UpdateExpression": "SET " + ", ".join(updates),
+        "ExpressionAttributeValues": expr_vals,
+    }
+    if expr_names:
+        kwargs["ExpressionAttributeNames"] = expr_names
+
+    table.update_item(**kwargs)
 
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
     updated = resp.get("Item", {})

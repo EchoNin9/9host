@@ -316,7 +316,8 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
 
     if "name" in body:
         name = (body.get("name") or "").strip()
-        updates.append("name = :name")
+        updates.append("#n = :name")
+        expr_names["#n"] = "name"
         expr_vals[":name"] = name if name else tenant_slug
 
     if "module_overrides" in body:
@@ -339,12 +340,15 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
     expr_vals[":u"] = now
 
     update_expr = "SET " + ", ".join(updates)
-    table.update_item(
-        Key=get_tenant_item(tenant_slug),
-        UpdateExpression=update_expr,
-        ExpressionAttributeValues=expr_vals,
-        ExpressionAttributeNames=expr_names or None,
-    )
+    kwargs = {
+        "Key": get_tenant_item(tenant_slug),
+        "UpdateExpression": update_expr,
+        "ExpressionAttributeValues": expr_vals,
+    }
+    if expr_names:
+        kwargs["ExpressionAttributeNames"] = expr_names
+
+    table.update_item(**kwargs)
 
     # Fetch updated item
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
