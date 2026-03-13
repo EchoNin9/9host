@@ -36,7 +36,7 @@ import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { Pencil, Trash2 } from "lucide-react"
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/
-const TIERS = ["FREE", "PRO", "BUSINESS"] as const
+const TIERS = ["FREE", "PRO", "BUSINESS", "VIP"] as const
 
 type SortBy = "name" | "slug" | "tier"
 

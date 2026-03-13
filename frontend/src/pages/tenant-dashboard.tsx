@@ -8,11 +8,14 @@ import {
 import { useTenant } from "@/hooks/use-tenant"
 import { useSites } from "@/hooks/use-sites"
 import { useDomains } from "@/hooks/use-domains"
+import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 
 function TenantDashboard() {
   const { tenantSlug } = useTenant()
+  const { tenant } = useTenantMetadata(tenantSlug)
   const { sites } = useSites(tenantSlug)
   const { domains } = useDomains(tenantSlug)
+  const tierLabel = tenant?.tier === "VIP" ? "VIP" : tenant?.tier ? tenant.tier.charAt(0) + tenant.tier.slice(1).toLowerCase() : "Free"
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -48,7 +51,7 @@ function TenantDashboard() {
             <CardDescription>Tenant configuration</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">Free tier</p>
+            <p className="text-sm text-muted-foreground">{tierLabel} tier</p>
           </CardContent>
         </Card>
       </div>

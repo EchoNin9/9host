@@ -40,11 +40,14 @@ const MODULE_META: Record<
   },
 }
 
-const TIER_ORDER = ["free", "pro", "business"] as const
+const TIER_ORDER = ["free", "pro", "business", "vip"] as const
 type TierSlug = (typeof TIER_ORDER)[number]
 
+/** VIP has same rank as business (Task 2.83). */
 function tierRank(t: string): number {
-  const i = TIER_ORDER.indexOf(t.toLowerCase() as TierSlug)
+  const lower = t.toLowerCase()
+  if (lower === "vip") return 2
+  const i = TIER_ORDER.indexOf(lower as TierSlug)
   return i >= 0 ? i : -1
 }
 

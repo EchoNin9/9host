@@ -30,11 +30,14 @@ import { Crown, CreditCard, Settings2 } from "lucide-react"
 
 const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
 
-const TIER_ORDER = ["free", "pro", "business"] as const
+const TIER_ORDER = ["free", "pro", "business", "vip"] as const
 type TierSlug = (typeof TIER_ORDER)[number]
 
+/** VIP has same rank as business. Payable tiers: pro, business only. */
 function tierRank(t: string): number {
-  const i = TIER_ORDER.indexOf(t.toLowerCase() as TierSlug)
+  const lower = t.toLowerCase()
+  if (lower === "vip") return 2
+  const i = TIER_ORDER.indexOf(lower as TierSlug)
   return i >= 0 ? i : -1
 }
 
@@ -179,20 +182,27 @@ function TenantSettings() {
                 <span className="text-sm text-muted-foreground">Current tier:</span>
                 <span
                   className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    currentTier === "business"
-                      ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
-                      : currentTier === "pro"
-                        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                        : "bg-muted text-muted-foreground"
+                    currentTier === "vip"
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                      : currentTier === "business"
+                        ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
+                        : currentTier === "pro"
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                          : "bg-muted text-muted-foreground"
                   }`}
                 >
                   {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
                 </span>
               </div>
+              {currentTier === "vip" && (
+                <p className="text-sm text-muted-foreground">
+                  VIP — Full features, no billing required.
+                </p>
+              )}
               {billingError && (
                 <p className="text-sm text-destructive">{billingError}</p>
               )}
-              {canEdit && (
+              {canEdit && currentTier !== "vip" && (
                 <div className="flex flex-wrap gap-2">
                   {tierRank(currentTier) < tierRank("pro") && (
                     <Button

@@ -13,7 +13,7 @@ export function TenantTierProvider({ children }: { children: ReactNode }) {
   const { tenantSlug } = useTenant()
   const { tenant } = useTenantMetadata(tenantSlug)
 
-  const tier = (tenant?.tier?.toLowerCase() ?? "free") as "free" | "pro" | "business"
+  const tier = (tenant?.tier?.toLowerCase() ?? "free") as "free" | "pro" | "business" | "vip"
   const resolved_features = tenant?.resolved_features
 
   return (

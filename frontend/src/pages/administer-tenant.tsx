@@ -1035,6 +1035,7 @@ function AdminSettingsTab({
             <option value="FREE">Free</option>
             <option value="PRO">Pro</option>
             <option value="BUSINESS">Business</option>
+            <option value="VIP">VIP</option>
           </select>
         </div>
         <div>

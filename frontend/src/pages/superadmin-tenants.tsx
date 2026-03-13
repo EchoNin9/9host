@@ -116,6 +116,7 @@ function CreateTenantSheet({
           <option value="FREE">Free</option>
           <option value="PRO">Pro</option>
           <option value="BUSINESS">Business</option>
+          <option value="VIP">VIP</option>
         </select>
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
