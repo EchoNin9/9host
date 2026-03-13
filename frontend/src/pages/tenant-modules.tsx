@@ -89,7 +89,9 @@ function TenantModules() {
             const meta = MODULE_META[key]
             const Icon = meta.icon
             const requiredTier = getRequiredTier(key)
-            const tierUnlocked = tierRank(currentTier) >= tierRank(requiredTier)
+            const tierUnlocked =
+              currentTier === "vip" ||
+              tierRank(currentTier) >= tierRank(requiredTier)
             const enabled =
               tenant?.resolved_features?.[key] ??
               tenant?.module_overrides?.[key] ??

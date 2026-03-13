@@ -202,7 +202,7 @@ function TenantSettings() {
               {billingError && (
                 <p className="text-sm text-destructive">{billingError}</p>
               )}
-              {canEdit && currentTier !== "vip" && (
+              {canEdit && (
                 <div className="flex flex-wrap gap-2">
                   {tierRank(currentTier) < tierRank("pro") && (
                     <Button

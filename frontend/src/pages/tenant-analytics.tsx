@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/card"
 import { FeatureGate } from "@/components/feature-gate"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useAnalytics } from "@/hooks/use-analytics"
 import {
   AreaChart,
@@ -142,6 +143,18 @@ function AnalyticsCharts({ tenantSlug }: { tenantSlug: string }) {
 
 function TenantAnalytics() {
   const { tenantSlug } = useTenant()
+  const { tenant } = useTenantMetadata(tenantSlug)
+  const isVip = (tenant?.tier?.toLowerCase() ?? "") === "vip"
+
+  const content = tenantSlug ? (
+    <AnalyticsCharts tenantSlug={tenantSlug} />
+  ) : (
+    <Card>
+      <CardContent className="pt-6">
+        <p className="text-sm text-muted-foreground">No tenant selected.</p>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -152,17 +165,9 @@ function TenantAnalytics() {
         </p>
       </div>
 
-      <FeatureGate feature="advanced_analytics">
-        {tenantSlug ? (
-          <AnalyticsCharts tenantSlug={tenantSlug} />
-        ) : (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">No tenant selected.</p>
-            </CardContent>
-          </Card>
-        )}
-      </FeatureGate>
+      {isVip ? content : (
+        <FeatureGate feature="advanced_analytics">{content}</FeatureGate>
+      )}
     </div>
   )
 }

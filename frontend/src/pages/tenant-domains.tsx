@@ -25,6 +25,7 @@ import {
 import { FeatureGate } from "@/components/feature-gate"
 import { DomainSetupGuideDialog } from "@/components/domain-setup-guide"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useDomains } from "@/hooks/use-domains"
 import { useSites } from "@/hooks/use-sites"
@@ -278,6 +279,8 @@ function DomainsContent() {
 
 function TenantDomains() {
   const { tenantSlug } = useTenant()
+  const { tenant } = useTenantMetadata(tenantSlug)
+  const isVip = (tenant?.tier?.toLowerCase() ?? "") === "vip"
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -288,9 +291,13 @@ function TenantDomains() {
         </p>
       </div>
 
-      <FeatureGate feature="custom_domains">
+      {isVip ? (
         <DomainsContent />
-      </FeatureGate>
+      ) : (
+        <FeatureGate feature="custom_domains">
+          <DomainsContent />
+        </FeatureGate>
+      )}
     </div>
   )
 }

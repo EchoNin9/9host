@@ -167,6 +167,10 @@
 | 2.81 | Domain Setup Guide (DNS Wizard) | DONE | DomainSetupGuideDialog: Own DNS (CNAME + TXT), Our DNS (CloudNS). After add + DNS setup on cards. |
 | 2.82 | Tier-Specific Locked States | DONE | UpgradePrompt component; FeatureGate default fallback; link to settings/billing. |
 | 2.83 | Add VIP tier (frontend) | DONE | VIP = Business features. Show VIP in superadmin tier dropdowns only (create tenant, administer tenant). Tenant on VIP sees "VIP" badge; non-VIP users never see VIP. Billing/upgrade: never show VIP. feature-flags.ts: add vip, tierRank(vip)=business. Depends on 1.82. |
+| 2.84 | VIP: Settings — show "Current tier: VIP" + keep upgrade buttons | DONE | /{tenant}/settings: when tenant is VIP, display "Current tier: VIP" and still show upgrade buttons. |
+| 2.85 | VIP: Analytics — no upgrade prompt, show analytics | DONE | /{tenant}/analytics: when tenant is VIP, do not show upgrade button; show full analytics. |
+| 2.86 | VIP: Domains — no upgrade prompts, show domain controls | DONE | /{tenant}/domains: when tenant is VIP, do not show upgrade prompts; show domain controls. |
+| 2.87 | VIP: Modules — no upgrade prompts, show all module controls | DONE | /{tenant}/modules: when tenant is VIP, do not show upgrade prompts; show control for all modules. |
 
 ### Agent 4 — Self-Serve (Future)
 
