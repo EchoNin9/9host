@@ -73,7 +73,7 @@
 | 1.76 | Global Site Uniqueness: bySiteSlug GSI | DONE | GSI4 bySiteSlug. gsi4pk=SLUG#{site_slug}, gsi4sk=SITE#{id}. Reserve tenant slugs from site slugs in create_tenant. Backfill script + CI. |
 | 1.77 | Enforce Global Slug: POST/PUT /api/tenant/sites + GET /api/validate-slug | DONE | slug_is_taken checks tenant + bySiteSlug; 409 on conflict. validate_slug_handler for 2.77. |
 | 1.78 | Wildcard Site Routing: *.echo9.net | TODO | ACM for *.echo9.net, routing priority (platform vs site vs tenant), site origin. Largest infra change. Depends on 1.76. |
-| 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | TODO | Query param template={id}; merge site + template. Clarify auth (tenant auth for draft). |
+| 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | DONE | Query param template={slug}; merge site + template. Tenant auth (draft preview). Unblocks 2.80. |
 | 1.80 | Self-Serve Modules API: PATCH /api/tenant | TODO | Already partial (2.22). Add tier validation: only allow features tenant's tier supports. |
 | 1.81 | DNS Verification: CNAME/TXT for Custom Domains | TODO | Add verification_cname_target, verification_txt_record to DOMAIN schema. EventBridge + Lambda or on-demand check. |
 

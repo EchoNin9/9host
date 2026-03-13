@@ -3,6 +3,9 @@ Sites API — GET/POST/PUT/DELETE /api/tenant/sites.
 
 Tenant-scoped sites CRUD. Requires tenant_slug (header/subdomain), Cognito auth,
 tenant membership.
+
+GET /api/tenant/sites/{id}/preview — merge site + template for live preview (Task 1.79).
+Query param template={slug} overrides site.template_id.
 """
 
 import json
@@ -53,13 +56,26 @@ def _parse_body(event: dict) -> dict | None:
 
 
 def _extract_site_id_from_path(path: str) -> str | None:
-    """Extract site_id from /api/tenant/sites/{site_id}."""
+    """Extract site_id from /api/tenant/sites/{site_id} or /api/tenant/sites/{site_id}/preview."""
     prefix = "/api/tenant/sites/"
     if path.startswith(prefix):
         rest = path[len(prefix) :].strip("/")
         if rest:
+            parts = rest.split("/")
+            if len(parts) == 2 and parts[1] == "preview":
+                return parts[0] if parts[0] else None
             return rest
     return None
+
+
+def _is_preview_path(path: str) -> bool:
+    """True if path is /api/tenant/sites/{id}/preview."""
+    prefix = "/api/tenant/sites/"
+    if not path.startswith(prefix):
+        return False
+    rest = path[len(prefix) :].strip("/")
+    parts = rest.split("/")
+    return len(parts) == 2 and parts[1] == "preview"
 
 
 def _site_to_response(item: dict) -> dict:
@@ -246,6 +262,61 @@ def _delete_site(table, tenant_slug: str, site_id: str) -> dict:
     return _json_response(204, {}, empty_body=True)
 
 
+def _preview_site(
+    table, tenant_slug: str, site_id: str, template_override: str | None
+) -> dict:
+    """
+    GET /api/tenant/sites/{id}/preview — merge site + template for preview (Task 1.79).
+
+    Query param template={id} overrides site.template_id. Requires tenant auth (draft preview).
+    """
+    key = get_site_item(tenant_slug, site_id)
+    resp = table.get_item(Key=key)
+    site_item = resp.get("Item")
+    if not site_item:
+        return _json_response(404, {"error": "Site not found."})
+
+    template_id = (template_override or "").strip().lower() or site_item.get("template_id")
+    if not template_id:
+        return _json_response(
+            400,
+            {"error": "No template for preview. Set template_id on site or use ?template={slug}."},
+        )
+
+    template_resp = table.get_item(Key=get_template_item(template_id))
+    template_item = template_resp.get("Item")
+    if not template_item:
+        return _json_response(404, {"error": f"Template not found: {template_id}"})
+
+    # Validate tenant tier when using template override
+    if template_override:
+        tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
+        tenant_item = tenant_resp.get("Item")
+        if tenant_item:
+            tenant_tier_rank = _tier_rank(tenant_item.get("tier", "FREE"))
+            if tenant_tier_rank < _tier_rank(template_item.get("tier_required", "FREE")):
+                return _json_response(
+                    403,
+                    {
+                        "error": f"Template {template_id} requires higher tier.",
+                        "tier_required": template_item.get("tier_required", "FREE"),
+                    },
+                )
+
+    site_data = _site_to_response(site_item)
+    template_components = template_item.get("components") or {}
+
+    # Merged preview: site metadata + template components for rendering
+    merged = {
+        **site_data,
+        "template_slug": template_item.get("slug", template_id),
+        "template_name": template_item.get("name", ""),
+        "components": template_components,
+    }
+
+    return _json_response(200, {"preview": merged})
+
+
 @with_tenant
 def sites_handler(event: dict, context: dict) -> dict:
     """
@@ -287,6 +358,12 @@ def sites_handler(event: dict, context: dict) -> dict:
 
     if method == "GET" and is_list_or_create:
         return _list_sites(table, tenant_slug)
+
+    # GET /api/tenant/sites/{id}/preview (Task 1.79)
+    if method == "GET" and site_id and _is_preview_path(path):
+        params = event.get("queryStringParameters") or event.get("queryParameters") or {}
+        template_override = params.get("template") or params.get("template_id")
+        return _preview_site(table, tenant_slug, site_id, template_override)
 
     if method == "GET" and site_id:
         return _get_site(table, tenant_slug, site_id)
