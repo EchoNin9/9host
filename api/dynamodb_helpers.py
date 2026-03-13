@@ -90,6 +90,30 @@ def query_by_site_slug(site_slug: str) -> dict[str, Any]:
     }
 
 
+def slug_is_taken(table, slug: str, exclude_site_id: str | None = None) -> bool:
+    """
+    Check if slug is taken by a tenant or site (Task 1.77).
+    Returns True if taken. Pass exclude_site_id when updating a site to allow keeping its own slug.
+    """
+    slug_lower = slug.strip().lower()
+    if not slug_lower:
+        return True
+    # Tenant slugs are reserved (Task 1.76)
+    tenant_key = get_tenant_item(slug_lower)
+    if table.get_item(Key=tenant_key).get("Item"):
+        return True
+    # Check sites via bySiteSlug GSI
+    params = query_by_site_slug(slug_lower)
+    resp = table.query(**params)
+    for item in resp.get("Items", []):
+        sk = item.get("sk", "")
+        site_id = sk.replace("SITE#", "") if sk.startswith("SITE#") else ""
+        if exclude_site_id and site_id == exclude_site_id:
+            continue
+        return True
+    return False
+
+
 def sk_tuser(username: str) -> str:
     return f"TUSER#{username}"
 

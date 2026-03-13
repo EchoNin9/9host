@@ -47,6 +47,7 @@ from dynamodb_helpers import (
     sk_tuser,
     sk_user_permissions,
     sk_user_profile,
+    slug_is_taken,
 )
 
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
@@ -356,6 +357,9 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         if not SITE_SLUG_PATTERN.match(slug):
             return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
 
+        if slug_is_taken(table, slug):
+            return _json_response(409, {"error": "Slug is already taken.", "slug": slug})
+
         if template_id:
             tpl = table.get_item(Key=get_template_item(template_id)).get("Item")
             if not tpl:
@@ -395,6 +399,8 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
             s = str(body["slug"]).strip().lower()
             if not SITE_SLUG_PATTERN.match(s):
                 return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+            if slug_is_taken(table, s, exclude_site_id=site_id):
+                return _json_response(409, {"error": "Slug is already taken.", "slug": s})
             item["slug"] = s
         if body.get("status") is not None:
             s = str(body["status"]).strip().lower()

@@ -44,6 +44,7 @@ from site_auth_handler import site_login_handler
 from stripe_webhook_handler import stripe_webhook_handler
 from tenants_handler import get_tenants_handler
 from templates_handler import get_templates_handler
+from validate_slug_handler import validate_slug_handler
 
 
 # CORS headers for Lambda proxy — API Gateway cors_configuration may not apply to $default
@@ -122,6 +123,9 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
 
     if method == "GET" and path in ("/api/tenants", "/api/tenants/"):
         return _with_cors(get_tenants_handler(event, context))
+
+    if method == "GET" and path in ("/api/validate-slug", "/api/validate-slug/"):
+        return _with_cors(validate_slug_handler(event, context))
 
     if path in ("/api/tenant", "/api/tenant/"):
         if method == "GET":

@@ -23,6 +23,7 @@ from dynamodb_helpers import (
     pk_tenant,
     query_sites_in_tenant,
     sk_site,
+    slug_is_taken,
 )
 from middleware import with_tenant
 
@@ -128,6 +129,10 @@ def _create_site(table, tenant_slug: str, body: dict) -> dict:
     if not SITE_SLUG_PATTERN.match(slug):
         return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
 
+    # Global slug uniqueness (Task 1.77)
+    if slug_is_taken(table, slug):
+        return _json_response(409, {"error": "Slug is already taken.", "slug": slug})
+
     # Validate template_id if provided (Task 1.32)
     if template_id:
         template_resp = table.get_item(Key=get_template_item(template_id))
@@ -192,6 +197,8 @@ def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
         s = str(slug).strip().lower()
         if not SITE_SLUG_PATTERN.match(s):
             return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+        if slug_is_taken(table, s, exclude_site_id=site_id):
+            return _json_response(409, {"error": "Slug is already taken.", "slug": s})
         item["slug"] = s
     if status is not None:
         s = str(status).strip().lower()

@@ -71,7 +71,7 @@
 | 1.54 | **FIX: Create custom role 500** — POST /api/tenant/roles returns 500 | DONE | Added missing `import os` in roles_handler.py. |
 | 1.55 | **FIX: Site login 503** — POST /api/auth/site-login returns 503 | DONE | Auto-generate JWT secret via random_password; remove REPLACE_ME placeholder. |
 | 1.76 | Global Site Uniqueness: bySiteSlug GSI | DONE | GSI4 bySiteSlug. gsi4pk=SLUG#{site_slug}, gsi4sk=SITE#{id}. Reserve tenant slugs from site slugs in create_tenant. Backfill script + CI. |
-| 1.77 | Enforce Global Slug: POST/PUT /api/tenant/sites + GET /api/validate-slug | TODO | Query bySiteSlug before put_item; 409 if slug taken. Add validate-slug for 2.77. Depends on 1.76. |
+| 1.77 | Enforce Global Slug: POST/PUT /api/tenant/sites + GET /api/validate-slug | DONE | slug_is_taken checks tenant + bySiteSlug; 409 on conflict. validate_slug_handler for 2.77. |
 | 1.78 | Wildcard Site Routing: *.echo9.net | TODO | ACM for *.echo9.net, routing priority (platform vs site vs tenant), site origin. Largest infra change. Depends on 1.76. |
 | 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | TODO | Query param template={id}; merge site + template. Clarify auth (tenant auth for draft). |
 | 1.80 | Self-Serve Modules API: PATCH /api/tenant | TODO | Already partial (2.22). Add tier validation: only allow features tenant's tier supports. |
@@ -192,7 +192,7 @@ Optimized for **concurrent agent work**. See [docs/BATCH_JOBS.md](docs/BATCH_JOB
 
 | Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Concurrency |
 |-------|-------------------|--------------------|-------------|
-| **1** | 1.76 bySiteSlug GSI | 2.75 FIX /login/site, 2.78 Branding, 2.82 Locked States | agent1 + agent2 |
+| **1** | 1.76 bySiteSlug GSI ✅ | 2.75, 2.78, 2.82 ✅ | agent1 + agent2 |
 | **2** | 1.77 Enforce Global Slug + validate-slug | — | agent1 only |
 | **3** | 1.79 Site Preview API | 2.77 Real-time Slug Check | agent1 + agent2 |
 | **4** | 1.80, 1.81 Modules tier + DNS verification | 2.78, 2.79, 2.82 (if not done in 1) | agent1 + agent2 |
@@ -211,6 +211,19 @@ From Plan Evaluation Feedback (plan_evaluation_feedback_9e308802). Suggested exe
 4. **1.81** → **2.81** (DNS verification + wizard)
 5. **1.78** (wildcard routing; depends on ACM, routing rules, site serving design)
 6. **1.80**, **2.78**, **2.79**, **2.82** (can run in parallel)
+
+---
+
+### Save Point: agent2 tasks 2.75, 2.78, 2.82 (2026-03-12)
+
+**Status:** agent2 tasks 2.75, 2.78, 2.82 complete. Merged into `develop` via branch `agent2/task-2.75-2.78-2.82`.
+
+**Completed this session:**
+- **2.75** — Site login: 503 → "Service unavailable", auth failure → "Invalid username, password, or site"
+- **2.78** — Echo9 branding: index.css brand colors (teal), layouts + sidebar
+- **2.82** — UpgradePrompt component; FeatureGate default fallback; link to settings/billing
+
+**Next:** 2.77 (Real-time Slug Check), 2.79 (Module Marketplace), 2.80 (Site Previewer), 2.81 (Domain Wizard).
 
 ---
 
