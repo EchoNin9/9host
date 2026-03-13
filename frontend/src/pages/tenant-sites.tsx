@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { MoreHorizontal, Pencil, Trash2, Check, X, Loader2 } from "lucide-react"
+import { MoreHorizontal, Pencil, Trash2, Check, X, Loader2, ExternalLink } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -25,6 +25,7 @@ import {
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
+import { SitePreview } from "@/components/site-preview"
 import { getToken, validateSlug, fetchTemplates, type Site, type Template } from "@/lib/api"
 
 const SLUG_DEBOUNCE_MS = 400
@@ -250,6 +251,7 @@ function TenantSites() {
   const { sites, loading, error, create, update, remove } = useSites(tenantSlug)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingSite, setEditingSite] = useState<Site | null>(null)
+  const [previewSite, setPreviewSite] = useState<Site | null>(null)
 
   const handleCreate = () => {
     setEditingSite(null)
@@ -309,6 +311,21 @@ function TenantSites() {
             <SheetTitle>{editingSite ? "Edit site" : "Add site"}</SheetTitle>
           </SheetHeader>
           <div className="mt-4">
+            {editingSite && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mb-4"
+                onClick={() => {
+                  setSheetOpen(false)
+                  setPreviewSite(editingSite)
+                }}
+              >
+                <ExternalLink className="mr-2 size-4" />
+                Preview
+              </Button>
+            )}
             <SiteForm
               site={editingSite}
               onSubmit={handleSubmit}
@@ -317,6 +334,16 @@ function TenantSites() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {previewSite && (
+        <SitePreview
+          siteId={previewSite.id}
+          siteName={previewSite.name}
+          templateId={previewSite.template_id ?? null}
+          open={!!previewSite}
+          onOpenChange={(open) => !open && setPreviewSite(null)}
+        />
+      )}
 
       {error && (
         <Card>
@@ -362,6 +389,10 @@ function TenantSites() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setPreviewSite(site)}>
+                        <ExternalLink className="mr-2 size-4" />
+                        Preview
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleEdit(site)}>
                         <Pencil className="mr-2 size-4" />
                         Edit

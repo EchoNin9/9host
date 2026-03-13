@@ -72,7 +72,7 @@
 | 1.55 | **FIX: Site login 503** — POST /api/auth/site-login returns 503 | DONE | Auto-generate JWT secret via random_password; remove REPLACE_ME placeholder. |
 | 1.76 | Global Site Uniqueness: bySiteSlug GSI | DONE | GSI4 bySiteSlug. gsi4pk=SLUG#{site_slug}, gsi4sk=SITE#{id}. Reserve tenant slugs from site slugs in create_tenant. Backfill script + CI. |
 | 1.77 | Enforce Global Slug: POST/PUT /api/tenant/sites + GET /api/validate-slug | DONE | slug_is_taken checks tenant + bySiteSlug; 409 on conflict. validate_slug_handler for 2.77. |
-| 1.78 | Wildcard Site Routing: *.echo9.net | TODO | ACM for *.echo9.net, routing priority (platform vs site vs tenant), site origin. Largest infra change. Depends on 1.76. |
+| 1.78 | Wildcard Site Routing: *.echo9.net | DONE | ACM wildcard cert, CloudFront sites dist, CloudNS *.echo9.net CNAME. Serves tenant admin SPA. Site content (platform>site>tenant) in 2.80. |
 | 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | DONE | Query param template={slug}; merge site + template. Tenant auth (draft preview). Unblocks 2.80. |
 | 1.80 | Self-Serve Modules API: PATCH /api/tenant | DONE | Tier validation: reject enabling features tenant's tier doesn't support (403 + upgrade_required). |
 | 1.81 | DNS Verification: CNAME/TXT for Custom Domains | DONE | verification_cname_target, verification_txt_record on DOMAIN. CLOUDFRONT_CUSTOM_DOMAIN env. Unblocks 2.81. |
@@ -162,8 +162,8 @@
 | 2.77 | Real-time Slug Check (GitHub-style) | DONE | GET /api/validate-slug?slug={slug}; debounced 400ms in SiteForm. Green check when available, red X when taken. |
 | 2.78 | Echo9 Branding Refresh | DONE | index.css brand colors (--brand-primary teal); layouts + sidebar Echo9 branding. |
 | 2.79 | Module Marketplace (cPanel-style) | DONE | /modules page with grid of module cards, toggles, tier badges. Reuses module_overrides. |
-| 2.80 | Site Previewer (Live Preview) | TODO | Iframe with preview API; template picker; integrate into tenant-sites Add/Edit flow. Depends on 1.79. |
-| 2.81 | Domain Setup Guide (DNS Wizard) | TODO | Two paths: Our DNS (CloudNS) vs Own DNS (CNAME + TXT). Show CNAME target and TXT from API. Depends on 1.81. |
+| 2.80 | Site Previewer (Live Preview) | DONE | SitePreview sheet with template picker; Preview in site dropdown + Edit form. GET /api/tenant/sites/{id}/preview. |
+| 2.81 | Domain Setup Guide (DNS Wizard) | DONE | DomainSetupGuideDialog: Own DNS (CNAME + TXT), Our DNS (CloudNS). After add + DNS setup on cards. |
 | 2.82 | Tier-Specific Locked States | DONE | UpgradePrompt component; FeatureGate default fallback; link to settings/billing. |
 
 ### Agent 4 — Self-Serve (Future)

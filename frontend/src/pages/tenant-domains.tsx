@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { MoreHorizontal, Trash2 } from "lucide-react"
+import { MoreHorizontal, Trash2, Settings2 } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { FeatureGate } from "@/components/feature-gate"
+import { DomainSetupGuideDialog } from "@/components/domain-setup-guide"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useDomains } from "@/hooks/use-domains"
@@ -117,9 +118,15 @@ function DomainsContent() {
   const { domains, loading, error, add, remove } = useDomains(tenantSlug)
   const { sites } = useSites(tenantSlug)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [setupDomain, setSetupDomain] = useState<Domain | null>(null)
 
   const handleSubmit = async (body: { domain: string; site_id: string }) => {
-    return add(body)
+    const result = await add(body)
+    if (result) {
+      setSheetOpen(false)
+      setSetupDomain(result)
+    }
+    return result
   }
 
   const handleDelete = async (d: Domain) => {
@@ -171,6 +178,14 @@ function DomainsContent() {
         )}
       </div>
 
+      {setupDomain && (
+        <DomainSetupGuideDialog
+          domain={setupDomain}
+          open={!!setupDomain}
+          onOpenChange={(open) => !open && setSetupDomain(null)}
+        />
+      )}
+
       <Sheet
         open={sheetOpen}
         onOpenChange={(open) => setSheetOpen(open)}
@@ -217,6 +232,10 @@ function DomainsContent() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => setSetupDomain(d)}>
+                        <Settings2 className="mr-2 size-4" />
+                        DNS setup
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         variant="destructive"
                         onClick={() => handleDelete(d)}
@@ -228,7 +247,7 @@ function DomainsContent() {
                   </DropdownMenu>
                 )}
               </CardHeader>
-              <CardContent className="pt-0">
+              <CardContent className="pt-0 flex items-center justify-between">
                 <span
                   className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                     d.status === "verified"
@@ -238,6 +257,16 @@ function DomainsContent() {
                 >
                   {d.status}
                 </span>
+                {(d.verification_cname_target || d.verification_txt_record) && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setSetupDomain(d)}
+                  >
+                    DNS setup
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}

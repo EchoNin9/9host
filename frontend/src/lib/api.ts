@@ -976,6 +976,49 @@ export async function validateSlug(
 }
 
 /**
+ * Fetch site preview (Task 1.79). GET /api/tenant/sites/{id}/preview?template={slug}
+ */
+export interface SitePreviewData {
+  id: string
+  name: string
+  slug: string
+  status: string
+  template_slug?: string
+  template_name?: string
+  components?: {
+    pages?: string[]
+    sections?: Record<string, string[]>
+    defaults?: Record<string, string>
+  }
+}
+
+export async function fetchSitePreview(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  templateSlug?: string | null
+): Promise<SitePreviewData | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+
+  const params = new URLSearchParams()
+  if (templateSlug) params.set("template", templateSlug)
+  const qs = params.toString()
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/sites/${encodeURIComponent(siteId)}/preview${qs ? `?${qs}` : ""}`,
+      { headers: sitesHeaders(tenantSlug, accessToken) }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { preview: SitePreviewData }
+    return data.preview ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Delete a site.
  */
 export async function deleteSite(
@@ -1011,6 +1054,10 @@ export interface Domain {
   status: string
   created_at: string
   updated_at: string
+  /** Task 1.81: CNAME target for DNS verification */
+  verification_cname_target?: string
+  /** Task 1.81: TXT record for ownership verification */
+  verification_txt_record?: string
 }
 
 export interface DomainsResponse {
