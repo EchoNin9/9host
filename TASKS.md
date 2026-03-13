@@ -159,7 +159,7 @@
 | 2.74 | Tenant users: owner has full permissions, non-editable | DONE | /{tenant}/users: account owner always has full permissions; hide or disable permissions UI for owner. |
 | 2.75 | **FIX: /login/site** — error handling for 503 vs auth failure | DONE | siteLogin returns { ok, error, status }; 503 → "Service unavailable", auth failure → "Invalid username, password, or site". |
 | 2.76 | Sitewide: show logged-in user in bottom left corner in sidebar | DONE | Between Sign out and Back to platform. Cognito: name/email via fetchUserAttributes; site user: display_name/username from API. |
-| 2.77 | Real-time Slug Check (GitHub-style) | TODO | GET /api/validate-slug?slug={slug}; debounced 300–500ms in SiteForm. Depends on 1.76, 1.77. |
+| 2.77 | Real-time Slug Check (GitHub-style) | DONE | GET /api/validate-slug?slug={slug}; debounced 400ms in SiteForm. Green check when available, red X when taken. |
 | 2.78 | Echo9 Branding Refresh | DONE | index.css brand colors (--brand-primary teal); layouts + sidebar Echo9 branding. |
 | 2.79 | Module Marketplace (cPanel-style) | TODO | Dedicated Modules/Apps dashboard with grid of toggles. Reuse tenant-settings module_overrides UI. |
 | 2.80 | Site Previewer (Live Preview) | TODO | Iframe with preview API; template picker; integrate into tenant-sites Add/Edit flow. Depends on 1.79. |

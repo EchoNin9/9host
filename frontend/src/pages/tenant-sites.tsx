@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react"
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { MoreHorizontal, Pencil, Trash2, Check, X, Loader2 } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -25,8 +25,10 @@ import {
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
-import { getToken } from "@/lib/api"
-import { fetchTemplates, type Site, type Template } from "@/lib/api"
+import { getToken, validateSlug, fetchTemplates, type Site, type Template } from "@/lib/api"
+
+const SLUG_DEBOUNCE_MS = 400
+const VALID_SLUG_RE = /^[a-z0-9-]*$/
 
 function SiteForm({
   site,
@@ -44,6 +46,37 @@ function SiteForm({
   const [templateId, setTemplateId] = useState(site?.template_id ?? "")
   const [saving, setSaving] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
+  type SlugStatus = "idle" | "checking" | "available" | "taken" | "invalid"
+  const [slugStatus, setSlugStatus] = useState<SlugStatus>("idle")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const checkSlug = useCallback(
+    async (value: string) => {
+      if (!tenantSlug || !value.trim()) {
+        setSlugStatus("idle")
+        return
+      }
+      const normalized = value.trim().toLowerCase()
+      if (!VALID_SLUG_RE.test(normalized)) {
+        setSlugStatus("invalid")
+        return
+      }
+      setSlugStatus("checking")
+      const token = await getToken()
+      const result = await validateSlug(
+        tenantSlug,
+        token,
+        normalized,
+        site?.id ?? null
+      )
+      if (result) {
+        setSlugStatus(result.available ? "available" : "taken")
+      } else {
+        setSlugStatus("idle")
+      }
+    },
+    [tenantSlug, site?.id]
+  )
 
   useEffect(() => {
     async function loadTemplates() {
@@ -58,6 +91,20 @@ function SiteForm({
     }
     void loadTemplates()
   }, [tenantSlug])
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!slug.trim()) {
+      setSlugStatus("idle")
+      return
+    }
+    debounceRef.current = setTimeout(() => {
+      void checkSlug(slug)
+    }, SLUG_DEBOUNCE_MS)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [slug, checkSlug])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -97,15 +144,46 @@ function SiteForm({
         <label htmlFor="site-slug" className="text-sm font-medium">
           Slug (optional)
         </label>
-        <Input
-          id="site-slug"
-          value={slug}
-          onChange={(e) => setSlug(e.target.value)}
-          placeholder="my-site"
-          className="mt-1"
-        />
+        <div className="relative mt-1">
+          <Input
+            id="site-slug"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            placeholder="my-site"
+            className={
+              slugStatus === "taken" || slugStatus === "invalid"
+                ? "pr-9 border-destructive"
+                : "pr-9"
+            }
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+            {slugStatus === "checking" && (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            )}
+            {slugStatus === "available" && (
+              <Check className="size-4 text-green-600 dark:text-green-500" aria-hidden />
+            )}
+            {slugStatus === "taken" && (
+              <X className="size-4 text-destructive" aria-hidden />
+            )}
+            {slugStatus === "invalid" && slug.trim() && (
+              <X className="size-4 text-destructive" aria-hidden />
+            )}
+          </span>
+        </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Lowercase letters, numbers, hyphens only
+          {slugStatus === "available" && "Available"}
+          {slugStatus === "taken" && (
+            <span className="text-destructive">This slug is already taken</span>
+          )}
+          {slugStatus === "invalid" && slug.trim() && (
+            <span className="text-destructive">
+              Use lowercase letters, numbers, and hyphens only
+            </span>
+          )}
+          {slugStatus === "idle" || slugStatus === "checking" ? (
+            "Lowercase letters, numbers, hyphens only"
+          ) : null}
         </p>
       </div>
       <div>
@@ -149,7 +227,16 @@ function SiteForm({
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" disabled={saving}>
+        <Button
+          type="submit"
+          disabled={
+            saving ||
+            (slug.trim() !== "" &&
+              (slugStatus === "taken" ||
+                slugStatus === "invalid" ||
+                slugStatus === "checking"))
+          }
+        >
           {saving ? "Saving…" : site ? "Update" : "Create"}
         </Button>
       </SheetFooter>

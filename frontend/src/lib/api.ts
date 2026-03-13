@@ -944,6 +944,38 @@ export async function updateSite(
 }
 
 /**
+ * Validate site slug availability (Task 1.77).
+ * GET /api/validate-slug?slug={slug}&exclude_site_id={id}
+ */
+export interface ValidateSlugResponse {
+  available: boolean
+  slug: string
+}
+
+export async function validateSlug(
+  tenantSlug: string,
+  accessToken: string | null,
+  slug: string,
+  excludeSiteId?: string | null
+): Promise<ValidateSlugResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !slug?.trim()) return null
+
+  const params = new URLSearchParams({ slug: slug.trim().toLowerCase() })
+  if (excludeSiteId) params.set("exclude_site_id", excludeSiteId)
+
+  try {
+    const res = await fetch(`${base}/api/validate-slug?${params}`, {
+      headers: tenantHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as ValidateSlugResponse
+  } catch {
+    return null
+  }
+}
+
+/**
  * Delete a site.
  */
 export async function deleteSite(
