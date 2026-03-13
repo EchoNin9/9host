@@ -68,6 +68,8 @@
 | 1.51 | **FIX: CORS after sign-in — commit billing_handler, stripe_helpers; add PATCH to API Gateway** | DONE | Lambda ImportError caused 502 → CORS preflight failed. |
 | 1.52 | **FIX: 500 errors on tenant routes** — GET /api/tenant, tenant settings return 500 (e.g. /{tenant}/settings) | DONE | Top-level try/except in handler; GET /api/admin/tenants/{slug}/settings; owner_email in PUT settings response. |
 | 1.53 | **FIX: 500 error on edit/save tenant** — PUT /api/admin/tenants/{slug}/settings returns 500 | DONE | Escaped reserved word 'name' in DynamoDB UpdateExpression. |
+| 1.54 | **FIX: Create custom role 500** — POST /api/tenant/roles returns 500 | DONE | Added missing `import os` in roles_handler.py. |
+| 1.55 | **FIX: Site login 503** — POST /api/auth/site-login returns 503 | DONE | Auto-generate JWT secret via random_password; remove REPLACE_ME placeholder. |
 
 ### Agent 2 — Frontend / UI
 
@@ -148,6 +150,8 @@
 | 2.71 | **FIX: Add DB user (TUSER) 500** | DONE | POST /api/admin/tenants/{slug}/users with type=tuser returns 500: "cannot access local variable 'get_tuser_item'". Remove redundant in-function imports that shadow module-level import. |
 | 2.72 | Administer Tenant Users: edit user Display Name | DONE | Edit name button + EditDisplayNameSheet; updateAdminUser with name. |
 | 2.73 | Administer Tenant: Settings default, tab order | DONE | Settings default tab; order Settings, Users, Sites, Domains. |
+| 2.74 | Tenant users: owner has full permissions, non-editable | DONE | /{tenant}/users: account owner always has full permissions; hide or disable permissions UI for owner. |
+| 2.75 | **FIX: /login/site** — error handling for 503 vs auth failure | TODO | When site-login returns 503, show "Service unavailable" instead of "Invalid username, password, or site". Depends on 1.55. Note: bootstrap-autofill-overlay.js errors are from browser extension, not app. |
 
 ### Agent 4 — Self-Serve (Future)
 

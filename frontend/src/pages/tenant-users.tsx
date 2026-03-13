@@ -29,6 +29,7 @@ import {
   updateTenantTUser,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import {
   useTenantUsers,
@@ -47,14 +48,17 @@ import {
 function PermissionsForm({
   user,
   tenantSlug,
+  ownerSub,
   onClose,
   onSaved,
 }: {
   user: TenantUser
   tenantSlug: string
+  ownerSub: string | null
   onClose: () => void
   onSaved: () => void
 }) {
+  const isOwner = ownerSub != null && user.sub === ownerSub
   const { permissions, loading, update } = useUserPermissions(
     tenantSlug,
     user.sub
@@ -80,6 +84,21 @@ function PermissionsForm({
       onSaved()
       onClose()
     }
+  }
+
+  if (isOwner) {
+    return (
+      <div className="flex flex-col gap-6">
+        <p className="text-sm text-muted-foreground">
+          The account owner has full access to all modules. Permissions cannot be edited.
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -564,6 +583,7 @@ function EditRoleForm({
 function TenantUsers() {
   const { tenantSlug } = useTenant()
   const { canEdit } = useTenantRole()
+  const { tenant } = useTenantMetadata(tenantSlug)
   const { users, loading, error } = useTenantUsers(tenantSlug)
   const { tusers, loading: tloading, error: terror, refetch: refetchTUsers } = useTenantTUsers(tenantSlug)
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useTenantRoles(tenantSlug)
@@ -628,42 +648,52 @@ function TenantUsers() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {users.map((u) => (
-            <Card key={`cognito-${u.sub}`}>
-              <CardHeader className="flex flex-row items-center justify-between py-4">
-                <div>
-                  <CardTitle className="text-base">
-                    {u.name || u.email || u.sub}
-                  </CardTitle>
-                  <CardDescription>
-                    {u.email && u.email !== (u.name || u.sub) ? u.email : u.sub}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      u.role === "admin"
-                        ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
-                        : u.role === "manager"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                          : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    <Shield className="size-3" />
-                    {u.role}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPermissionsUser(u)}
-                  >
-                    <Settings2 className="mr-1 size-4" />
-                    Permissions
-                  </Button>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
+          {users.map((u) => {
+            const isOwner = tenant?.owner_sub != null && u.sub === tenant.owner_sub
+            return (
+              <Card key={`cognito-${u.sub}`}>
+                <CardHeader className="flex flex-row items-center justify-between py-4">
+                  <div>
+                    <CardTitle className="text-base">
+                      {u.name || u.email || u.sub}
+                    </CardTitle>
+                    <CardDescription>
+                      {u.email && u.email !== (u.name || u.sub) ? u.email : u.sub}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isOwner && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                        Owner
+                      </span>
+                    )}
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        u.role === "admin"
+                          ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
+                          : u.role === "manager"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      <Shield className="size-3" />
+                      {u.role}
+                    </span>
+                    {!isOwner && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPermissionsUser(u)}
+                      >
+                        <Settings2 className="mr-1 size-4" />
+                        Permissions
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+              </Card>
+            )
+          })}
           {tusers.map((u) => (
             <Card key={`tuser-${u.username}`}>
               <CardHeader className="flex flex-row items-center justify-between py-4">
@@ -960,6 +990,7 @@ function TenantUsers() {
               <PermissionsForm
                 user={permissionsUser}
                 tenantSlug={tenantSlug}
+                ownerSub={tenant?.owner_sub ?? null}
                 onClose={() => setPermissionsUser(null)}
                 onSaved={() => {}}
               />
