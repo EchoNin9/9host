@@ -49,10 +49,12 @@ data "aws_secretsmanager_secret_version" "cloudns" {
 }
 
 locals {
-  domains       = length(var.domains) > 0 ? var.domains : data.terraform_remote_state.infra.outputs.domains
-  acm_records   = data.terraform_remote_state.infra.outputs.acm_validation_records
-  cf_staging    = data.terraform_remote_state.infra.outputs.cloudfront_staging_domain
-  cf_production = data.terraform_remote_state.infra.outputs.cloudfront_production_domain
+  domains         = length(var.domains) > 0 ? var.domains : data.terraform_remote_state.infra.outputs.domains
+  acm_records     = data.terraform_remote_state.infra.outputs.acm_validation_records
+  acm_wildcard    = data.terraform_remote_state.infra.outputs.acm_wildcard_validation_records
+  cf_staging      = data.terraform_remote_state.infra.outputs.cloudfront_staging_domain
+  cf_production   = data.terraform_remote_state.infra.outputs.cloudfront_production_domain
+  cf_sites        = data.terraform_remote_state.infra.outputs.cloudfront_sites_domain
 }
 
 # DNS zone per domain (echo9.net, echo9.ca)
@@ -95,5 +97,30 @@ resource "cloudns_dns_record" "prod" {
   name     = "prod"
   type     = "CNAME"
   value    = local.cf_production
+  ttl      = 300
+}
+
+# Task 1.78: *.{domain} -> CloudFront sites (tenant + site subdomains)
+resource "cloudns_dns_record" "wildcard" {
+  for_each = var.manage_records ? toset(local.domains) : []
+  zone     = cloudns_dns_zone.zone[each.key].domain
+  name     = "*"
+  type     = "CNAME"
+  value    = local.cf_sites
+  ttl      = 300
+}
+
+# Task 1.78: Wildcard ACM validation CNAMEs (*.echo9.net)
+locals {
+  acm_wildcard_by_domain = var.manage_records ? { for r in local.acm_wildcard : r.domain => r } : {}
+  zone_from_wildcard     = { for d, r in local.acm_wildcard_by_domain : d => replace(r.domain, "*.", "") }
+}
+
+resource "cloudns_dns_record" "acm_wildcard_validation" {
+  for_each = local.acm_wildcard_by_domain
+  zone     = cloudns_dns_zone.zone[local.zone_from_wildcard[each.key]].domain
+  name     = replace(trimsuffix(each.value.name, "."), ".${local.zone_from_wildcard[each.key]}", "")
+  type     = "CNAME"
+  value    = trimsuffix(each.value.value, ".")
   ttl      = 300
 }

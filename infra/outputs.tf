@@ -16,6 +16,19 @@ output "acm_validation_records" {
   ]
 }
 
+# Task 1.78: Wildcard cert validation records for CloudNS
+output "acm_wildcard_validation_records" {
+  description = "CNAME records for wildcard ACM cert (*.echo9.net). Add to CloudNS."
+  value = [
+    for dvo in aws_acm_certificate.wildcard.domain_validation_options : {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      value  = dvo.resource_record_value
+      domain = dvo.domain_name
+    }
+  ]
+}
+
 # ------------------------------------------------------------------------------
 # Add these as GitHub repo variables (Settings → Secrets and variables → Actions)
 # ------------------------------------------------------------------------------
@@ -70,6 +83,17 @@ output "cloudfront_production_domain" {
 output "cloudfront_production_url" {
   description = "Production frontend URL (after DNS)"
   value       = "https://prod.${var.domains[0]}"
+}
+
+# Task 1.78: Wildcard distribution for sites + tenant subdomains (*.echo9.net)
+output "cloudfront_sites_domain" {
+  description = "CloudFront domain for *.echo9.net (sites + tenant subdomains)"
+  value       = aws_cloudfront_distribution.sites.domain_name
+}
+
+output "cloudfront_sites_distribution_id" {
+  description = "CloudFront distribution ID for sites (cache invalidation)"
+  value       = aws_cloudfront_distribution.sites.id
 }
 
 output "s3_frontend_staging_bucket" {

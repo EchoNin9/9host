@@ -99,7 +99,11 @@ jobs:
         run: |
           aws s3 sync frontend/dist/ s3://9host-frontend-staging/ --delete
 
-      - name: Invalidate CloudFront cache (staging)
+      - name: Invalidate CloudFront cache (staging + sites)
         run: |
-          DIST_ID=$(cd infra && tofu output -raw cloudfront_staging_distribution_id)
-          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          DIST_STAGING=$(cd infra && tofu output -raw cloudfront_staging_distribution_id)
+          aws cloudfront create-invalidation --distribution-id "$DIST_STAGING" --paths "/*"
+          DIST_SITES=$(cd infra && tofu output -raw cloudfront_sites_distribution_id 2>/dev/null || true)
+          if [ -n "$DIST_SITES" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST_SITES" --paths "/*"
+          fi
