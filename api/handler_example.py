@@ -4,29 +4,7 @@ Tenant metadata handler — GET /api/tenant (Task 1.26: owner_sub, 1.28: module_
 Fetches tenant from DynamoDB. Returns name, tier, owner_sub, module_overrides, resolved_features in GET.
 """
 
-# Feature keys aligned with frontend feature-flags.ts
-FEATURE_KEYS = ("custom_domains", "advanced_analytics")
-
-
-def _tier_rank(tier: str) -> int:
-    """Tier rank for comparison. FREE=0, PRO=1, BUSINESS=2."""
-    t = (tier or "FREE").upper()
-    if t == "FREE":
-        return 0
-    if t == "PRO":
-        return 1
-    if t == "BUSINESS":
-        return 2
-    return 0
-
-
-def _tier_has_feature(tier: str, feature: str) -> bool:
-    """Check if tier grants feature by default (Pro+ for custom_domains, advanced_analytics)."""
-    if feature not in FEATURE_KEYS:
-        return False
-    rank = _tier_rank(tier)
-    return rank >= 1  # PRO and BUSINESS
-
+from tier_config import FEATURE_KEYS, tier_has_feature as _tier_has_feature, tier_rank as _tier_rank
 
 import json
 import os

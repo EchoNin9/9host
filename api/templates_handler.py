@@ -13,6 +13,7 @@ import boto3
 from auth_helpers import require_tenant_auth
 from dynamodb_helpers import get_tenant_item, query_templates
 from middleware import with_tenant
+from tier_config import tier_rank as _tier_rank
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -21,18 +22,6 @@ def _json_response(status: int, body: dict) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body),
     }
-
-
-def _tier_rank(tier: str) -> int:
-    """Tier rank for comparison. FREE=0, PRO=1, BUSINESS=2."""
-    t = (tier or "FREE").upper()
-    if t == "FREE":
-        return 0
-    if t == "PRO":
-        return 1
-    if t == "BUSINESS":
-        return 2
-    return 0
 
 
 @with_tenant

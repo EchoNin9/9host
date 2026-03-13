@@ -22,6 +22,7 @@ import bcrypt
 import boto3
 
 from auth_helpers import get_sub_from_access_token, is_superadmin
+from tier_config import tier_rank as _tier_rank, VALID_TIERS
 from dynamodb_helpers import (
     get_domain_item,
     get_role_item,
@@ -303,17 +304,6 @@ def _site_to_response(item: dict) -> dict:
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
-
-
-def _tier_rank(tier: str) -> int:
-    t = (tier or "FREE").upper()
-    if t == "FREE":
-        return 0
-    if t == "PRO":
-        return 1
-    if t == "BUSINESS":
-        return 2
-    return 0
 
 
 def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffix: str) -> dict:
@@ -828,8 +818,8 @@ def put_tenant_settings_handler(event: dict, context: dict, tenant_slug: str) ->
 
     if "tier" in body:
         tier = (body.get("tier") or "FREE").upper()
-        if tier not in ("FREE", "PRO", "BUSINESS"):
-            return _json_response(400, {"error": "tier must be FREE, PRO, or BUSINESS"})
+        if tier not in VALID_TIERS:
+            return _json_response(400, {"error": "tier must be FREE, PRO, BUSINESS, or VIP"})
         updates.append("tier = :tier")
         expr_vals[":tier"] = tier
 

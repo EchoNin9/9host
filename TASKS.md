@@ -76,6 +76,7 @@
 | 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | DONE | Query param template={slug}; merge site + template. Tenant auth (draft preview). Unblocks 2.80. |
 | 1.80 | Self-Serve Modules API: PATCH /api/tenant | DONE | Tier validation: reject enabling features tenant's tier doesn't support (403 + upgrade_required). |
 | 1.81 | DNS Verification: CNAME/TXT for Custom Domains | DONE | verification_cname_target, verification_txt_record on DOMAIN. CLOUDFRONT_CUSTOM_DOMAIN env. Unblocks 2.81. |
+| 1.82 | Add VIP tier (backend) | DONE | VIP = Business features, no payment. Only superadmin assigns. Add api/tier_config.py for extensibility (VALID_TIERS, TIER_FEATURE_RANK, PAYABLE_TIERS). Update admin_handler, admin_tenant_resources, admin_templates_handler, handler_example, templates_handler, sites_handler, domains_handler, analytics_handler. VIP excluded from billing/Stripe. docs/TIERS.md. Unblocks 2.83. |
 
 ### Agent 2 — Frontend / UI
 
@@ -165,6 +166,7 @@
 | 2.80 | Site Previewer (Live Preview) | DONE | SitePreview sheet with template picker; Preview in site dropdown + Edit form. GET /api/tenant/sites/{id}/preview. |
 | 2.81 | Domain Setup Guide (DNS Wizard) | DONE | DomainSetupGuideDialog: Own DNS (CNAME + TXT), Our DNS (CloudNS). After add + DNS setup on cards. |
 | 2.82 | Tier-Specific Locked States | DONE | UpgradePrompt component; FeatureGate default fallback; link to settings/billing. |
+| 2.83 | Add VIP tier (frontend) | TODO | VIP = Business features. Show VIP in superadmin tier dropdowns only (create tenant, administer tenant). Tenant on VIP sees "VIP" badge; non-VIP users never see VIP. Billing/upgrade: never show VIP. feature-flags.ts: add vip, tierRank(vip)=business. Depends on 1.82. |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -197,7 +199,8 @@ Optimized for **concurrent agent work**. See [docs/BATCH_JOBS.md](docs/BATCH_JOB
 | **3** | 1.79 Site Preview API | 2.77 Real-time Slug Check | agent1 + agent2 |
 | **4** | 1.80, 1.81 Modules tier + DNS verification | 2.78, 2.79, 2.82 (if not done in 1) | agent1 + agent2 |
 | **5** | 1.78 Wildcard routing | 2.80 Site Previewer, 2.81 Domain Wizard | agent1 + agent2 |
-| **6** | — | — | agent4: 4.1 Self-serve |
+| **6** | 1.82 VIP tier (backend) | 2.83 VIP tier (frontend, ← 1.82) | agent1 → agent2 |
+| **7** | — | — | agent4: 4.1 Self-serve |
 
 > **Arrows (←)** = depends on. Batches are sequential; agents within a batch run concurrently.
 
@@ -278,11 +281,14 @@ From Plan Evaluation Feedback (plan_evaluation_feedback_9e308802). Suggested exe
 
 ## Feature Tiers
 
-| Tier | Custom Domains | Advanced Analytics |
-|------|----------------|-------------------|
-| Free | ❌ | ❌ |
-| Pro | ✅ | ✅ |
-| Business | ✅ | ✅ (+ more) |
+| Tier | Custom Domains | Advanced Analytics | Payment | Assignable by |
+|------|----------------|-------------------|--------|---------------|
+| Free | ❌ | ❌ | — | superadmin |
+| Pro | ✅ | ✅ | Stripe | superadmin, checkout |
+| Business | ✅ | ✅ (+ more) | Stripe | superadmin, checkout |
+| VIP | ✅ | ✅ (+ more) | — | superadmin only |
+
+VIP: friends/family, same features as Business, no payment. Only superadmin can assign. Non-VIP users do not see VIP tier exists. See [docs/TIERS.md](docs/TIERS.md) for extensibility.
 
 ---
 

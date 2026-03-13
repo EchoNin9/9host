@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import boto3
 
 from auth_helpers import get_sub_from_access_token, is_superadmin
+from tier_config import VALID_TIERS
 from dynamodb_helpers import (
     get_tenant_item,
     gsi1pk_user,
@@ -126,8 +127,8 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
             400,
             {"error": "slug must be lowercase alphanumeric and hyphen (e.g. acme-corp, my-band)"},
         )
-    if tier not in ("FREE", "PRO", "BUSINESS"):
-        return _json_response(400, {"error": "tier must be FREE, PRO, or BUSINESS"})
+    if tier not in VALID_TIERS:
+        return _json_response(400, {"error": "tier must be FREE, PRO, BUSINESS, or VIP"})
 
     if not name:
         name = slug.replace("-", " ").title()
@@ -315,8 +316,8 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
 
     if "tier" in body:
         tier = (body.get("tier") or "FREE").upper()
-        if tier not in ("FREE", "PRO", "BUSINESS"):
-            return _json_response(400, {"error": "tier must be FREE, PRO, or BUSINESS"})
+        if tier not in VALID_TIERS:
+            return _json_response(400, {"error": "tier must be FREE, PRO, BUSINESS, or VIP"})
         updates.append("tier = :tier")
         expr_vals[":tier"] = tier
 

@@ -24,12 +24,13 @@ from dynamodb_helpers import (
     sk_domain,
 )
 from middleware import with_tenant
+from tier_config import tiers_with_pro_features
 
 # Domains: alphanumeric, hyphen, dot; at least one dot; no leading/trailing hyphen or dot
 DOMAIN_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", re.IGNORECASE)
 
-# Tiers that have custom_domains (Pro+)
-DOMAINS_TIERS = ("PRO", "BUSINESS")
+# Tiers that have custom_domains (Pro+), includes VIP (Task 1.82)
+DOMAINS_TIERS = tiers_with_pro_features()
 
 
 def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
@@ -206,7 +207,7 @@ def domains_handler(event: dict, context: dict) -> dict:
         return _json_response(
             403,
             {
-                "error": "Custom Domains requires Pro or Business tier.",
+                "error": "Custom Domains requires Pro, Business, or VIP tier.",
                 "tier": tier,
                 "upgrade_required": True,
             },

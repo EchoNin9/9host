@@ -14,9 +14,10 @@ import boto3
 from auth_helpers import require_tenant_auth
 from dynamodb_helpers import get_tenant_item
 from middleware import extract_tenant_slug, with_tenant
+from tier_config import tiers_with_pro_features
 
-# Tiers that have advanced_analytics (Pro+)
-ANALYTICS_TIERS = ("PRO", "BUSINESS")
+# Tiers that have advanced_analytics (Pro+), includes VIP (Task 1.82)
+ANALYTICS_TIERS = tiers_with_pro_features()
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -86,7 +87,7 @@ def get_analytics_handler(event: dict, context: dict) -> dict:
         return _json_response(
             403,
             {
-                "error": "Advanced Analytics requires Pro or Business tier.",
+                "error": "Advanced Analytics requires Pro, Business, or VIP tier.",
                 "tier": tier,
                 "upgrade_required": True,
             },

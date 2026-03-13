@@ -15,6 +15,7 @@ from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, r
 from dynamodb_helpers import get_tenant_item
 from middleware import with_tenant
 from stripe_helpers import get_stripe_api_key, get_stripe_price_id, stripe_configured
+from tier_config import is_payable_tier
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -78,6 +79,14 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
             return _json_response(403, {"error": err or "Forbidden."})
     elif not role_is_admin_or_manager(role):
         return _json_response(403, {"error": "Admin or manager role required."})
+
+    # VIP tier excluded from billing (Task 1.82)
+    tenant = _get_tenant(table, tenant_slug)
+    if tenant and not is_payable_tier(tenant.get("tier", "FREE")):
+        return _json_response(
+            400,
+            {"error": "VIP tier does not require billing. You already have full features."},
+        )
 
     body = event.get("body") or "{}"
     if isinstance(body, str):
@@ -168,6 +177,12 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
         return _json_response(403, {"error": "Admin or manager role required."})
 
     tenant = _get_tenant(table, tenant_slug)
+    # VIP tier excluded from billing (Task 1.82)
+    if tenant and not is_payable_tier(tenant.get("tier", "FREE")):
+        return _json_response(
+            400,
+            {"error": "VIP tier does not require billing. You already have full features."},
+        )
     stripe_customer_id = (tenant or {}).get("stripe_customer_id")
     if not stripe_customer_id:
         return _json_response(

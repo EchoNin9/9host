@@ -29,6 +29,7 @@ from dynamodb_helpers import (
     slug_is_taken,
 )
 from middleware import with_tenant
+from tier_config import tier_rank as _tier_rank
 
 # Slug: lowercase alphanumeric + hyphen
 SITE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
@@ -92,18 +93,6 @@ def _site_to_response(item: dict) -> dict:
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
-
-
-def _tier_rank(tier: str) -> int:
-    """Tier rank for comparison. FREE=0, PRO=1, BUSINESS=2."""
-    t = (tier or "FREE").upper()
-    if t == "FREE":
-        return 0
-    if t == "PRO":
-        return 1
-    if t == "BUSINESS":
-        return 2
-    return 0
 
 
 def _list_sites(table, tenant_slug: str) -> dict:

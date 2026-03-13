@@ -12,6 +12,7 @@ import boto3
 
 from auth_helpers import get_sub_from_access_token, is_superadmin
 from dynamodb_helpers import get_template_item, pk_tenant, query_templates, sk_template
+from tier_config import is_valid_tier
 
 PLATFORM_TENANT = "_platform"
 
@@ -58,8 +59,6 @@ def _parse_body(event: dict) -> dict | None:
     return body
 
 
-def _valid_tier(tier: str) -> bool:
-    return (tier or "").upper() in ("FREE", "PRO", "BUSINESS")
 
 
 def list_templates_handler(event: dict, context: dict) -> dict:
@@ -112,8 +111,8 @@ def create_template_handler(event: dict, context: dict) -> dict:
     name = (body.get("name") or slug).strip()
     description = (body.get("description") or "").strip()
     tier_required = (body.get("tier_required") or "FREE").upper()
-    if not _valid_tier(tier_required):
-        return _json_response(400, {"error": "tier_required must be FREE, PRO, or BUSINESS"})
+    if not is_valid_tier(tier_required):
+        return _json_response(400, {"error": "tier_required must be FREE, PRO, BUSINESS, or VIP"})
     components = body.get("components")
     if components is None:
         components = {}
@@ -218,8 +217,8 @@ def update_template_handler(event: dict, context: dict, slug: str) -> dict:
         expr_vals[":desc"] = (body.get("description") or "").strip()
     if "tier_required" in body:
         tr = (body.get("tier_required") or "FREE").upper()
-        if not _valid_tier(tr):
-            return _json_response(400, {"error": "tier_required must be FREE, PRO, or BUSINESS"})
+        if not is_valid_tier(tr):
+            return _json_response(400, {"error": "tier_required must be FREE, PRO, BUSINESS, or VIP"})
         updates.append("tier_required = :tr")
         expr_vals[":tr"] = tr
     if "components" in body:
