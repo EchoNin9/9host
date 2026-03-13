@@ -10,6 +10,7 @@ Requires tenant admin (Cognito admin or tenant_user with manager-equivalent).
 """
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from urllib.parse import unquote

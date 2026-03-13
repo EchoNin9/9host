@@ -53,9 +53,13 @@ resource "aws_secretsmanager_secret_version" "stripe" {
 
 # ------------------------------------------------------------------------------
 # JWT signing key for site login (Task 1.44) — non-Cognito tenant user auth
-# User sets via: aws secretsmanager put-secret-value --secret-id 9host-jwt-signing-key \
-#   --secret-string "$(openssl rand -base64 32)"
+# Auto-generated on apply. Site login works out of the box (Task 1.55).
 # ------------------------------------------------------------------------------
+
+resource "random_password" "jwt_signing" {
+  length  = 32
+  special = false
+}
 
 resource "aws_secretsmanager_secret" "jwt_signing" {
   name        = "9host-jwt-signing-key"
@@ -68,9 +72,5 @@ resource "aws_secretsmanager_secret" "jwt_signing" {
 
 resource "aws_secretsmanager_secret_version" "jwt_signing" {
   secret_id     = aws_secretsmanager_secret.jwt_signing.id
-  secret_string = "REPLACE_ME"
-
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
+  secret_string = random_password.jwt_signing.result
 }
