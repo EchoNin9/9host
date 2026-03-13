@@ -67,7 +67,7 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
     if not item:
         return _json_response(404, {"error": "Tenant not found."})
 
-    tier = item.get("tier", "FREE")
+    tier = (item.get("tier") or "FREE").upper()
     module_overrides = item.get("module_overrides") or {}
     owner_sub = item.get("owner_sub")
 
