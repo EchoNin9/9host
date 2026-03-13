@@ -70,6 +70,12 @@
 | 1.53 | **FIX: 500 error on edit/save tenant** — PUT /api/admin/tenants/{slug}/settings returns 500 | DONE | Escaped reserved word 'name' in DynamoDB UpdateExpression. |
 | 1.54 | **FIX: Create custom role 500** — POST /api/tenant/roles returns 500 | DONE | Added missing `import os` in roles_handler.py. |
 | 1.55 | **FIX: Site login 503** — POST /api/auth/site-login returns 503 | DONE | Auto-generate JWT secret via random_password; remove REPLACE_ME placeholder. |
+| 1.76 | Global Site Uniqueness: bySiteSlug GSI | DONE | GSI4 bySiteSlug. gsi4pk=SLUG#{site_slug}, gsi4sk=SITE#{id}. Reserve tenant slugs from site slugs in create_tenant. Backfill script + CI. |
+| 1.77 | Enforce Global Slug: POST/PUT /api/tenant/sites + GET /api/validate-slug | TODO | Query bySiteSlug before put_item; 409 if slug taken. Add validate-slug for 2.77. Depends on 1.76. |
+| 1.78 | Wildcard Site Routing: *.echo9.net | TODO | ACM for *.echo9.net, routing priority (platform vs site vs tenant), site origin. Largest infra change. Depends on 1.76. |
+| 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | TODO | Query param template={id}; merge site + template. Clarify auth (tenant auth for draft). |
+| 1.80 | Self-Serve Modules API: PATCH /api/tenant | TODO | Already partial (2.22). Add tier validation: only allow features tenant's tier supports. |
+| 1.81 | DNS Verification: CNAME/TXT for Custom Domains | TODO | Add verification_cname_target, verification_txt_record to DOMAIN schema. EventBridge + Lambda or on-demand check. |
 
 ### Agent 2 — Frontend / UI
 
@@ -151,8 +157,14 @@
 | 2.72 | Administer Tenant Users: edit user Display Name | DONE | Edit name button + EditDisplayNameSheet; updateAdminUser with name. |
 | 2.73 | Administer Tenant: Settings default, tab order | DONE | Settings default tab; order Settings, Users, Sites, Domains. |
 | 2.74 | Tenant users: owner has full permissions, non-editable | DONE | /{tenant}/users: account owner always has full permissions; hide or disable permissions UI for owner. |
-| 2.75 | **FIX: /login/site** — error handling for 503 vs auth failure | TODO | When site-login returns 503, show "Service unavailable" instead of "Invalid username, password, or site". Depends on 1.55. Note: bootstrap-autofill-overlay.js errors are from browser extension, not app. |
+| 2.75 | **FIX: /login/site** — error handling for 503 vs auth failure | DONE | siteLogin returns { ok, error, status }; 503 → "Service unavailable", auth failure → "Invalid username, password, or site". |
 | 2.76 | Sitewide: show logged-in user in bottom left corner in sidebar | DONE | Between Sign out and Back to platform. Cognito: name/email via fetchUserAttributes; site user: display_name/username from API. |
+| 2.77 | Real-time Slug Check (GitHub-style) | TODO | GET /api/validate-slug?slug={slug}; debounced 300–500ms in SiteForm. Depends on 1.76, 1.77. |
+| 2.78 | Echo9 Branding Refresh | DONE | index.css brand colors (--brand-primary teal); layouts + sidebar Echo9 branding. |
+| 2.79 | Module Marketplace (cPanel-style) | TODO | Dedicated Modules/Apps dashboard with grid of toggles. Reuse tenant-settings module_overrides UI. |
+| 2.80 | Site Previewer (Live Preview) | TODO | Iframe with preview API; template picker; integrate into tenant-sites Add/Edit flow. Depends on 1.79. |
+| 2.81 | Domain Setup Guide (DNS Wizard) | TODO | Two paths: Our DNS (CloudNS) vs Own DNS (CNAME + TXT). Show CNAME target and TXT from API. Depends on 1.81. |
+| 2.82 | Tier-Specific Locked States | DONE | UpgradePrompt component; FeatureGate default fallback; link to settings/billing. |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -176,14 +188,29 @@
 
 ### Next Task Batches (2026-03-12)
 
-| Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Agent 3 (Payments) | Concurrency |
-|-------|-------------------|--------------------|--------------------|----|
-| **1** | — | 2.24 Billing / upgrade UI (← 3.1, 3.2) | 3.2 Map Stripe → tier | agent2 + agent3 **concurrent** |
-|       |   | 2.25 Stripe checkout flow (← 3.1) | 3.3 Upgrade/downgrade webhooks | |
-| **2** | — | — | — | future |
-|       |   | 4.1 Self-serve tenant signup |   | |
+Optimized for **concurrent agent work**. See [docs/BATCH_JOBS.md](docs/BATCH_JOBS.md).
+
+| Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Concurrency |
+|-------|-------------------|--------------------|-------------|
+| **1** | 1.76 bySiteSlug GSI | 2.75 FIX /login/site, 2.78 Branding, 2.82 Locked States | agent1 + agent2 |
+| **2** | 1.77 Enforce Global Slug + validate-slug | — | agent1 only |
+| **3** | 1.79 Site Preview API | 2.77 Real-time Slug Check | agent1 + agent2 |
+| **4** | 1.80, 1.81 Modules tier + DNS verification | 2.78, 2.79, 2.82 (if not done in 1) | agent1 + agent2 |
+| **5** | 1.78 Wildcard routing | 2.80 Site Previewer, 2.81 Domain Wizard | agent1 + agent2 |
+| **6** | — | — | agent4: 4.1 Self-serve |
 
 > **Arrows (←)** = depends on. Batches are sequential; agents within a batch run concurrently.
+
+### Plan Evaluation Roadmap (1.76–1.81, 2.77–2.82)
+
+From Plan Evaluation Feedback (plan_evaluation_feedback_9e308802). Suggested execution order:
+
+1. **1.76** → **1.77** (GSI + slug validation)
+2. **2.77** (slug check UI, unblocks site creation UX)
+3. **1.79** → **2.80** (preview API + UI)
+4. **1.81** → **2.81** (DNS verification + wizard)
+5. **1.78** (wildcard routing; depends on ACM, routing rules, site serving design)
+6. **1.80**, **2.78**, **2.79**, **2.82** (can run in parallel)
 
 ---
 

@@ -259,24 +259,7 @@ function TenantDomains() {
         </p>
       </div>
 
-      <FeatureGate
-        feature="custom_domains"
-        fallback={
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom domains</CardTitle>
-              <CardDescription>
-                Add custom domains to your sites. Requires Pro or Business tier.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Upgrade to Pro to unlock custom domains.
-              </p>
-            </CardContent>
-          </Card>
-        }
-      >
+      <FeatureGate feature="custom_domains">
         <DomainsContent />
       </FeatureGate>
     </div>

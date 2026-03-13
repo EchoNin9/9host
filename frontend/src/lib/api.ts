@@ -71,15 +71,22 @@ export function getSiteUserDisplay(): string | null {
   return localStorage.getItem(SITE_USER_DISPLAY_KEY)
 }
 
+export type SiteLoginResult =
+  | { ok: true; data: SiteLoginResponse }
+  | { ok: false; error: string; status?: number }
+
 /**
  * Site login — authenticate non-Cognito tenant user.
- * Returns { token, tenant_slug, role } on success.
+ * Returns { ok: true, data } on success.
+ * Returns { ok: false, error, status } on failure (status 503 = service unavailable).
  */
 export async function siteLogin(
   body: { username: string; password: string; site: string }
-): Promise<SiteLoginResponse | null> {
+): Promise<SiteLoginResult> {
   const base = getApiUrl()
-  if (!base) return null
+  if (!base) {
+    return { ok: false, error: "API not configured", status: 0 }
+  }
 
   try {
     const res = await fetch(`${base}/api/auth/site-login`, {
@@ -87,10 +94,17 @@ export async function siteLogin(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    if (!res.ok) return null
-    return (await res.json()) as SiteLoginResponse
+    if (res.ok) {
+      const data = (await res.json()) as SiteLoginResponse
+      return { ok: true, data }
+    }
+    const status = res.status
+    if (status === 503) {
+      return { ok: false, error: "Service unavailable", status }
+    }
+    return { ok: false, error: "Invalid username, password, or site", status }
   } catch {
-    return null
+    return { ok: false, error: "Network error", status: 0 }
   }
 }
 

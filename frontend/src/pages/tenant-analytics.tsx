@@ -152,24 +152,7 @@ function TenantAnalytics() {
         </p>
       </div>
 
-      <FeatureGate
-        feature="advanced_analytics"
-        fallback={
-          <Card>
-            <CardHeader>
-              <CardTitle>Advanced Analytics</CardTitle>
-              <CardDescription>
-                View page views, visitors, and top pages. Requires Pro or Business tier.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Upgrade to Pro to unlock advanced analytics.
-              </p>
-            </CardContent>
-          </Card>
-        }
-      >
+      <FeatureGate feature="advanced_analytics">
         {tenantSlug ? (
           <AnalyticsCharts tenantSlug={tenantSlug} />
         ) : (

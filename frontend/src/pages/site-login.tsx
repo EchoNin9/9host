@@ -32,15 +32,15 @@ export function SiteLogin() {
         password,
         site: site.trim().toLowerCase(),
       })
-      if (!result) {
-        setError("Invalid username, password, or site")
-        setLoading(false)
+      if (result.ok) {
+        const { data } = result
+        localStorage.setItem(SITE_TOKEN_KEY, data.token)
+        const display = (data.display_name || data.username || "").trim()
+        if (display) localStorage.setItem(SITE_USER_DISPLAY_KEY, display)
+        navigate(`/${data.tenant_slug}`, { replace: true })
         return
       }
-      localStorage.setItem(SITE_TOKEN_KEY, result.token)
-      const display = (result.display_name || result.username || "").trim()
-      if (display) localStorage.setItem(SITE_USER_DISPLAY_KEY, display)
-      navigate(`/${result.tenant_slug}`, { replace: true })
+      setError(result.error)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed")
     } finally {

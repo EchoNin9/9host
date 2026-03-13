@@ -57,8 +57,8 @@ function SuperadminSidebar() {
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex items-center gap-2 px-4 py-3 font-semibold">
-          9host Admin
+        <div className="flex items-center gap-2 px-4 py-3 font-semibold text-primary">
+          Echo9 Admin
         </div>
       </SidebarHeader>
 

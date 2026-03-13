@@ -59,6 +59,7 @@ function SuperadminLayout() {
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-6" />
+          <span className="text-sm font-semibold text-primary">Echo9</span>
         </header>
         <Outlet />
       </SidebarInset>
