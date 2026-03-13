@@ -78,6 +78,7 @@
 | 1.81 | DNS Verification: CNAME/TXT for Custom Domains | DONE | verification_cname_target, verification_txt_record on DOMAIN. CLOUDFRONT_CUSTOM_DOMAIN env. Unblocks 2.81. |
 | 1.82 | Add VIP tier (backend) | DONE | VIP = Business features, no payment. Only superadmin assigns. Add api/tier_config.py for extensibility (VALID_TIERS, TIER_FEATURE_RANK, PAYABLE_TIERS). Update admin_handler, admin_tenant_resources, admin_templates_handler, handler_example, templates_handler, sites_handler, domains_handler, analytics_handler. VIP excluded from billing/Stripe. docs/TIERS.md. Unblocks 2.83. |
 | 1.83 | **FIX: GET /api/tenant 500 for VIP tier** | DONE | Removed debug instrumentation (handler.py traceback, api.ts fetch/console). Normalized tier to uppercase in get_tenant_handler. |
+| 1.84 | **FIX: GET /api/tenant 500 — boto3 import shadowing** | DONE | `handler_example.py` inner `import boto3` (owner_email lookup) shadows module-level import → `UnboundLocalError` on line 64. Billing card shows 'Free' because tenant fetch fails. |
 
 ### Agent 2 — Frontend / UI
 

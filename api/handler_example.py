@@ -83,7 +83,6 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
     owner_email = ""
     if owner_sub:
         try:
-            import boto3
             client = boto3.client("cognito-idp", region_name=region)
             resp = client.admin_get_user(
                 UserPoolId=os.environ.get("USER_POOL_ID", ""),
