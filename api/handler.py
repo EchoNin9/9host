@@ -74,12 +74,15 @@ def _json_response(status: int, body: dict, headers: dict | None = None) -> dict
     }
 
 
-def _error_500(message: str = "Internal server error") -> dict:
+def _error_500(message: str = "Internal server error", detail: dict | None = None) -> dict:
     """Return 500 with CORS headers (Task 1.52: prevent 502 on unhandled exceptions)."""
+    body = {"error": message}
+    if detail:
+        body["detail"] = detail
     return {
         "statusCode": 500,
         "headers": {**CORS_HEADERS, "Content-Type": "application/json"},
-        "body": json.dumps({"error": message}),
+        "body": json.dumps(body),
     }
 
 
@@ -99,7 +102,14 @@ def lambda_handler(event: dict, context: dict) -> dict:
     try:
         return _lambda_handler_impl(event, context)
     except Exception as e:
-        return _error_500(str(e))
+        import traceback
+
+        detail = {
+            "type": type(e).__name__,
+            "message": str(e),
+            "traceback": traceback.format_exc(),
+        }
+        return _error_500(str(e), detail=detail)
 
 
 def _lambda_handler_impl(event: dict, context: dict) -> dict:

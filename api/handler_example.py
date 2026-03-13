@@ -17,10 +17,18 @@ from middleware import extract_tenant_slug, with_tenant
 
 
 def _json_response(status: int, body: dict) -> dict:
+    """Return JSON response. Handles DynamoDB Decimal for JSON serialization."""
+    from decimal import Decimal
+
+    def _default(obj):
+        if isinstance(obj, Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
     return {
         "statusCode": status,
         "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(body),
+        "body": json.dumps(body, default=_default),
     }
 
 
@@ -90,19 +98,22 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
 
     # Resolved features: tier base + module_overrides override (Task 1.28)
     resolved_features = {}
+    clean_module_overrides = {}
     for fk in FEATURE_KEYS:
         if fk in module_overrides:
-            resolved_features[fk] = bool(module_overrides[fk])
+            val = module_overrides[fk]
+            resolved_features[fk] = bool(val)
+            clean_module_overrides[fk] = bool(val)
         else:
             resolved_features[fk] = _tier_has_feature(tier, fk)
 
     body = {
         "tenant_slug": tenant_slug,
-        "name": item.get("name", tenant_slug),
+        "name": str(item.get("name") or tenant_slug),
         "tier": tier,
         "owner_sub": owner_sub,
         "owner_email": owner_email,
-        "module_overrides": module_overrides,
+        "module_overrides": clean_module_overrides,
         "resolved_features": resolved_features,
         "created_at": item.get("created_at"),
         "updated_at": item.get("updated_at"),

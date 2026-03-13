@@ -261,7 +261,13 @@ export async function fetchTenant(
     const res = await fetch(`${base}/api/tenant`, {
       headers: tenantHeaders(tenantSlug, accessToken),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      if (res.status === 500) {
+        const body = await res.json().catch(() => ({}))
+        console.error("[9host] GET /api/tenant 500:", body)
+      }
+      return null
+    }
     return (await res.json()) as TenantMetadata
   } catch {
     return null
