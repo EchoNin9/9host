@@ -18,6 +18,8 @@ from dynamodb_helpers import (
     get_site_item,
     get_tenant_item,
     get_template_item,
+    gsi4pk_slug,
+    gsi4sk_site,
     pk_tenant,
     query_sites_in_tenant,
     sk_site,
@@ -156,6 +158,8 @@ def _create_site(table, tenant_slug: str, body: dict) -> dict:
     item = {
         "pk": pk_tenant(tenant_slug),
         "sk": sk_site(site_id),
+        "gsi4pk": gsi4pk_slug(slug),
+        "gsi4sk": gsi4sk_site(site_id),
         "name": name,
         "slug": slug,
         "status": status,
@@ -213,6 +217,12 @@ def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
             item.pop("template_id", None)
 
     item["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Ensure gsi4pk/gsi4sk for bySiteSlug GSI (Task 1.76)
+    slug_val = item.get("slug", "")
+    if slug_val:
+        item["gsi4pk"] = gsi4pk_slug(slug_val)
+        item["gsi4sk"] = gsi4sk_site(site_id)
 
     table.put_item(Item=item)
     return _json_response(200, {"site": _site_to_response(item)})

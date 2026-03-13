@@ -71,6 +71,8 @@ updated_at: string
 PK: TENANT#acme
 SK: SITE#site-uuid
 ---
+gsi4pk: string        # SLUG#{site_slug} — for bySiteSlug GSI (Task 1.76)
+gsi4sk: string        # SITE#{id} — for bySiteSlug GSI
 name: string
 slug: string           # URL path segment, e.g. "my-site"
 status: string         # draft | published
@@ -176,6 +178,7 @@ Built-in roles `manager` and `member` are implicit (not stored). Custom roles ar
 | List tenant users (non-Cognito) | Query     | PK=`TENANT#{slug}`, SK begins_with `TUSER#` |
 | Get custom role                | GetItem   | PK=`TENANT#{slug}`, SK=`ROLE#{name}` |
 | List custom roles              | Query     | PK=`TENANT#{slug}`, SK begins_with `ROLE#` |
+| Check site slug taken globally | Query GSI | GSI4PK=`SLUG#{slug}` (bySiteSlug) |
 
 ---
 
@@ -219,6 +222,19 @@ Built-in roles `manager` and `member` are implicit (not stored). Custom roles ar
 **Projection:** ALL
 
 **Query:** `gsi3pk = ENTITY#USER` → returns all Cognito and non-Cognito users. USER# items use `gsi3sk = TENANT#{slug}#USER#{sub}`; TUSER# items use `gsi3sk = TENANT#{slug}#TUSER#{username}`.
+
+### GSI4: bySiteSlug (Task 1.76)
+
+**Purpose:** "Is this site slug taken globally?" (global site uniqueness, reserve tenant slugs from site slugs)
+
+| Attribute | Key Type | Example           |
+|-----------|----------|-------------------|
+| gsi4pk    | Partition| `SLUG#{site_slug}`|
+| gsi4sk    | Sort     | `SITE#{id}`       |
+
+**Projection:** ALL
+
+**Query:** `gsi4pk = SLUG#my-site` → returns site(s) with that slug. Tenant slugs are reserved from site slugs: creating a tenant with slug `my-site` is rejected if a site already uses it.
 
 ---
 

@@ -90,6 +90,11 @@ jobs:
           TABLE=$(cd infra && tofu output -raw dynamodb_table_name)
           python scripts/seed_templates.py --table "$TABLE"
 
+      - name: Backfill gsi4 on existing sites (Task 1.76)
+        run: |
+          TABLE=$(cd infra && tofu output -raw dynamodb_table_name)
+          python scripts/backfill_gsi4_sites.py --table "$TABLE"
+
       - name: Sync frontend to S3 (production)
         run: |
           aws s3 sync frontend/dist/ s3://9host-frontend-production/ --delete

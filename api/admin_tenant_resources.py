@@ -34,6 +34,8 @@ from dynamodb_helpers import (
     gsi3pk_entity_user,
     gsi3sk_tuser,
     gsi3sk_user,
+    gsi4pk_slug,
+    gsi4sk_site,
     get_template_item,
     pk_tenant,
     query_domains_in_tenant,
@@ -367,6 +369,8 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         item = {
             "pk": pk_tenant(tenant_slug),
             "sk": sk_site(site_id),
+            "gsi4pk": gsi4pk_slug(slug),
+            "gsi4sk": gsi4sk_site(site_id),
             "name": name,
             "slug": slug,
             "status": status,
@@ -397,6 +401,11 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
             if s in ("draft", "published"):
                 item["status"] = s
         item["updated_at"] = datetime.now(timezone.utc).isoformat()
+        # Ensure gsi4pk/gsi4sk for bySiteSlug GSI (Task 1.76)
+        slug_val = item.get("slug", "")
+        if slug_val:
+            item["gsi4pk"] = gsi4pk_slug(slug_val)
+            item["gsi4sk"] = gsi4sk_site(site_id)
         table.put_item(Item=item)
         return _json_response(200, {"site": _site_to_response(item)})
 

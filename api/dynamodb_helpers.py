@@ -68,6 +68,28 @@ def gsi3sk_tuser(tenant_slug: str, username: str) -> str:
     return f"TENANT#{tenant_slug}#TUSER#{username}"
 
 
+# GSI4 keys for bySiteSlug (Task 1.76)
+def gsi4pk_slug(site_slug: str) -> str:
+    """Partition key for bySiteSlug GSI."""
+    return f"SLUG#{site_slug.lower()}"
+
+
+def gsi4sk_site(site_id: str) -> str:
+    """Sort key for bySiteSlug GSI."""
+    return f"SITE#{site_id}"
+
+
+def query_by_site_slug(site_slug: str) -> dict[str, Any]:
+    """Query GSI bySiteSlug: check if site slug is taken globally."""
+    return {
+        "IndexName": "bySiteSlug",
+        "KeyConditionExpression": "gsi4pk = :pk",
+        "ExpressionAttributeValues": {
+            ":pk": gsi4pk_slug(site_slug),
+        },
+    }
+
+
 def sk_tuser(username: str) -> str:
     return f"TUSER#{username}"
 

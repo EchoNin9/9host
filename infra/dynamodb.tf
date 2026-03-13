@@ -52,6 +52,17 @@ resource "aws_dynamodb_table" "main" {
     type = "S"
   }
 
+  # GSI4: bySiteSlug — "Is this site slug taken globally?" (Task 1.76)
+  attribute {
+    name = "gsi4pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "gsi4sk"
+    type = "S"
+  }
+
   global_secondary_index {
     name            = "byUser"
     projection_type = "ALL"
@@ -87,6 +98,19 @@ resource "aws_dynamodb_table" "main" {
     }
     key_schema {
       attribute_name = "gsi3sk"
+      key_type       = "RANGE"
+    }
+  }
+
+  global_secondary_index {
+    name            = "bySiteSlug"
+    projection_type = "ALL"
+    key_schema {
+      attribute_name = "gsi4pk"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "gsi4sk"
       key_type       = "RANGE"
     }
   }

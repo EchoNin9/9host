@@ -20,6 +20,7 @@ from dynamodb_helpers import (
     gsi3pk_entity_user,
     gsi3sk_user,
     pk_tenant,
+    query_by_site_slug,
     sk_tenant,
     sk_user_profile,
 )
@@ -138,10 +139,15 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Validate slug uniqueness
+    # Validate slug uniqueness: tenant and site slugs share global namespace (Task 1.76)
     resp = table.get_item(Key=get_tenant_item(slug))
     if resp.get("Item"):
         return _json_response(409, {"error": f"Tenant already exists: {slug}"})
+
+    # Reserve tenant slugs from site slugs: reject if slug is taken by a site
+    slug_resp = table.query(**query_by_site_slug(slug))
+    if slug_resp.get("Items"):
+        return _json_response(409, {"error": f"Slug '{slug}' is already in use by a site."})
 
     now = datetime.now(timezone.utc).isoformat()
     region = os.environ.get("AWS_REGION", "us-east-1")
