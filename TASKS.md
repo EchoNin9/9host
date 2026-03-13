@@ -74,8 +74,8 @@
 | 1.77 | Enforce Global Slug: POST/PUT /api/tenant/sites + GET /api/validate-slug | DONE | slug_is_taken checks tenant + bySiteSlug; 409 on conflict. validate_slug_handler for 2.77. |
 | 1.78 | Wildcard Site Routing: *.echo9.net | TODO | ACM for *.echo9.net, routing priority (platform vs site vs tenant), site origin. Largest infra change. Depends on 1.76. |
 | 1.79 | Site Preview API: GET /api/tenant/sites/{id}/preview | DONE | Query param template={slug}; merge site + template. Tenant auth (draft preview). Unblocks 2.80. |
-| 1.80 | Self-Serve Modules API: PATCH /api/tenant | TODO | Already partial (2.22). Add tier validation: only allow features tenant's tier supports. |
-| 1.81 | DNS Verification: CNAME/TXT for Custom Domains | TODO | Add verification_cname_target, verification_txt_record to DOMAIN schema. EventBridge + Lambda or on-demand check. |
+| 1.80 | Self-Serve Modules API: PATCH /api/tenant | DONE | Tier validation: reject enabling features tenant's tier doesn't support (403 + upgrade_required). |
+| 1.81 | DNS Verification: CNAME/TXT for Custom Domains | DONE | verification_cname_target, verification_txt_record on DOMAIN. CLOUDFRONT_CUSTOM_DOMAIN env. Unblocks 2.81. |
 
 ### Agent 2 — Frontend / UI
 

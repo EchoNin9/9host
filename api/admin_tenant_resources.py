@@ -13,6 +13,7 @@ All require superadmin. Bypass membership/tier checks.
 import json
 import os
 import re
+import secrets
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import unquote
@@ -179,13 +180,18 @@ DOMAIN_PATTERN = re.compile(
 def _domain_to_response(item: dict) -> dict:
     sk = item.get("sk", "")
     domain = sk.replace("DOMAIN#", "") if sk.startswith("DOMAIN#") else ""
-    return {
+    out = {
         "domain": domain,
         "site_id": item.get("site_id", ""),
         "status": item.get("status", "pending"),
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
+    if item.get("verification_cname_target"):
+        out["verification_cname_target"] = item["verification_cname_target"]
+    if item.get("verification_txt_record"):
+        out["verification_txt_record"] = item["verification_txt_record"]
+    return out
 
 
 def admin_domains_handler(event: dict, context: dict, tenant_slug: str, path_suffix: str) -> dict:
@@ -250,6 +256,10 @@ def admin_domains_handler(event: dict, context: dict, tenant_slug: str, path_suf
             return _json_response(409, {"error": "Domain already exists for this tenant."})
 
         now = datetime.now(timezone.utc).isoformat()
+        cname_target = os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN", "").strip()
+        txt_token = secrets.token_hex(8)
+        verification_txt = f"9host-verify={txt_token}"
+
         item = {
             "pk": pk_tenant(tenant_slug),
             "sk": sk_domain(domain_raw),
@@ -259,7 +269,10 @@ def admin_domains_handler(event: dict, context: dict, tenant_slug: str, path_suf
             "status": status,
             "created_at": now,
             "updated_at": now,
+            "verification_txt_record": verification_txt,
         }
+        if cname_target:
+            item["verification_cname_target"] = cname_target
         table.put_item(Item=item)
         return _json_response(201, {"domain": _domain_to_response(item)})
 

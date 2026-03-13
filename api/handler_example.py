@@ -259,6 +259,28 @@ def patch_tenant_handler(event: dict, context: dict) -> dict:
     if not isinstance(mo, dict):
         return _json_response(400, {"error": "module_overrides must be an object"})
 
+    # Fetch tenant to validate tier (Task 1.80: only allow features tenant's tier supports)
+    resp = table.get_item(Key=get_tenant_item(tenant_slug))
+    tenant_item = resp.get("Item")
+    if not tenant_item:
+        return _json_response(404, {"error": "Tenant not found."})
+    tier = tenant_item.get("tier", "FREE")
+
+    # Reject enabling features the tier doesn't support
+    for k, v in mo.items():
+        if k not in FEATURE_KEYS:
+            continue
+        if v and not _tier_has_feature(tier, k):
+            return _json_response(
+                403,
+                {
+                    "error": f"Cannot enable {k} on {tier} tier. Upgrade to Pro or Business.",
+                    "feature": k,
+                    "tier": tier,
+                    "upgrade_required": True,
+                },
+            )
+
     clean_mo = {k: bool(v) for k, v in mo.items() if k in FEATURE_KEYS}
 
     from datetime import datetime, timezone

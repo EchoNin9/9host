@@ -112,6 +112,8 @@ site_id: string        # SITE#id
 status: string         # pending | verified
 created_at: string
 updated_at: string
+verification_cname_target: string   # (optional) Task 1.81. CNAME target user should add (e.g. CloudFront domain)
+verification_txt_record: string     # (optional) Task 1.81. TXT value for ownership verification (e.g. 9host-verify=abc123)
 ```
 
 ### User Permissions (Task 1.25)

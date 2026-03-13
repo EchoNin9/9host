@@ -8,6 +8,7 @@ tenant membership, tier >= Pro.
 import json
 import os
 import re
+import secrets
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
@@ -67,13 +68,19 @@ def _domain_to_response(item: dict) -> dict:
     sk = item.get("sk", "")
     domain = sk.replace("DOMAIN#", "") if sk.startswith("DOMAIN#") else ""
 
-    return {
+    out = {
         "domain": domain,
         "site_id": item.get("site_id", ""),
         "status": item.get("status", "pending"),
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
+    # Task 1.81: DNS verification fields for Domain Setup Guide
+    if item.get("verification_cname_target"):
+        out["verification_cname_target"] = item["verification_cname_target"]
+    if item.get("verification_txt_record"):
+        out["verification_txt_record"] = item["verification_txt_record"]
+    return out
 
 
 def _list_domains(table, tenant_slug: str) -> dict:
@@ -128,6 +135,11 @@ def _create_domain(table, tenant_slug: str, body: dict) -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
 
+    # Task 1.81: DNS verification — CNAME target from env, TXT token per domain
+    cname_target = os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN", "").strip()
+    txt_token = secrets.token_hex(8)
+    verification_txt = f"9host-verify={txt_token}"
+
     item = {
         "pk": pk_tenant(tenant_slug),
         "sk": sk_domain(domain_raw),
@@ -138,6 +150,9 @@ def _create_domain(table, tenant_slug: str, body: dict) -> dict:
         "created_at": now,
         "updated_at": now,
     }
+    if cname_target:
+        item["verification_cname_target"] = cname_target
+    item["verification_txt_record"] = verification_txt
 
     table.put_item(Item=item)
     return _json_response(201, {"domain": _domain_to_response(item)})
