@@ -15,6 +15,7 @@ import { TenantAnalytics } from "@/pages/tenant-analytics"
 import { TenantSites } from "@/pages/tenant-sites"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
+import { TenantModules } from "@/pages/tenant-modules"
 import { TenantUsers } from "@/pages/tenant-users"
 import { SuperadminLayout } from "@/components/superadmin-layout"
 import { SuperadminDashboard } from "@/pages/superadmin-dashboard"
@@ -174,6 +175,7 @@ function AppRoutes() {
         <Route path="sites" element={<TenantSites />} />
         <Route path="domains" element={<TenantDomains />} />
         <Route path="users" element={<TenantUsers />} />
+        <Route path="modules" element={<TenantModules />} />
         <Route path="settings" element={<TenantSettings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

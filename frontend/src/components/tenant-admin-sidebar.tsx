@@ -9,6 +9,7 @@ import {
   BarChart3,
   Globe,
   GlobeLock,
+  Package,
   Settings,
   Users,
   UserCog,
@@ -71,6 +72,7 @@ function TenantAdminSidebar() {
     { title: "Sites", href: `${base}/sites`, icon: Globe },
     { title: "Domains", href: `${base}/domains`, icon: GlobeLock },
     { title: "Users", href: `${base}/users`, icon: Users },
+    { title: "Modules", href: `${base}/modules`, icon: Package },
     { title: "Settings", href: `${base}/settings`, icon: Settings },
   ]
 

@@ -161,7 +161,7 @@
 | 2.76 | Sitewide: show logged-in user in bottom left corner in sidebar | DONE | Between Sign out and Back to platform. Cognito: name/email via fetchUserAttributes; site user: display_name/username from API. |
 | 2.77 | Real-time Slug Check (GitHub-style) | DONE | GET /api/validate-slug?slug={slug}; debounced 400ms in SiteForm. Green check when available, red X when taken. |
 | 2.78 | Echo9 Branding Refresh | DONE | index.css brand colors (--brand-primary teal); layouts + sidebar Echo9 branding. |
-| 2.79 | Module Marketplace (cPanel-style) | TODO | Dedicated Modules/Apps dashboard with grid of toggles. Reuse tenant-settings module_overrides UI. |
+| 2.79 | Module Marketplace (cPanel-style) | DONE | /modules page with grid of module cards, toggles, tier badges. Reuses module_overrides. |
 | 2.80 | Site Previewer (Live Preview) | TODO | Iframe with preview API; template picker; integrate into tenant-sites Add/Edit flow. Depends on 1.79. |
 | 2.81 | Domain Setup Guide (DNS Wizard) | TODO | Two paths: Our DNS (CloudNS) vs Own DNS (CNAME + TXT). Show CNAME target and TXT from API. Depends on 1.81. |
 | 2.82 | Tier-Specific Locked States | DONE | UpgradePrompt component; FeatureGate default fallback; link to settings/billing. |
