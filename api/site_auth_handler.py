@@ -129,4 +129,8 @@ def site_login_handler(event: dict, context: dict) -> dict:
     except Exception:
         return _json_response(500, {"error": "Failed to issue token."})
 
-    return _json_response(200, {"token": token, "tenant_slug": site, "role": role})
+    display_name = item.get("display_name") or ""
+    return _json_response(
+        200,
+        {"token": token, "tenant_slug": site, "role": role, "username": username, "display_name": display_name},
+    )

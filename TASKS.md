@@ -152,6 +152,7 @@
 | 2.73 | Administer Tenant: Settings default, tab order | DONE | Settings default tab; order Settings, Users, Sites, Domains. |
 | 2.74 | Tenant users: owner has full permissions, non-editable | DONE | /{tenant}/users: account owner always has full permissions; hide or disable permissions UI for owner. |
 | 2.75 | **FIX: /login/site** — error handling for 503 vs auth failure | TODO | When site-login returns 503, show "Service unavailable" instead of "Invalid username, password, or site". Depends on 1.55. Note: bootstrap-autofill-overlay.js errors are from browser extension, not app. |
+| 2.76 | Sitewide: show logged-in user in bottom left corner in sidebar | DONE | Between Sign out and Back to platform. Cognito: name/email via fetchUserAttributes; site user: display_name/username from API. |
 
 ### Agent 4 — Self-Serve (Future)
 

@@ -31,7 +31,12 @@ export interface SiteLoginResponse {
   token: string
   tenant_slug: string
   role: string
+  username?: string
+  display_name?: string
 }
+
+/** Storage key for site user display (username or display_name). */
+export const SITE_USER_DISPLAY_KEY = "9host-site-user-display"
 
 /**
  * Get auth token for API calls. Returns site JWT if present, else Cognito access token.
@@ -54,9 +59,16 @@ export function isSiteUser(): boolean {
   return !!localStorage.getItem(SITE_TOKEN_KEY)
 }
 
-/** Clear site token (call on sign out for site users). */
+/** Clear site token and user display (call on sign out for site users). */
 export function clearSiteToken(): void {
   localStorage.removeItem(SITE_TOKEN_KEY)
+  localStorage.removeItem(SITE_USER_DISPLAY_KEY)
+}
+
+/** Get site user display string (display_name or username). Returns null if not a site user. */
+export function getSiteUserDisplay(): string | null {
+  if (!isSiteUser()) return null
+  return localStorage.getItem(SITE_USER_DISPLAY_KEY)
 }
 
 /**

@@ -1,14 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth"
-import { isSiteUser as checkSiteUser } from "@/lib/api"
+import { fetchAuthSession, fetchUserAttributes, getCurrentUser } from "aws-amplify/auth"
+import { getSiteUserDisplay, isSiteUser as checkSiteUser } from "@/lib/api"
 
 export interface UseAuthResult {
   isAuthenticated: boolean
   loading: boolean
   userId: string | null
   isSiteUser: boolean
+  userDisplay: string | null
   checkAuth: () => Promise<void>
 }
 
@@ -21,6 +22,7 @@ export function useAuth(): UseAuthResult {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [siteUser, setSiteUser] = useState(false)
+  const [userDisplay, setUserDisplay] = useState<string | null>(null)
 
   const checkAuth = useCallback(async () => {
     setLoading(true)
@@ -29,6 +31,7 @@ export function useAuth(): UseAuthResult {
         setIsAuthenticated(true)
         setUserId(null)
         setSiteUser(true)
+        setUserDisplay(getSiteUserDisplay())
         setLoading(false)
         return
       }
@@ -39,18 +42,25 @@ export function useAuth(): UseAuthResult {
         try {
           const user = await getCurrentUser()
           setUserId(user?.userId ?? null)
+          const attrs = await fetchUserAttributes()
+          const display =
+            attrs.name ?? attrs.given_name ?? attrs.email ?? attrs.preferred_username ?? null
+          setUserDisplay(display ?? null)
         } catch {
           setUserId(null)
+          setUserDisplay(null)
         }
       } else {
         setIsAuthenticated(false)
         setUserId(null)
         setSiteUser(false)
+        setUserDisplay(null)
       }
     } catch {
       setIsAuthenticated(false)
       setUserId(null)
       setSiteUser(false)
+      setUserDisplay(null)
     } finally {
       setLoading(false)
     }
@@ -60,5 +70,5 @@ export function useAuth(): UseAuthResult {
     void checkAuth()
   }, [checkAuth])
 
-  return { isAuthenticated, loading, userId, isSiteUser: siteUser, checkAuth }
+  return { isAuthenticated, loading, userId, isSiteUser: siteUser, userDisplay, checkAuth }
 }

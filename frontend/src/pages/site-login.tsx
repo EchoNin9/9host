@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { siteLogin, SITE_TOKEN_KEY } from "@/lib/api"
+import { siteLogin, SITE_TOKEN_KEY, SITE_USER_DISPLAY_KEY } from "@/lib/api"
 
 export function SiteLogin() {
   const navigate = useNavigate()
@@ -38,6 +38,8 @@ export function SiteLogin() {
         return
       }
       localStorage.setItem(SITE_TOKEN_KEY, result.token)
+      const display = (result.display_name || result.username || "").trim()
+      if (display) localStorage.setItem(SITE_USER_DISPLAY_KEY, display)
       navigate(`/${result.tenant_slug}`, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed")

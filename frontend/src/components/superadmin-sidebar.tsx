@@ -2,6 +2,7 @@
 
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { signOut } from "aws-amplify/auth"
+import { useAuth } from "@/hooks/use-auth"
 import {
   LayoutDashboard,
   Users,
@@ -35,6 +36,7 @@ interface NavItem {
 function SuperadminSidebar() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { userDisplay } = useAuth()
 
   const mainNav: NavItem[] = [
     { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -96,6 +98,11 @@ function SuperadminSidebar() {
           >
             ← Back to platform
           </Link>
+          {userDisplay && (
+            <p className="text-xs text-sidebar-foreground/80 truncate px-0.5" title={userDisplay}>
+              {userDisplay}
+            </p>
+          )}
           <button
             onClick={handleSignOut}
             className="flex items-center gap-2 mt-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground text-left"

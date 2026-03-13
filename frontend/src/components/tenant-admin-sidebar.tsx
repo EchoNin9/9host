@@ -46,7 +46,7 @@ function TenantAdminSidebar() {
   const { impersonateTenant, clearImpersonate, isImpersonating } =
     useImpersonation()
   const { isSuperadmin } = useAdminTenants()
-  const { isSiteUser } = useAuth()
+  const { isSiteUser, userDisplay } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
   const base = tenantBasePath || `/${tenantSlug}`
@@ -142,6 +142,11 @@ function TenantAdminSidebar() {
             >
               ← Back to platform
             </Link>
+          )}
+          {userDisplay && (
+            <p className="text-xs text-sidebar-foreground/80 truncate px-0.5" title={userDisplay}>
+              {userDisplay}
+            </p>
           )}
           <button
             onClick={handleSignOut}
