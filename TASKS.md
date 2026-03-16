@@ -87,7 +87,7 @@
 | | **Web Hosting — Phase 2: Content & Modules** | | |
 | 1.93 | Content entities (DynamoDB): SITE#{id}#PAGE, POST, EVENT, MEDIA. `status: DRAFT\|PUBLISHED`, `published_at`. Doc in SCHEMA.md | DONE | docs/SCHEMA.md, dynamodb_helpers. |
 | 1.94 | Module definitions: updates/blog, events_shows, media_gallery, branding. Extend module_overrides / resolved_features | DONE | tier_config.CONTENT_MODULE_KEYS, handler_example resolved_features. |
-| 1.95 | Content CRUD API: GET/POST/PUT/DELETE for pages, posts, events, media. Per-upload size check. On DELETE: remove S3 + decrement storage. Reserved slug deny-list | TODO | Depends on 1.93, 1.89. |
+| 1.95 | Content CRUD API: GET/POST/PUT/DELETE for pages, posts, events, media. Per-upload size check. On DELETE: remove S3 + decrement storage. Reserved slug deny-list | DONE | api/content_handler.py. |
 | 1.96 | Site publish API: POST /api/tenant/sites/{id}/publish. Atomic versioned publish → render HTML → upload to `published/v{N}/` → manifest.json → swap current.json | TODO | Depends on 1.95, 1.90. |
 | 1.96b | Site rollback API: POST /api/tenant/sites/{id}/rollback?version=N. Validate version, swap current.json. Admin/manager only | TODO | Depends on 1.96. |
 | | **Web Hosting — Phase 3: Site Serving & Custom Domains** | | |
