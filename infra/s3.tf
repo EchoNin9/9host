@@ -69,3 +69,78 @@ resource "aws_s3_bucket_versioning" "frontend_production" {
     status = "Disabled"
   }
 }
+
+# ------------------------------------------------------------------------------
+# Task 1.90: Sites S3 bucket — published site content
+# Key layout: {tenant_slug}/{site_id}/draft/, {tenant_slug}/{site_id}/published/v{N}/, current.json
+# OAC for CloudFront (added in 1.97). Versioning for rollback.
+# ------------------------------------------------------------------------------
+resource "aws_s3_bucket" "sites" {
+  bucket = "9host-sites"
+
+  tags = {
+    Name = "9host-sites"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "sites" {
+  bucket = aws_s3_bucket.sites.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "sites" {
+  bucket = aws_s3_bucket.sites.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "sites" {
+  bucket = aws_s3_bucket.sites.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# ------------------------------------------------------------------------------
+# Task 1.91: Media S3 bucket — tenant uploads (images, files)
+# Key layout: {tenant_slug}/{site_id}/{filename}
+# ------------------------------------------------------------------------------
+resource "aws_s3_bucket" "media" {
+  bucket = "9host-media"
+
+  tags = {
+    Name = "9host-media"
+  }
+}
+
+resource "aws_s3_bucket_ownership_controls" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}

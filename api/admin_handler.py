@@ -154,13 +154,14 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
     region = os.environ.get("AWS_REGION", "us-east-1")
     email, user_name = _get_user_email_name(event, region)
 
-    # Create tenant
+    # Create tenant (Task 1.88: storage_used_bytes default 0)
     tenant_item = {
         "pk": pk_tenant(slug),
         "sk": sk_tenant(),
         "name": name,
         "tier": tier,
         "owner_sub": sub,
+        "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
     }
@@ -282,6 +283,7 @@ def get_tenant_by_slug_handler(event: dict, context: dict, tenant_slug: str) -> 
             "owner_sub": owner_sub,
             "owner_email": owner_email,
             "module_overrides": item.get("module_overrides") or {},
+            "storage_used_bytes": int(item.get("storage_used_bytes") or 0),
             "created_at": item.get("created_at"),
             "updated_at": item.get("updated_at"),
         },

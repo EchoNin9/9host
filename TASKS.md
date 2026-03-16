@@ -79,6 +79,23 @@
 | 1.82 | Add VIP tier (backend) | DONE | VIP = Business features, no payment. Only superadmin assigns. Add api/tier_config.py for extensibility (VALID_TIERS, TIER_FEATURE_RANK, PAYABLE_TIERS). Update admin_handler, admin_tenant_resources, admin_templates_handler, handler_example, templates_handler, sites_handler, domains_handler, analytics_handler. VIP excluded from billing/Stripe. docs/TIERS.md. Unblocks 2.83. |
 | 1.83 | **FIX: GET /api/tenant 500 for VIP tier** | DONE | Removed debug instrumentation (handler.py traceback, api.ts fetch/console). Normalized tier to uppercase in get_tenant_handler. |
 | 1.84 | **FIX: GET /api/tenant 500 — boto3 import shadowing** | DONE | `handler_example.py` inner `import boto3` (owner_email lookup) shadows module-level import → `UnboundLocalError` on line 64. Billing card shows 'Free' because tenant fetch fails. |
+| | **Web Hosting — Phase 1: Foundation** | | |
+| 1.88 | Storage tracking schema: `storage_used_bytes` on Tenant, per-tier upload limits in tier_config.py | DONE | No deps. Parallel start. |
+| 1.89 | Upload size enforcement: pre-signed POST with `content-length-range` (10 MB per file) | TODO | Depends on 1.88. |
+| 1.90 | Sites S3 bucket: `9host-sites`, OAC, versioning. Key layout: `{tenant}/{site}/draft/`, `published/v{N}/`, `current.json` | DONE | No deps. Parallel start. |
+| 1.91 | Media S3 bucket: `9host-media` for tenant uploads. Key: `{tenant}/{site}/{filename}` | DONE | No deps. Parallel start. |
+| | **Web Hosting — Phase 2: Content & Modules** | | |
+| 1.93 | Content entities (DynamoDB): SITE#{id}#PAGE, POST, EVENT, MEDIA. `status: DRAFT\|PUBLISHED`, `published_at`. Doc in SCHEMA.md | TODO | Depends on 1.90. |
+| 1.94 | Module definitions: updates/blog, events_shows, media_gallery, branding. Extend module_overrides / resolved_features | TODO | Depends on 1.28 (done). Parallel start. |
+| 1.95 | Content CRUD API: GET/POST/PUT/DELETE for pages, posts, events, media. Per-upload size check. On DELETE: remove S3 + decrement storage. Reserved slug deny-list | TODO | Depends on 1.93, 1.89. |
+| 1.96 | Site publish API: POST /api/tenant/sites/{id}/publish. Atomic versioned publish → render HTML → upload to `published/v{N}/` → manifest.json → swap current.json | TODO | Depends on 1.95, 1.90. |
+| 1.96b | Site rollback API: POST /api/tenant/sites/{id}/rollback?version=N. Validate version, swap current.json. Admin/manager only | TODO | Depends on 1.96. |
+| | **Web Hosting — Phase 3: Site Serving & Custom Domains** | | |
+| 1.97 | Site content origin: add 9host-sites as CloudFront origin. CF Function: Host → tenant + site → S3 path | TODO | Depends on 1.90. |
+| 1.98 | Default site resolution: `{tenant}.echo9.net` → tenant's default site from S3 | TODO | Depends on 1.97. |
+| 1.99 | Custom domain ACM + CloudFront: dedicated ACM cert per domain (not SAN). On cert issued, add alias to sites distribution | TODO | Depends on 1.81 (done), 1.97. |
+| 1.100 | Domain activation workflow: on DNS verify pass, request ACM cert, store cert ARN, status `PENDING_VALIDATION` | TODO | Depends on 1.99. |
+| 1.100b | ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda. On ISSUED: add alias, update domain → ACTIVE. Zero polling | TODO | Depends on 1.100. |
 
 ### Agent 2 — Frontend / UI
 
@@ -173,6 +190,13 @@
 | 2.85 | VIP: Analytics — no upgrade prompt, show analytics | DONE | /{tenant}/analytics: when tenant is VIP, do not show upgrade button; show full analytics. |
 | 2.86 | VIP: Domains — no upgrade prompts, show domain controls | DONE | /{tenant}/domains: when tenant is VIP, do not show upgrade prompts; show domain controls. |
 | 2.87 | VIP: Modules — no upgrade prompts, show all module controls | DONE | /{tenant}/modules: when tenant is VIP, do not show upgrade prompts; show control for all modules. |
+| | **Web Hosting — Phase 2: Content & Modules** | | |
+| 2.89 | Module Marketplace expansion: add updates/blog, events_shows, media_gallery, branding to tenant-modules | TODO | Depends on 1.94. |
+| 2.90 | Content editor shell: site content editor layout (sidebar, page/post/event/media tabs). Placeholder for per-module editors | TODO | No deps. Parallel start. |
+| 2.91 | Updates/Blog editor: list posts, create/edit/delete. Draft vs Published. Publish flow | TODO | Depends on 1.95, 2.90. |
+| 2.92 | Events/Shows editor: list events, CRUD, date/venue | TODO | Depends on 1.95, 2.90. |
+| 2.93 | Media gallery editor: upload via pre-signed POST, list, caption, reorder | TODO | Depends on 1.95, 1.91, 2.90. |
+| 2.94 | Branding editor: logo, colors, fonts. Store in site settings or content | TODO | Depends on 1.95, 2.90. |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -188,39 +212,59 @@
 | 3.2 | Map Stripe subscription status → FeatureFlag tier | DONE | |
 | 3.3 | Implement upgrade/downgrade flows and webhooks | DONE | |
 
+### Web Hosting — Post-MVP (Deferred)
+
+| ID | Agent | Task | Status | Notes |
+|----|-------|------|--------|-------|
+| 1.92 | agent1 | Routing split: `app.echo9.net/{tenant}` = admin, `{tenant}.echo9.net` = public only. Separate CF behaviors | DEFERRED | Post-MVP. |
+| 1.92b | agent1 | Auth Cookie Policy: cross-subdomain cookie policy for `app.echo9.net` | DEFERRED | Post-MVP. Depends on 1.92. |
+| 2.88 | agent2 | Admin URL migration: update frontend routing to `app.echo9.net/{tenant}` | DEFERRED | Post-MVP. Depends on 1.92. |
+| 1.101 | agent1 | Tenant custom templates: `TENANT#{slug}` SK `TEMPLATE#{slug}` | DEFERRED | Post-MVP. |
+| 1.102 | agent1 | Template CRUD API (tenant): GET/POST/PUT/DELETE /api/tenant/templates. Pro+ for custom | DEFERRED | Post-MVP. Depends on 1.101. |
+| 2.95 | agent2 | Template builder UI: create/edit templates. Layout, sections, branding | DEFERRED | Post-MVP. Depends on 1.102. |
+| 2.96 | agent2 | Site template picker on edit: change template for existing site | DEFERRED | Post-MVP. Depends on 2.95. |
+| 1.103 | agent1 | Superadmin quota override: PATCH /api/admin/tenants/{slug} accepts `storage_quota_override` | DEFERRED | Post-MVP. |
+| 2.97 | agent2 | Superadmin quota UI: edit storage quota override in Administer Tenant | DEFERRED | Post-MVP. Depends on 1.103. |
+| 1.95b | agent1 | Orphan cleanup: scheduled Lambda to sweep 9host-media for unreferenced objects | DEFERRED | Post-MVP. DELETE hook in 1.95 handles cleanup. Manual sweep quarterly. |
+
 ---
 
 ## Save Points
 
 > **Use when pausing work.** Document where you stopped and what to do next.
 
-### Next Task Batches (2026-03-12)
+### Next Task Batches — Web Hosting (2026-03-15)
 
-Optimized for **concurrent agent work**. See [docs/BATCH_JOBS.md](docs/BATCH_JOBS.md).
+Optimized for **concurrent agent work**. See [docs/WEB_HOSTING_PLAN.md](docs/WEB_HOSTING_PLAN.md) for full plan.
 
 | Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Concurrency |
 |-------|-------------------|--------------------|-------------|
-| **1** | 1.76 bySiteSlug GSI ✅ | 2.75, 2.78, 2.82 ✅ | agent1 + agent2 |
-| **2** | 1.77 Enforce Global Slug + validate-slug | — | agent1 only |
-| **3** | 1.79 Site Preview API | 2.77 Real-time Slug Check | agent1 + agent2 |
-| **4** | 1.80, 1.81 Modules tier + DNS verification | 2.78, 2.79, 2.82 (if not done in 1) | agent1 + agent2 |
-| **5** | 1.78 Wildcard routing | 2.80 Site Previewer, 2.81 Domain Wizard | agent1 + agent2 |
-| **6** | 1.82 VIP tier (backend) | 2.83 VIP tier (frontend, ← 1.82) | agent1 → agent2 |
-| **7** | 1.83 FIX GET /api/tenant 500 for VIP | — | agent1 |
-| **8** | — | — | agent4: 4.1 Self-serve |
+| **9** | 1.88 Storage tracking, 1.90 Sites S3, 1.91 Media S3 | 2.90 Content editor shell | agent1 + agent2 |
+| **10** | 1.89 Upload size enforcement, 1.93 Content entities, 1.94 Module defs | 2.89 Module marketplace expansion (← 1.94) | agent1 → agent2 |
+| **11** | 1.95 Content CRUD API | 2.91 Blog editor, 2.92 Events editor (← 1.95, 2.90) | agent1 → agent2 |
+| **12** | 1.96 Site publish API | 2.93 Media editor, 2.94 Branding editor (← 1.95, 2.90) | agent1 + agent2 |
+| **13** | 1.96b Rollback API | — | agent1 only |
+| **14** | 1.97 Site content origin, 1.98 Default site resolution | — | agent1 only |
+| **15** | 1.99 Custom domain ACM, 1.100 Domain activation | — | agent1 only |
+| **16** | 1.100b EventBridge ACM validation | — | agent1 only |
 
 > **Arrows (←)** = depends on. Batches are sequential; agents within a batch run concurrently.
+> **Parallel start (no deps):** 1.88, 1.90, 1.91, 1.94, 2.90.
 
-### Plan Evaluation Roadmap (1.76–1.81, 2.77–2.82)
+### Previous Task Batches (1.76–1.84, 2.75–2.87) — ✅ Complete
 
-From Plan Evaluation Feedback (plan_evaluation_feedback_9e308802). Suggested execution order:
+All prior batches complete. See plan evaluation roadmap below for reference.
 
-1. **1.76** → **1.77** (GSI + slug validation)
-2. **2.77** (slug check UI, unblocks site creation UX)
-3. **1.79** → **2.80** (preview API + UI)
-4. **1.81** → **2.81** (DNS verification + wizard)
-5. **1.78** (wildcard routing; depends on ACM, routing rules, site serving design)
-6. **1.80**, **2.78**, **2.79**, **2.82** (can run in parallel)
+### Plan Evaluation Roadmap (1.76–1.81, 2.77–2.82) — ✅ Complete
+
+From Plan Evaluation Feedback (plan_evaluation_feedback_9e308802). Suggested execution order (all done):
+
+1. **1.76** → **1.77** (GSI + slug validation) ✅
+2. **2.77** (slug check UI) ✅
+3. **1.79** → **2.80** (preview API + UI) ✅
+4. **1.81** → **2.81** (DNS verification + wizard) ✅
+5. **1.78** (wildcard routing) ✅
+6. **1.80**, **2.78**, **2.79**, **2.82** ✅
 
 ---
 

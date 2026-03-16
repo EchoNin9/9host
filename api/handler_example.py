@@ -114,6 +114,7 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
         "owner_email": owner_email,
         "module_overrides": clean_module_overrides,
         "resolved_features": resolved_features,
+        "storage_used_bytes": int(item.get("storage_used_bytes") or 0),
         "created_at": item.get("created_at"),
         "updated_at": item.get("updated_at"),
     }

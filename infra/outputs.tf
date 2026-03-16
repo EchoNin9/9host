@@ -106,6 +106,16 @@ output "s3_frontend_production_bucket" {
   value       = aws_s3_bucket.frontend_production.id
 }
 
+output "s3_sites_bucket" {
+  description = "S3 bucket for site content (Task 1.90)"
+  value       = aws_s3_bucket.sites.id
+}
+
+output "s3_media_bucket" {
+  description = "S3 bucket for tenant media uploads (Task 1.91)"
+  value       = aws_s3_bucket.media.id
+}
+
 # ------------------------------------------------------------------------------
 # Cognito (Task 1.9) — for frontend auth config
 # ------------------------------------------------------------------------------

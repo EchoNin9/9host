@@ -204,7 +204,11 @@ data "aws_iam_policy_document" "deploy" {
       "arn:aws:s3:::9host-frontend-staging",
       "arn:aws:s3:::9host-frontend-staging/*",
       "arn:aws:s3:::9host-frontend-production",
-      "arn:aws:s3:::9host-frontend-production/*"
+      "arn:aws:s3:::9host-frontend-production/*",
+      "arn:aws:s3:::9host-sites",
+      "arn:aws:s3:::9host-sites/*",
+      "arn:aws:s3:::9host-media",
+      "arn:aws:s3:::9host-media/*"
     ]
   }
 

@@ -90,6 +90,22 @@ resource "aws_iam_role_policy" "api_lambda" {
           aws_secretsmanager_secret.stripe.arn,
           aws_secretsmanager_secret.jwt_signing.arn
         ]
+      },
+      {
+        Sid    = "S3SitesMedia"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.sites.arn,
+          "${aws_s3_bucket.sites.arn}/*",
+          aws_s3_bucket.media.arn,
+          "${aws_s3_bucket.media.arn}/*"
+        ]
       }
     ]
   })

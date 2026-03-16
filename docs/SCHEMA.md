@@ -42,9 +42,10 @@ PK: TENANT#acme
 SK: TENANT
 ---
 name: string           # Display name
-tier: string           # FREE | PRO | BUSINESS
+tier: string           # FREE | PRO | BUSINESS | VIP
 owner_sub: string      # Cognito sub of primary tenantadmin (Task 1.26)
 module_overrides: map  # (optional) Task 1.28. Override tier features: { custom_domains: true, advanced_analytics: true }
+storage_used_bytes: N  # (optional) Task 1.88. Total bytes in 9host-media. Default 0. Updated on upload/delete.
 stripe_customer_id: S      # (optional) Stripe customer ID (Task 3.1)
 stripe_subscription_id: S # (optional) Active subscription ID
 created_at: string     # ISO8601

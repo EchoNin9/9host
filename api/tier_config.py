@@ -50,3 +50,19 @@ def is_payable_tier(tier: str) -> bool:
 def tiers_with_pro_features() -> tuple[str, ...]:
     """Tiers that have Pro+ features (custom domains, advanced analytics)."""
     return ("PRO", "BUSINESS", "VIP")
+
+
+# Per-tier upload limits (bytes) — Task 1.88. MVP: 10 MB per file for all tiers.
+# Cumulative quota enforcement deferred to post-MVP.
+UPLOAD_LIMIT_BYTES = {
+    "FREE": 10 * 1024 * 1024,      # 10 MB
+    "PRO": 10 * 1024 * 1024,       # 10 MB
+    "BUSINESS": 10 * 1024 * 1024,  # 10 MB
+    "VIP": 10 * 1024 * 1024,       # 10 MB
+}
+
+
+def upload_limit_bytes(tier: str) -> int:
+    """Max bytes per single upload for tier. Used for pre-signed POST content-length-range."""
+    t = (tier or "FREE").upper()
+    return UPLOAD_LIMIT_BYTES.get(t, 10 * 1024 * 1024)
