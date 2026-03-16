@@ -131,13 +131,15 @@ data "aws_iam_policy_document" "deploy" {
     ]
   }
 
-  # Create/update IAM roles (e.g. 9host-acm-handler) — CI needs CreateRole, AttachRolePolicy, PassRole
+  # Create/update IAM roles (e.g. 9host-acm-handler) — CI needs CreateRole, TagRole, AttachRolePolicy, PassRole
   statement {
     sid    = "IAMRole"
     effect = "Allow"
     actions = [
       "iam:CreateRole",
       "iam:DeleteRole",
+      "iam:TagRole",
+      "iam:UntagRole",
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
       "iam:PassRole"
