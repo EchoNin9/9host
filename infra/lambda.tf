@@ -108,6 +108,15 @@ resource "aws_iam_role_policy" "api_lambda" {
           aws_s3_bucket.media.arn,
           "${aws_s3_bucket.media.arn}/*"
         ]
+      },
+      {
+        Sid    = "ACM"
+        Effect = "Allow"
+        Action = [
+          "acm:RequestCertificate",
+          "acm:DescribeCertificate"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -132,7 +141,8 @@ resource "aws_lambda_function" "api" {
       USER_POOL_ID               = aws_cognito_user_pool.main.id
       STRIPE_SECRET_ARN          = aws_secretsmanager_secret.stripe.arn
       JWT_SECRET_ARN             = aws_secretsmanager_secret.jwt_signing.arn
-      CLOUDFRONT_CUSTOM_DOMAIN   = aws_cloudfront_distribution.staging.domain_name
+      CLOUDFRONT_CUSTOM_DOMAIN   = aws_cloudfront_distribution.sites.domain_name
+      CLOUDFRONT_SITES_DOMAIN    = aws_cloudfront_distribution.sites.domain_name
     }
   }
 

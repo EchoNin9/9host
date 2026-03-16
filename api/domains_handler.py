@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import time
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
@@ -54,14 +55,17 @@ def _parse_body(event: dict) -> dict | None:
     return body
 
 
-def _extract_domain_from_path(path: str) -> str | None:
-    """Extract domain from /api/tenant/domains/{domain}."""
+def _extract_domain_from_path(path: str) -> tuple[str | None, str]:
+    """Extract domain and path suffix from /api/tenant/domains/{domain}[/activate]."""
     prefix = "/api/tenant/domains/"
     if path.startswith(prefix):
         rest = path[len(prefix) :].strip("/")
         if rest:
-            return unquote(rest).lower()
-    return None
+            parts = rest.split("/")
+            domain = unquote(parts[0]).lower()
+            suffix = "/".join(parts[1:]) if len(parts) > 1 else ""
+            return domain, suffix
+    return None, ""
 
 
 def _domain_to_response(item: dict) -> dict:
@@ -81,6 +85,9 @@ def _domain_to_response(item: dict) -> dict:
         out["verification_cname_target"] = item["verification_cname_target"]
     if item.get("verification_txt_record"):
         out["verification_txt_record"] = item["verification_txt_record"]
+    # Task 1.99.1.100: ACM cert ARN when requested
+    if item.get("acm_certificate_arn"):
+        out["acm_certificate_arn"] = item["acm_certificate_arn"]
     return out
 
 
@@ -136,8 +143,10 @@ def _create_domain(table, tenant_slug: str, body: dict) -> dict:
 
     now = datetime.now(timezone.utc).isoformat()
 
-    # Task 1.81: DNS verification — CNAME target from env, TXT token per domain
-    cname_target = os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN", "").strip()
+    # Task 1.81: DNS verification — CNAME target (sites distribution for custom domains)
+    cname_target = (
+        os.environ.get("CLOUDFRONT_SITES_DOMAIN") or os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN", "")
+    ).strip()
     txt_token = secrets.token_hex(8)
     verification_txt = f"9host-verify={txt_token}"
 
@@ -168,6 +177,133 @@ def _delete_domain(table, tenant_slug: str, domain: str) -> dict:
 
     table.delete_item(Key=key)
     return _json_response(204, {}, empty_body=True)
+
+
+def _verify_dns_ownership(domain: str, cname_target: str, txt_record: str) -> bool:
+    """Verify domain ownership via CNAME or TXT. Returns True if either passes."""
+    try:
+        import dns.resolver
+    except ImportError:
+        return False
+
+    # CNAME: domain should resolve to cname_target (or be a CNAME to it)
+    if cname_target:
+        cname_target_norm = cname_target.rstrip(".").lower()
+        try:
+            answers = dns.resolver.resolve(domain, "CNAME")
+            for rdata in answers:
+                target = str(rdata.target).rstrip(".").lower()
+                if target == cname_target_norm or target.endswith("." + cname_target_norm):
+                    return True
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
+            pass
+
+    # TXT: _9host-verify.{domain} should have our TXT value
+    if txt_record:
+        verify_host = f"_9host-verify.{domain}"
+        try:
+            answers = dns.resolver.resolve(verify_host, "TXT")
+            for rdata in answers:
+                txt_val = "".join(rdata.strings).strip('"')
+                if txt_record in txt_val or txt_val == txt_record:
+                    return True
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
+            pass
+
+    return False
+
+
+def _activate_domain(event: dict, table, tenant_slug: str, domain: str) -> dict:
+    """Task 1.100: On DNS verify pass, request ACM cert, store ARN, status PENDING_VALIDATION."""
+    key = get_domain_item(tenant_slug, domain)
+    resp = table.get_item(Key=key)
+    item = resp.get("Item")
+    if not item:
+        return _json_response(404, {"error": "Domain not found."})
+
+    status = (item.get("status") or "pending").upper()
+    if status in ("PENDING_VALIDATION", "ACTIVE"):
+        return _json_response(
+            400,
+            {"error": f"Domain already {status}. No activation needed."},
+        )
+
+    cname_target = (item.get("verification_cname_target") or "").strip()
+    txt_record = (item.get("verification_txt_record") or "").strip()
+    if not cname_target and not txt_record:
+        return _json_response(
+            400,
+            {"error": "No verification records. Add domain with verification_cname_target or verification_txt_record."},
+        )
+
+    if not _verify_dns_ownership(domain, cname_target, txt_record):
+        return _json_response(
+            400,
+            {
+                "error": "DNS verification failed. Add the CNAME or TXT record at your DNS provider, then try again.",
+            },
+        )
+
+    # Request ACM cert (us-east-1 required for CloudFront)
+    acm = boto3.client("acm", region_name="us-east-1")
+    try:
+        cert_resp = acm.request_certificate(
+            DomainName=domain,
+            ValidationMethod="DNS",
+        )
+        cert_arn = cert_resp.get("CertificateArn", "")
+    except Exception as e:
+        return _json_response(500, {"error": "Failed to request certificate.", "detail": str(e)})
+
+    if not cert_arn:
+        return _json_response(500, {"error": "ACM did not return certificate ARN."})
+
+    # Fetch validation records (ACM may delay a few seconds)
+    validation_records = []
+    for _ in range(5):
+        try:
+            desc = acm.describe_certificate(CertificateArn=cert_arn)
+            opts = desc.get("Certificate", {}).get("DomainValidationOptions", [])
+            for opt in opts:
+                for rec in opt.get("ResourceRecord", []) or []:
+                    validation_records.append(
+                        {
+                            "type": rec.get("Type"),
+                            "name": rec.get("Name"),
+                            "value": rec.get("Value"),
+                        }
+                    )
+            if validation_records:
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
+    now = datetime.now(timezone.utc).isoformat()
+    table.update_item(
+        Key=key,
+        UpdateExpression="SET #status = :status, acm_certificate_arn = :arn, updated_at = :now",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={
+            ":status": "PENDING_VALIDATION",
+            ":arn": cert_arn,
+            ":now": now,
+        },
+    )
+
+    updated = dict(item)
+    updated["status"] = "PENDING_VALIDATION"
+    updated["acm_certificate_arn"] = cert_arn
+    updated["updated_at"] = now
+
+    return _json_response(
+        200,
+        {
+            "domain": _domain_to_response(updated),
+            "acm_validation_records": validation_records,
+            "message": "Add the ACM validation CNAME records above to your DNS. Certificate will activate when validated.",
+        },
+    )
 
 
 @with_tenant
@@ -220,17 +356,17 @@ def domains_handler(event: dict, context: dict) -> dict:
         or "GET"
     )
 
-    domain = _extract_domain_from_path(path)
+    domain, path_suffix = _extract_domain_from_path(path)
     base_path = "/api/tenant/domains"
     is_list_or_create = path in (base_path, f"{base_path}/")
 
     if method == "GET" and is_list_or_create:
         return _list_domains(table, tenant_slug)
 
-    if method == "GET" and domain:
+    if method == "GET" and domain and not path_suffix:
         return _get_domain(table, tenant_slug, domain)
 
-    # POST/DELETE require admin or manager (Task 1.24)
+    # POST/DELETE/activate require admin or manager (Task 1.24)
     if method in ("POST", "DELETE"):
         if is_cognito:
             ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
@@ -243,7 +379,11 @@ def domains_handler(event: dict, context: dict) -> dict:
         body = _parse_body(event) or {}
         return _create_domain(table, tenant_slug, body)
 
-    if method == "DELETE" and domain:
+    if method == "DELETE" and domain and not path_suffix:
         return _delete_domain(table, tenant_slug, domain)
+
+    # Task 1.100: POST /api/tenant/domains/{domain}/activate — DNS verify + request ACM cert
+    if method == "POST" and domain and path_suffix == "activate":
+        return _activate_domain(event, table, tenant_slug, domain)
 
     return _json_response(405, {"error": "Method not allowed."})
