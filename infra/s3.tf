@@ -108,6 +108,33 @@ resource "aws_s3_bucket_versioning" "sites" {
   }
 }
 
+# Task 1.97: Allow CloudFront sites distribution to read from 9host-sites
+resource "aws_s3_bucket_policy" "sites" {
+  bucket = aws_s3_bucket.sites.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontSites"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.sites.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.sites.arn
+          }
+        }
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.sites]
+}
+
 # ------------------------------------------------------------------------------
 # Task 1.91: Media S3 bucket — tenant uploads (images, files)
 # Key layout: {tenant_slug}/{site_id}/{filename}

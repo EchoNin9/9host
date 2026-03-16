@@ -91,7 +91,7 @@
 | 1.96 | Site publish API: POST /api/tenant/sites/{id}/publish. Atomic versioned publish → render HTML → upload to `published/v{N}/` → manifest.json → swap current.json | TODO | Depends on 1.95, 1.90. |
 | 1.96b | Site rollback API: POST /api/tenant/sites/{id}/rollback?version=N. Validate version, swap current.json. Admin/manager only | TODO | Depends on 1.96. |
 | | **Web Hosting — Phase 3: Site Serving & Custom Domains** | | |
-| 1.97 | Site content origin: add 9host-sites as CloudFront origin. CF Function: Host → tenant + site → S3 path | TODO | Depends on 1.90. |
+| 1.97 | Site content origin: add 9host-sites as CloudFront origin. CF Function: Host → tenant + site → S3 path | DONE | infra/cloudfront.tf, cf-site-content.js, s3.tf bucket policy. |
 | 1.98 | Default site resolution: `{tenant}.echo9.net` → tenant's default site from S3 | TODO | Depends on 1.97. |
 | 1.99 | Custom domain ACM + CloudFront: dedicated ACM cert per domain (not SAN). On cert issued, add alias to sites distribution | TODO | Depends on 1.81 (done), 1.97. |
 | 1.100 | Domain activation workflow: on DNS verify pass, request ACM cert, store cert ARN, status `PENDING_VALIDATION` | TODO | Depends on 1.99. |

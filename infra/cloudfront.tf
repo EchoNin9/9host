@@ -223,8 +223,20 @@ resource "aws_s3_bucket_policy" "frontend_production" {
 }
 
 # ------------------------------------------------------------------------------
+# Task 1.97: CloudFront Function — Host → tenant + site → S3 path rewrite
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_function" "site_content" {
+  name    = "9host-site-content"
+  runtime = "cloudfront-js-2.0"
+  comment = "Site content path rewrite: Host + /site/{site_id}/* → S3"
+  publish = true
+
+  code = file("${path.module}/cf-site-content.js")
+}
+
+# ------------------------------------------------------------------------------
 # Task 1.78: Wildcard distribution for *.echo9.net (sites + tenant subdomains)
-# Serves tenant admin SPA. Site routing (platform > site > tenant) in middleware.
+# Serves tenant admin SPA. Task 1.97: 9host-sites origin for published site content.
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "sites" {
   provider = aws.us_east_1
@@ -242,6 +254,39 @@ resource "aws_cloudfront_distribution" "sites" {
     domain_name              = aws_s3_bucket.frontend_staging.bucket_regional_domain_name
     origin_id                = "S3-9host-frontend-staging"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  # Task 1.97: 9host-sites origin for published site content
+  origin {
+    domain_name              = aws_s3_bucket.sites.bucket_regional_domain_name
+    origin_id                = "S3-9host-sites"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  # Task 1.97: Site content — /site/{site_id}/* → 9host-sites
+  ordered_cache_behavior {
+    path_pattern           = "/site/*"
+    target_origin_id       = "S3-9host-sites"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.site_content.arn
+    }
+
+    min_ttl     = 0
+    default_ttl = 60
+    max_ttl     = 300
   }
 
   default_cache_behavior {
