@@ -89,7 +89,7 @@
 | 1.94 | Module definitions: updates/blog, events_shows, media_gallery, branding. Extend module_overrides / resolved_features | DONE | tier_config.CONTENT_MODULE_KEYS, handler_example resolved_features. |
 | 1.95 | Content CRUD API: GET/POST/PUT/DELETE for pages, posts, events, media. Per-upload size check. On DELETE: remove S3 + decrement storage. Reserved slug deny-list | DONE | api/content_handler.py. |
 | 1.96 | Site publish API: POST /api/tenant/sites/{id}/publish. Atomic versioned publish → render HTML → upload to `published/v{N}/` → manifest.json → swap current.json | DONE | api/publish_handler.py, handler.py, Lambda S3 CopyObject. |
-| 1.96b | Site rollback API: POST /api/tenant/sites/{id}/rollback?version=N. Validate version, swap current.json. Admin/manager only | TODO | Depends on 1.96. |
+| 1.96b | Site rollback API: POST /api/tenant/sites/{id}/rollback?version=N. Validate version, swap current.json. Admin/manager only | DONE | api/rollback_handler.py. |
 | | **Web Hosting — Phase 3: Site Serving & Custom Domains** | | |
 | 1.97 | Site content origin: add 9host-sites as CloudFront origin. CF Function: Host → tenant + site → S3 path | DONE | infra/cloudfront.tf, cf-site-content.js, s3.tf bucket policy. |
 | 1.98 | Default site resolution: `{tenant}.echo9.net` → tenant's default site from S3 | DONE | GET /api/tenant/default-site, RootRoute redirect to /site/{id}/. |

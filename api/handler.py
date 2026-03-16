@@ -48,6 +48,7 @@ from validate_slug_handler import validate_slug_handler
 from upload_handler import upload_url_handler
 from content_handler import content_handler
 from publish_handler import publish_handler
+from rollback_handler import rollback_handler
 from default_site_handler import default_site_handler
 
 
@@ -168,6 +169,10 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
         if "/publish" in path and path.endswith("/publish"):
             if method == "POST":
                 return _with_cors(publish_handler(event, context))
+        # Rollback: POST /api/tenant/sites/{id}/rollback?version=N (Task 1.96b)
+        if "/rollback" in path and path.endswith("/rollback"):
+            if method == "POST":
+                return _with_cors(rollback_handler(event, context))
         # Content CRUD: /api/tenant/sites/{id}/pages|posts|events|media (Task 1.95)
         if "/pages" in path or "/posts" in path or "/events" in path or "/media" in path:
             return _with_cors(content_handler(event, context))
