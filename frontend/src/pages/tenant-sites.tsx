@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { MoreHorizontal, Pencil, Trash2, Check, X, Loader2, ExternalLink } from "lucide-react"
+import { MoreHorizontal, Pencil, Trash2, Check, X, Loader2, ExternalLink, FileEdit } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -22,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Link } from "react-router-dom"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
@@ -246,7 +247,8 @@ function SiteForm({
 }
 
 function TenantSites() {
-  const { tenantSlug } = useTenant()
+  const { tenantSlug, tenantBasePath } = useTenant()
+  const base = tenantBasePath || `/${tenantSlug}`
   const { canEdit } = useTenantRole()
   const { sites, loading, error, create, update, remove } = useSites(tenantSlug)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -389,6 +391,12 @@ function TenantSites() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem asChild>
+                        <Link to={`${base}/sites/${site.id}/edit`}>
+                          <FileEdit className="mr-2 size-4" />
+                          Edit content
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setPreviewSite(site)}>
                         <ExternalLink className="mr-2 size-4" />
                         Preview

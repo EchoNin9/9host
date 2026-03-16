@@ -192,7 +192,7 @@
 | 2.87 | VIP: Modules — no upgrade prompts, show all module controls | DONE | /{tenant}/modules: when tenant is VIP, do not show upgrade prompts; show control for all modules. |
 | | **Web Hosting — Phase 2: Content & Modules** | | |
 | 2.89 | Module Marketplace expansion: add updates/blog, events_shows, media_gallery, branding to tenant-modules | TODO | Depends on 1.94. |
-| 2.90 | Content editor shell: site content editor layout (sidebar, page/post/event/media tabs). Placeholder for per-module editors | TODO | No deps. Parallel start. |
+| 2.90 | Content editor shell: site content editor layout (sidebar, page/post/event/media tabs). Placeholder for per-module editors | DONE | site-content-editor.tsx, /sites/:siteId/edit, Edit content in dropdown. |
 | 2.91 | Updates/Blog editor: list posts, create/edit/delete. Draft vs Published. Publish flow | TODO | Depends on 1.95, 2.90. |
 | 2.92 | Events/Shows editor: list events, CRUD, date/venue | TODO | Depends on 1.95, 2.90. |
 | 2.93 | Media gallery editor: upload via pre-signed POST, list, caption, reorder | TODO | Depends on 1.95, 1.91, 2.90. |

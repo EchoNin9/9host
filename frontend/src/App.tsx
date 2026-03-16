@@ -13,6 +13,7 @@ import { TenantAdminLayout } from "@/components/tenant-admin-layout"
 import { TenantDashboard } from "@/pages/tenant-dashboard"
 import { TenantAnalytics } from "@/pages/tenant-analytics"
 import { TenantSites } from "@/pages/tenant-sites"
+import { SiteContentEditor } from "@/pages/site-content-editor"
 import { TenantDomains } from "@/pages/tenant-domains"
 import { TenantSettings } from "@/pages/tenant-settings"
 import { TenantModules } from "@/pages/tenant-modules"
@@ -173,6 +174,7 @@ function AppRoutes() {
         <Route index element={<TenantDashboard />} />
         <Route path="analytics" element={<TenantAnalytics />} />
         <Route path="sites" element={<TenantSites />} />
+        <Route path="sites/:siteId/edit" element={<SiteContentEditor />} />
         <Route path="domains" element={<TenantDomains />} />
         <Route path="users" element={<TenantUsers />} />
         <Route path="modules" element={<TenantModules />} />
