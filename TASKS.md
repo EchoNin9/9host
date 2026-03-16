@@ -95,7 +95,7 @@
 | 1.98 | Default site resolution: `{tenant}.echo9.net` → tenant's default site from S3 | DONE | GET /api/tenant/default-site, RootRoute redirect to /site/{id}/. |
 | 1.99 | Custom domain ACM + CloudFront: dedicated ACM cert per domain (not SAN). On cert issued, add alias to sites distribution | DONE | EventBridge ACM Certificate Available → Lambda 9host-acm-handler, add alias, domain ACTIVE. |
 | 1.100 | Domain activation workflow: on DNS verify pass, request ACM cert, store cert ARN, status `PENDING_VALIDATION` | DONE | POST /api/tenant/domains/{domain}/activate. dnspython, ACM RequestCertificate. |
-| 1.100b | ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda. On ISSUED: add alias, update domain → ACTIVE. Zero polling | TODO | Depends on 1.100. |
+| 1.100b | ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda. On ISSUED: add alias, update domain → ACTIVE. Zero polling | DONE | EventBridge 9host-acm-certificate-available, Lambda 9host-acm-handler. |
 
 ### Agent 2 — Frontend / UI
 

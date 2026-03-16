@@ -1,8 +1,9 @@
 """
-EventBridge handler: ACM certificate issued → add alias to CloudFront, update domain (Task 1.99).
+EventBridge handler: ACM certificate issued → add alias to CloudFront, update domain (Task 1.99, 1.100b).
 
-Triggered when an ACM certificate status changes to ISSUED.
+Triggered when an ACM certificate status changes to ISSUED (ACM Certificate Available event).
 Looks up domain by cert ARN, adds alias to sites distribution, updates domain status to ACTIVE.
+Zero polling — event-driven.
 """
 
 import json

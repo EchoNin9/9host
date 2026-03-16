@@ -1,6 +1,7 @@
 # ------------------------------------------------------------------------------
-# Task 1.99: Lambda + EventBridge for ACM cert issued → add CloudFront alias
-# On ACM Certificate Available, add alias to sites distribution, update domain ACTIVE.
+# Task 1.99, 1.100b: Lambda + EventBridge for ACM cert issued → add CloudFront alias
+# EventBridge rule on aws.acm cert status. On ACM Certificate Available (ISSUED):
+# add alias to sites distribution, update domain PENDING_VALIDATION → ACTIVE. Zero polling.
 # ------------------------------------------------------------------------------
 
 data "archive_file" "acm_handler" {
@@ -120,7 +121,7 @@ resource "aws_cloudwatch_event_rule" "acm_certificate_available" {
   provider = aws.us_east_1
 
   name        = "9host-acm-certificate-available"
-  description = "Trigger when ACM certificate becomes available (Task 1.99)"
+  description = "Trigger when ACM certificate becomes available (Task 1.99, 1.100b)"
 
   event_pattern = jsonencode({
     source      = ["aws.acm"]
