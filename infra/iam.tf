@@ -194,6 +194,7 @@ data "aws_iam_policy_document" "deploy" {
       "s3:PutBucketOwnershipControls",
       "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
+      "s3:PutBucketTagging",
       "s3:PutBucketVersioning",
       "s3:PutObject",
       "s3:DeleteObject",
