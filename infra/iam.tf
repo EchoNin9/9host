@@ -323,7 +323,14 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:UpdateOriginAccessControl",
       "cloudfront:DeleteOriginAccessControl",
       "cloudfront:ListOriginAccessControls",
-      "cloudfront:CreateInvalidation"
+      "cloudfront:CreateInvalidation",
+      "cloudfront:CreateFunction",
+      "cloudfront:UpdateFunction",
+      "cloudfront:GetFunction",
+      "cloudfront:DeleteFunction",
+      "cloudfront:PublishFunction",
+      "cloudfront:DescribeFunction",
+      "cloudfront:ListFunctions"
     ]
     resources = ["*"]
   }
