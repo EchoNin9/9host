@@ -161,6 +161,76 @@ updated_at: string
 
 Built-in roles `manager` and `member` are implicit (not stored). Custom roles are created by tenant admin. Role name cannot be `manager` or `member`.
 
+### Content Entities (Task 1.93)
+
+Site-scoped content for web hosting. Stored under tenant partition with SK prefix `SITE#{id}#`.
+
+**PAGE** — Static pages (home, about, contact).
+
+```
+PK: TENANT#acme
+SK: SITE#{site_id}#PAGE#{path}
+---
+path: string           # URL path, e.g. "home", "about"
+title: string
+body: string           # HTML or markdown
+status: string         # DRAFT | PUBLISHED
+published_at: string   # (optional) ISO8601 when published
+created_at: string
+updated_at: string
+```
+
+**POST** — Blog posts, updates.
+
+```
+PK: TENANT#acme
+SK: SITE#{site_id}#POST#{id}
+---
+id: string             # UUID
+slug: string           # URL slug
+title: string
+body: string
+status: string         # DRAFT | PUBLISHED
+published_at: string   # (optional) ISO8601
+created_at: string
+updated_at: string
+```
+
+**EVENT** — Events, shows, tour dates.
+
+```
+PK: TENANT#acme
+SK: SITE#{site_id}#EVENT#{id}
+---
+id: string             # UUID
+title: string
+event_date: string    # ISO8601 date
+venue: string         # (optional)
+location: string     # (optional)
+status: string        # DRAFT | PUBLISHED
+published_at: string  # (optional)
+created_at: string
+updated_at: string
+```
+
+**MEDIA** — Media gallery items (references to S3 objects in 9host-media).
+
+```
+PK: TENANT#acme
+SK: SITE#{site_id}#MEDIA#{id}
+---
+id: string             # UUID
+s3_key: string         # {tenant}/{site}/{filename} in 9host-media
+caption: string        # (optional)
+sort_order: number     # (optional) for ordering
+status: string         # DRAFT | PUBLISHED
+published_at: string   # (optional)
+created_at: string
+updated_at: string
+```
+
+**Access:** Query PK=`TENANT#{slug}`, SK begins_with `SITE#{id}#PAGE`, `SITE#{id}#POST`, etc.
+
 ---
 
 ## Access Patterns
@@ -182,6 +252,7 @@ Built-in roles `manager` and `member` are implicit (not stored). Custom roles ar
 | Get custom role                | GetItem   | PK=`TENANT#{slug}`, SK=`ROLE#{name}` |
 | List custom roles              | Query     | PK=`TENANT#{slug}`, SK begins_with `ROLE#` |
 | Check site slug taken globally | Query GSI | GSI4PK=`SLUG#{slug}` (bySiteSlug) |
+| List site content (pages, posts, etc.) | Query | PK=`TENANT#{slug}`, SK begins_with `SITE#{id}#` |
 
 ---
 

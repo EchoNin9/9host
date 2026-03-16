@@ -334,7 +334,14 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
         if not isinstance(mo, dict):
             return _json_response(400, {"error": "module_overrides must be a map"})
         # Validate keys: only known feature keys
-        valid_keys = {"custom_domains", "advanced_analytics"}
+        valid_keys = {
+            "custom_domains",
+            "advanced_analytics",
+            "updates_blog",
+            "events_shows",
+            "media_gallery",
+            "branding",
+        }
         clean_mo = {k: bool(v) for k, v in mo.items() if k in valid_keys}
         updates.append("module_overrides = :mo")
         expr_vals[":mo"] = clean_mo

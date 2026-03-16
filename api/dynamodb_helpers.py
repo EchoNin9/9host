@@ -165,6 +165,34 @@ def get_site_item(tenant_slug: str, site_id: str) -> dict[str, Any]:
     }
 
 
+# Content entity SK prefixes (Task 1.93)
+def sk_site_page(site_id: str, path: str) -> str:
+    return f"SITE#{site_id}#PAGE#{path}"
+
+
+def sk_site_post(site_id: str, post_id: str) -> str:
+    return f"SITE#{site_id}#POST#{post_id}"
+
+
+def sk_site_event(site_id: str, event_id: str) -> str:
+    return f"SITE#{site_id}#EVENT#{event_id}"
+
+
+def sk_site_media(site_id: str, media_id: str) -> str:
+    return f"SITE#{site_id}#MEDIA#{media_id}"
+
+
+def query_site_content(tenant_slug: str, site_id: str, entity: str) -> dict[str, Any]:
+    """Query params: list content in site. entity = PAGE, POST, EVENT, or MEDIA."""
+    return {
+        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "ExpressionAttributeValues": {
+            ":pk": pk_tenant(tenant_slug),
+            ":sk_prefix": f"SITE#{site_id}#{entity}#",
+        },
+    }
+
+
 def get_tuser_item(tenant_slug: str, username: str) -> dict[str, Any]:
     """GetItem params for non-Cognito tenant user."""
     return {

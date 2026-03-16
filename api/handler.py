@@ -45,6 +45,7 @@ from stripe_webhook_handler import stripe_webhook_handler
 from tenants_handler import get_tenants_handler
 from templates_handler import get_templates_handler
 from validate_slug_handler import validate_slug_handler
+from upload_handler import upload_url_handler
 
 
 # CORS headers for Lambda proxy — API Gateway cors_configuration may not apply to $default
@@ -149,6 +150,11 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
         return _with_cors(get_analytics_handler(event, context))
 
     if path.startswith("/api/tenant/sites"):
+        if "/upload-url" in path and path.endswith("/upload-url"):
+            parts = path.rstrip("/").split("/")
+            if len(parts) >= 6 and parts[-1] == "upload-url":
+                if method == "POST":
+                    return _with_cors(upload_url_handler(event, context))
         return _with_cors(sites_handler(event, context))
 
     if path.startswith("/api/tenant/domains"):

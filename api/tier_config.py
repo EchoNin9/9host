@@ -29,12 +29,39 @@ def tier_rank(tier: str) -> int:
 # Feature keys aligned with frontend feature-flags.ts
 FEATURE_KEYS = ("custom_domains", "advanced_analytics")
 
+# Content module keys (Task 1.94): updates/blog, events_shows, media_gallery, branding
+CONTENT_MODULE_KEYS = ("updates_blog", "events_shows", "media_gallery", "branding")
+
+# All module keys (features + content modules) for resolved_features
+ALL_MODULE_KEYS = FEATURE_KEYS + CONTENT_MODULE_KEYS
+
+# Minimum tier for content modules. FREE=0, PRO=1, BUSINESS=2
+CONTENT_MODULE_TIER = {
+    "updates_blog": "FREE",
+    "events_shows": "FREE",
+    "media_gallery": "PRO",
+    "branding": "FREE",
+}
+
 
 def tier_has_feature(tier: str, feature: str) -> bool:
     """Check if tier grants feature by default (Pro+ for custom_domains, advanced_analytics)."""
     if feature not in FEATURE_KEYS:
         return False
     return tier_rank(tier) >= 1  # PRO, BUSINESS, VIP
+
+
+def module_tier_required(module_key: str) -> str:
+    """Minimum tier for content module. Returns FREE, PRO, or BUSINESS."""
+    return CONTENT_MODULE_TIER.get(module_key, "FREE")
+
+
+def tier_has_module(tier: str, module_key: str) -> bool:
+    """Check if tier grants content module by default."""
+    if module_key not in CONTENT_MODULE_KEYS:
+        return False
+    required = module_tier_required(module_key)
+    return tier_rank(tier) >= tier_rank(required)
 
 
 def is_valid_tier(tier: str) -> bool:

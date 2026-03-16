@@ -4,7 +4,13 @@ Tenant metadata handler — GET /api/tenant (Task 1.26: owner_sub, 1.28: module_
 Fetches tenant from DynamoDB. Returns name, tier, owner_sub, module_overrides, resolved_features in GET.
 """
 
-from tier_config import FEATURE_KEYS, tier_has_feature as _tier_has_feature, tier_rank as _tier_rank
+from tier_config import (
+    CONTENT_MODULE_KEYS,
+    FEATURE_KEYS,
+    tier_has_feature as _tier_has_feature,
+    tier_has_module as _tier_has_module,
+    tier_rank as _tier_rank,
+)
 
 import json
 import os
@@ -95,7 +101,7 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
         except Exception:
             pass
 
-    # Resolved features: tier base + module_overrides override (Task 1.28)
+    # Resolved features: tier base + module_overrides override (Task 1.28, 1.94)
     resolved_features = {}
     clean_module_overrides = {}
     for fk in FEATURE_KEYS:
@@ -105,6 +111,13 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
             clean_module_overrides[fk] = bool(val)
         else:
             resolved_features[fk] = _tier_has_feature(tier, fk)
+    for mk in CONTENT_MODULE_KEYS:
+        if mk in module_overrides:
+            val = module_overrides[mk]
+            resolved_features[mk] = bool(val)
+            clean_module_overrides[mk] = bool(val)
+        else:
+            resolved_features[mk] = _tier_has_module(tier, mk)
 
     body = {
         "tenant_slug": tenant_slug,
@@ -255,22 +268,33 @@ def patch_tenant_handler(event: dict, context: dict) -> dict:
         return _json_response(404, {"error": "Tenant not found."})
     tier = tenant_item.get("tier", "FREE")
 
-    # Reject enabling features the tier doesn't support
+    # Reject enabling features/modules the tier doesn't support
     for k, v in mo.items():
-        if k not in FEATURE_KEYS:
-            continue
-        if v and not _tier_has_feature(tier, k):
-            return _json_response(
-                403,
-                {
-                    "error": f"Cannot enable {k} on {tier} tier. Upgrade to Pro or Business.",
-                    "feature": k,
-                    "tier": tier,
-                    "upgrade_required": True,
-                },
-            )
+        if k in FEATURE_KEYS:
+            if v and not _tier_has_feature(tier, k):
+                return _json_response(
+                    403,
+                    {
+                        "error": f"Cannot enable {k} on {tier} tier. Upgrade to Pro or Business.",
+                        "feature": k,
+                        "tier": tier,
+                        "upgrade_required": True,
+                    },
+                )
+        elif k in CONTENT_MODULE_KEYS:
+            if v and not _tier_has_module(tier, k):
+                return _json_response(
+                    403,
+                    {
+                        "error": f"Cannot enable {k} on {tier} tier. Upgrade required.",
+                        "feature": k,
+                        "tier": tier,
+                        "upgrade_required": True,
+                    },
+                )
 
-    clean_mo = {k: bool(v) for k, v in mo.items() if k in FEATURE_KEYS}
+    valid_keys = set(FEATURE_KEYS) | set(CONTENT_MODULE_KEYS)
+    clean_mo = {k: bool(v) for k, v in mo.items() if k in valid_keys}
 
     from datetime import datetime, timezone
 
@@ -290,6 +314,11 @@ def patch_tenant_handler(event: dict, context: dict) -> dict:
             resolved_features[fk] = bool(module_overrides[fk])
         else:
             resolved_features[fk] = _tier_has_feature(tier, fk)
+    for mk in CONTENT_MODULE_KEYS:
+        if mk in module_overrides:
+            resolved_features[mk] = bool(module_overrides[mk])
+        else:
+            resolved_features[mk] = _tier_has_module(tier, mk)
     return _json_response(
         200,
         {

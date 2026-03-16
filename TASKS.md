@@ -81,12 +81,12 @@
 | 1.84 | **FIX: GET /api/tenant 500 — boto3 import shadowing** | DONE | `handler_example.py` inner `import boto3` (owner_email lookup) shadows module-level import → `UnboundLocalError` on line 64. Billing card shows 'Free' because tenant fetch fails. |
 | | **Web Hosting — Phase 1: Foundation** | | |
 | 1.88 | Storage tracking schema: `storage_used_bytes` on Tenant, per-tier upload limits in tier_config.py | DONE | No deps. Parallel start. |
-| 1.89 | Upload size enforcement: pre-signed POST with `content-length-range` (10 MB per file) | TODO | Depends on 1.88. |
+| 1.89 | Upload size enforcement: pre-signed POST with `content-length-range` (10 MB per file) | DONE | POST /api/tenant/sites/{id}/upload-url. upload_handler.py. |
 | 1.90 | Sites S3 bucket: `9host-sites`, OAC, versioning. Key layout: `{tenant}/{site}/draft/`, `published/v{N}/`, `current.json` | DONE | No deps. Parallel start. |
 | 1.91 | Media S3 bucket: `9host-media` for tenant uploads. Key: `{tenant}/{site}/{filename}` | DONE | No deps. Parallel start. |
 | | **Web Hosting — Phase 2: Content & Modules** | | |
-| 1.93 | Content entities (DynamoDB): SITE#{id}#PAGE, POST, EVENT, MEDIA. `status: DRAFT\|PUBLISHED`, `published_at`. Doc in SCHEMA.md | TODO | Depends on 1.90. |
-| 1.94 | Module definitions: updates/blog, events_shows, media_gallery, branding. Extend module_overrides / resolved_features | TODO | Depends on 1.28 (done). Parallel start. |
+| 1.93 | Content entities (DynamoDB): SITE#{id}#PAGE, POST, EVENT, MEDIA. `status: DRAFT\|PUBLISHED`, `published_at`. Doc in SCHEMA.md | DONE | docs/SCHEMA.md, dynamodb_helpers. |
+| 1.94 | Module definitions: updates/blog, events_shows, media_gallery, branding. Extend module_overrides / resolved_features | DONE | tier_config.CONTENT_MODULE_KEYS, handler_example resolved_features. |
 | 1.95 | Content CRUD API: GET/POST/PUT/DELETE for pages, posts, events, media. Per-upload size check. On DELETE: remove S3 + decrement storage. Reserved slug deny-list | TODO | Depends on 1.93, 1.89. |
 | 1.96 | Site publish API: POST /api/tenant/sites/{id}/publish. Atomic versioned publish → render HTML → upload to `published/v{N}/` → manifest.json → swap current.json | TODO | Depends on 1.95, 1.90. |
 | 1.96b | Site rollback API: POST /api/tenant/sites/{id}/rollback?version=N. Validate version, swap current.json. Admin/manager only | TODO | Depends on 1.96. |
@@ -191,7 +191,7 @@
 | 2.86 | VIP: Domains — no upgrade prompts, show domain controls | DONE | /{tenant}/domains: when tenant is VIP, do not show upgrade prompts; show domain controls. |
 | 2.87 | VIP: Modules — no upgrade prompts, show all module controls | DONE | /{tenant}/modules: when tenant is VIP, do not show upgrade prompts; show control for all modules. |
 | | **Web Hosting — Phase 2: Content & Modules** | | |
-| 2.89 | Module Marketplace expansion: add updates/blog, events_shows, media_gallery, branding to tenant-modules | TODO | Depends on 1.94. |
+| 2.89 | Module Marketplace expansion: add updates/blog, events_shows, media_gallery, branding to tenant-modules | DONE | Depends on 1.94. |
 | 2.90 | Content editor shell: site content editor layout (sidebar, page/post/event/media tabs). Placeholder for per-module editors | DONE | site-content-editor.tsx, /sites/:siteId/edit, Edit content in dropdown. |
 | 2.91 | Updates/Blog editor: list posts, create/edit/delete. Draft vs Published. Publish flow | TODO | Depends on 1.95, 2.90. |
 | 2.92 | Events/Shows editor: list events, CRUD, date/venue | TODO | Depends on 1.95, 2.90. |
