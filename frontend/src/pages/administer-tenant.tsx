@@ -58,7 +58,11 @@ import {
 } from "@/lib/api"
 import { ArrowLeft, Globe, GlobeLock, Settings, Trash2, Users } from "lucide-react"
 
-const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
+import { ALL_MODULE_KEYS } from "@/lib/feature-flags"
+
+const DEFAULT_MODULE_OVERRIDES: Record<string, boolean> = Object.fromEntries(
+  ALL_MODULE_KEYS.map((k) => [k, false])
+)
 
 type TabId = "domains" | "sites" | "users" | "settings"
 
@@ -968,7 +972,7 @@ function AdminSettingsTab({
   const [ownerSub, setOwnerSub] = useState<string>(tenant.owner_sub ?? "")
   const [cognitoUsers, setCognitoUsers] = useState<{ sub: string; email: string; name: string }[]>([])
   const [moduleOverrides, setModuleOverrides] = useState<Record<string, boolean>>(
-    tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false }
+    tenant.module_overrides ?? DEFAULT_MODULE_OVERRIDES
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -977,7 +981,7 @@ function AdminSettingsTab({
     setName(tenant.name)
     setTier(tenant.tier)
     setOwnerSub(tenant.owner_sub ?? "")
-    setModuleOverrides(tenant.module_overrides ?? { custom_domains: false, advanced_analytics: false })
+    setModuleOverrides(tenant.module_overrides ?? DEFAULT_MODULE_OVERRIDES)
   }, [tenant.slug, tenant.name, tenant.tier, tenant.owner_sub, tenant.module_overrides])
 
   useEffect(() => {
@@ -1059,7 +1063,7 @@ function AdminSettingsTab({
         <div>
           <label className="text-sm font-medium">Module overrides</label>
           <div className="mt-2 space-y-2">
-            {FEATURE_KEYS.map((key) => (
+            {ALL_MODULE_KEYS.map((key) => (
               <label key={key} className="flex items-center gap-2">
                 <input
                   type="checkbox"

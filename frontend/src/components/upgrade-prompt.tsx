@@ -24,6 +24,22 @@ const FEATURE_LABELS: Record<FeatureKey, { title: string; description: string }>
     title: "Advanced Analytics",
     description: "View page views, visitors, and top pages. Requires Pro or Business tier.",
   },
+  updates_blog: {
+    title: "Updates / Blog",
+    description: "Blog posts and news updates. Available on all tiers.",
+  },
+  events_shows: {
+    title: "Events & Shows",
+    description: "Events, tour dates, and shows. Available on all tiers.",
+  },
+  media_gallery: {
+    title: "Media Gallery",
+    description: "Image gallery and media library. Requires Pro or Business tier.",
+  },
+  branding: {
+    title: "Branding",
+    description: "Logo, colors, fonts, and favicon. Available on all tiers.",
+  },
 }
 
 export interface UpgradePromptProps {

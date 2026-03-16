@@ -28,7 +28,7 @@ import { useTenantUsers } from "@/hooks/use-tenant-users"
 import { useAuth } from "@/hooks/use-auth"
 import { Crown, CreditCard, Settings2 } from "lucide-react"
 
-const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
+import { ALL_MODULE_KEYS } from "@/lib/feature-flags"
 
 const TIER_ORDER = ["free", "pro", "business", "vip"] as const
 type TierSlug = (typeof TIER_ORDER)[number]
@@ -292,7 +292,7 @@ function TenantSettings() {
                     Override tier-based features (e.g. Free + custom domains)
                   </p>
                   <div className="space-y-2">
-                    {FEATURE_KEYS.map((key) => (
+                    {ALL_MODULE_KEYS.map((key) => (
                       <label
                         key={key}
                         className="flex items-center gap-2 cursor-pointer"

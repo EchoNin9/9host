@@ -1,12 +1,21 @@
 /**
- * Module Marketplace (cPanel-style) — Task 2.79
+ * Module Marketplace (cPanel-style) — Task 2.79, 2.89
  * Dedicated Modules/Apps dashboard with grid of toggles.
  * Reuses tenant-settings module_overrides logic.
+ * Task 2.89: add updates/blog, events_shows, media_gallery, branding.
  */
 
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { Package, Globe, BarChart3 } from "lucide-react"
+import {
+  Package,
+  Globe,
+  BarChart3,
+  FileText,
+  Calendar,
+  Image,
+  Palette,
+} from "lucide-react"
 import { getToken } from "@/lib/api"
 import { patchTenantModuleOverrides } from "@/lib/api"
 import {
@@ -20,12 +29,14 @@ import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { UpgradePrompt } from "@/components/upgrade-prompt"
-import { getRequiredTier, type FeatureKey } from "@/lib/feature-flags"
-
-const FEATURE_KEYS = ["custom_domains", "advanced_analytics"] as const
+import {
+  ALL_MODULE_KEYS,
+  getRequiredTier,
+  type FeatureKey,
+} from "@/lib/feature-flags"
 
 const MODULE_META: Record<
-  (typeof FEATURE_KEYS)[number],
+  FeatureKey,
   { title: string; description: string; icon: typeof Globe }
 > = {
   custom_domains: {
@@ -37,6 +48,26 @@ const MODULE_META: Record<
     title: "Advanced Analytics",
     description: "View page views, unique visitors, and top pages over time.",
     icon: BarChart3,
+  },
+  updates_blog: {
+    title: "Updates / Blog",
+    description: "Blog posts and news updates. Add a blog section to your site.",
+    icon: FileText,
+  },
+  events_shows: {
+    title: "Events & Shows",
+    description: "Events, tour dates, and shows. Display upcoming dates and venues.",
+    icon: Calendar,
+  },
+  media_gallery: {
+    title: "Media Gallery",
+    description: "Image gallery and media library. Upload and manage images for your site.",
+    icon: Image,
+  },
+  branding: {
+    title: "Branding",
+    description: "Logo, colors, fonts, and favicon. Customize your site's look and feel.",
+    icon: Palette,
   },
 }
 
@@ -85,7 +116,7 @@ function TenantModules() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURE_KEYS.map((key) => {
+          {ALL_MODULE_KEYS.map((key) => {
             const meta = MODULE_META[key]
             const Icon = meta.icon
             const requiredTier = getRequiredTier(key)

@@ -8,8 +8,24 @@
 
 export type FeatureTier = "free" | "pro" | "business" | "vip";
 
-/** Feature keys aligned with saas-architecture.mdc */
-export type FeatureKey = "custom_domains" | "advanced_analytics";
+/** Feature keys aligned with saas-architecture.mdc (Task 2.89: + content modules) */
+export type FeatureKey =
+  | "custom_domains"
+  | "advanced_analytics"
+  | "updates_blog"
+  | "events_shows"
+  | "media_gallery"
+  | "branding";
+
+/** All module keys for tenant-modules grid */
+export const ALL_MODULE_KEYS: FeatureKey[] = [
+  "custom_domains",
+  "advanced_analytics",
+  "updates_blog",
+  "events_shows",
+  "media_gallery",
+  "branding",
+];
 
 /** Tiers that can be purchased via Stripe. VIP excluded (Task 1.82). */
 export const PAYABLE_TIERS = ["pro", "business"] as const;
@@ -27,10 +43,14 @@ function tierMeetsOrExceeds(tier: FeatureTier, required: FeatureTier): boolean {
   return tierRank(tier) >= tierRank(required);
 }
 
-/** Minimum tier required for each feature */
+/** Minimum tier required for each feature (Task 2.89: WEB_HOSTING_PLAN Module Reference) */
 const FEATURE_TIERS: Record<FeatureKey, FeatureTier> = {
   custom_domains: "pro",
   advanced_analytics: "pro",
+  updates_blog: "free",
+  events_shows: "free",
+  media_gallery: "pro",
+  branding: "free",
 };
 
 /**
