@@ -9,6 +9,7 @@ API Gateway HTTP API — routes require `Authorization: Bearer <token>` (Cognito
 | GET | /api/health | No | Health check |
 | POST | /api/auth/site-login | No | Non-Cognito tenant user login. Body: username, password, site (tenant_slug). Returns token. |
 | GET | /api/tenants | Yes | List tenants for authenticated user |
+| POST | /api/tenants | Yes | Create tenant (self-serve). Body: slug, name?. Tier FREE. Cognito only. |
 | GET | /api/tenant | Yes | Tenant metadata (requires X-Tenant-Slug or subdomain) |
 | GET | /api/tenant/analytics | Yes | Analytics placeholder (Pro+ tier; requires X-Tenant-Slug or subdomain) |
 | GET | /api/tenant/sites | Yes | List sites (requires X-Tenant-Slug or subdomain) |

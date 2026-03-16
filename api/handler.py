@@ -42,7 +42,7 @@ from users_handler import users_handler
 from billing_handler import billing_checkout_handler, billing_portal_handler
 from site_auth_handler import site_login_handler
 from stripe_webhook_handler import stripe_webhook_handler
-from tenants_handler import create_tenant_handler, get_tenants_handler
+from tenants_handler import create_tenant_handler as self_serve_create_tenant_handler, get_tenants_handler
 from templates_handler import get_templates_handler
 from validate_slug_handler import validate_slug_handler
 from upload_handler import upload_url_handler
@@ -137,7 +137,7 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
         if method == "GET":
             return _with_cors(get_tenants_handler(event, context))
         if method == "POST":
-            return _with_cors(create_tenant_handler(event, context))
+            return _with_cors(self_serve_create_tenant_handler(event, context))
 
     if method == "GET" and path in ("/api/validate-slug", "/api/validate-slug/"):
         return _with_cors(validate_slug_handler(event, context))

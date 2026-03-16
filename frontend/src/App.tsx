@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet, Route, BrowserRouter, Routes, useParams } from "react-router-dom"
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
@@ -9,6 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Input } from "@/components/ui/input"
 import { TenantAdminLayout } from "@/components/tenant-admin-layout"
 import { TenantDashboard } from "@/pages/tenant-dashboard"
 import { TenantAnalytics } from "@/pages/tenant-analytics"
@@ -37,6 +44,7 @@ import {
   getSwitchTenantUrl,
   type TenantContextValue,
 } from "@/contexts/tenant-context"
+import { createTenantWithError, getToken } from "@/lib/api"
 
 /**
  * Provides tenant context derived from React Router's :tenantSlug param.
@@ -85,11 +93,102 @@ function RootRoute() {
   return <Landing />
 }
 
+function CreateTenantSheet({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreated: () => void
+}) {
+  const [slug, setSlug] = useState("")
+  const [name, setName] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value.toLowerCase().replace(/\s/g, "-").replace(/[^a-z0-9-]/g, "")
+    setSlug(v.slice(0, 60))
+  }
+
+  const handleCreate = async () => {
+    setError(null)
+    const s = slug.trim()
+    if (!s) {
+      setError("Slug is required")
+      return
+    }
+    if (s.length > 60) {
+      setError("Slug must be at most 60 characters")
+      return
+    }
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(s)) {
+      setError("Slug must be lowercase alphanumeric and hyphen (e.g. acme-corp)")
+      return
+    }
+    setSaving(true)
+    const token = await getToken()
+    const result = await createTenantWithError(token, {
+      slug: s,
+      name: name.trim() || undefined,
+    })
+    setSaving(false)
+    if (result.ok) {
+      onCreated()
+      onOpenChange(false)
+      setSlug("")
+      setName("")
+    } else {
+      setError(result.error)
+    }
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent aria-describedby={undefined}>
+        <SheetHeader>
+          <SheetTitle>Create your tenant</SheetTitle>
+        </SheetHeader>
+        <div className="mt-6 space-y-4">
+          <div>
+            <label className="text-sm font-medium">Slug</label>
+            <Input
+              value={slug}
+              onChange={handleSlugChange}
+              placeholder="acme-corp"
+              maxLength={60}
+              className="mt-1"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Lowercase letters, numbers, hyphens. Max 60 chars. Used in URL (e.g. acme.echo9.net).
+            </p>
+          </div>
+          <div>
+            <label className="text-sm font-medium">Display name</label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Acme Corp"
+              className="mt-1"
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button onClick={handleCreate} disabled={saving} className="w-full">
+            {saving ? "Creating…" : "Create tenant"}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 function Landing() {
-  const { tenants, loading } = useTenants()
+  const { tenants, loading, refetch } = useTenants()
   const { isAuthenticated, loading: authLoading } = useAuth()
   const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
   const navigate = useNavigate()
+  const [createOpen, setCreateOpen] = useState(false)
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && !loading && !superadminLoading) {
@@ -100,6 +199,11 @@ function Landing() {
       }
     }
   }, [authLoading, isAuthenticated, loading, superadminLoading, isSuperadmin, tenants, navigate])
+
+  const handleTenantCreated = useCallback(() => {
+    void refetch()
+    // Refetch updates tenants; useEffect will navigate to tenants[0] when tenants.length >= 1
+  }, [refetch])
 
   return (
     <div className="flex min-h-screen items-center justify-center p-8">
@@ -124,6 +228,10 @@ function Landing() {
                   <Link to={`/${t.slug}`}>{t.name || t.slug}</Link>
                 </Button>
               ))
+            ) : !authLoading && isAuthenticated ? (
+              <span className="text-sm text-muted-foreground">
+                You have no tenants yet.
+              </span>
             ) : (
               <span className="text-sm text-muted-foreground">
                 Sign in to see your tenants.
@@ -136,14 +244,32 @@ function Landing() {
                 <Link to="/login">Sign in</Link>
               </Button>
             )}
-            {!authLoading && isAuthenticated && isSuperadmin && (
-              <Button asChild variant="link" className="p-0">
-                <Link to="/admin">Platform admin</Link>
-              </Button>
+            {!authLoading && isAuthenticated && (
+              <>
+                <Button
+                  variant="link"
+                  className="p-0"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  Create tenant
+                </Button>
+                {isSuperadmin && (
+                  <Button asChild variant="link" className="p-0">
+                    <Link to="/admin">Platform admin</Link>
+                  </Button>
+                )}
+              </>
             )}
           </p>
         </CardContent>
       </Card>
+      {isAuthenticated && (
+        <CreateTenantSheet
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={handleTenantCreated}
+        />
+      )}
     </div>
   )
 }

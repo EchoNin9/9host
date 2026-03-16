@@ -497,6 +497,80 @@ export async function fetchTenants(accessToken: string | null): Promise<Tenant[]
   }
 }
 
+/** Self-serve tenant creation response (Task 4.1) */
+export interface CreateTenantResponse {
+  slug: string
+  name: string
+  tier: string
+  owner_sub?: string
+  created_at?: string
+  updated_at?: string
+}
+
+/**
+ * Create tenant (self-serve). Body: slug (max 60 chars), name (optional).
+ * Requires Cognito auth. Tier is always FREE.
+ * Returns created tenant on success, null on failure.
+ */
+export async function createTenant(
+  accessToken: string | null,
+  body: { slug: string; name?: string }
+): Promise<CreateTenantResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenants`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as CreateTenantResponse
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Create tenant with error details. Returns { ok: true, data } or { ok: false, error, status }.
+ */
+export async function createTenantWithError(
+  accessToken: string | null,
+  body: { slug: string; name?: string }
+): Promise<
+  | { ok: true; data: CreateTenantResponse }
+  | { ok: false; error: string; status?: number }
+> {
+  const base = getApiUrl()
+  if (!base || !accessToken) {
+    return { ok: false, error: "Not authenticated", status: 401 }
+  }
+
+  try {
+    const res = await fetch(`${base}/api/tenants`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      const data = (await res.json()) as CreateTenantResponse
+      return { ok: true, data }
+    }
+    const errBody = await res.json().catch(() => ({}))
+    const msg = (errBody as { error?: string }).error ?? res.statusText
+    return { ok: false, error: msg, status: res.status }
+  } catch {
+    return { ok: false, error: "Network error", status: 0 }
+  }
+}
+
 /**
  * Fetch tenant users (admin/manager only).
  */

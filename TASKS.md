@@ -202,7 +202,7 @@
 
 | ID | Task | Status | Notes |
 |----|------|--------|-------|
-| 4.1 | Self-serve tenant signup flow | TODO | Allow regular authenticated users to create their own tenants. |
+| 4.1 | Self-serve tenant signup flow | DONE | POST /api/tenants (Cognito, Free tier). Landing: Create tenant sheet. |
 
 ### Agent 3 — Payments
 
