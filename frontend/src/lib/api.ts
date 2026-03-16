@@ -248,6 +248,25 @@ function tenantHeaders(tenantSlug: string, accessToken: string) {
 }
 
 /**
+ * Fetch default site ID for tenant (Task 1.98). Public — no auth required.
+ * Returns { site_id } or null if no default site published.
+ */
+export async function fetchDefaultSite(tenantSlug: string): Promise<{ site_id: string } | null> {
+  const base = getApiUrl()
+  if (!base || !tenantSlug) return null
+
+  try {
+    const res = await fetch(`${base}/api/tenant/default-site`, {
+      headers: { "X-Tenant-Slug": tenantSlug },
+    })
+    if (!res.ok) return null
+    return (await res.json()) as { site_id: string }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Fetch tenant metadata (name, tier, owner_sub).
  */
 export async function fetchTenant(
@@ -920,12 +939,19 @@ export async function fetchAnalytics(
 // Sites (tenant-scoped CRUD)
 // -----------------------------------------------------------------------------
 
+export interface SiteBranding {
+  logo_s3_key?: string
+  primary_color?: string
+  font_family?: string
+}
+
 export interface Site {
   id: string
   name: string
   slug: string
   status: string
   template_id?: string
+  branding?: SiteBranding
   created_at: string
   updated_at: string
 }
@@ -1004,7 +1030,13 @@ export async function updateSite(
   tenantSlug: string,
   accessToken: string | null,
   siteId: string,
-  body: { name?: string; slug?: string; status?: string; template_id?: string | null }
+  body: {
+    name?: string
+    slug?: string
+    status?: string
+    template_id?: string | null
+    branding?: SiteBranding | null
+  }
 ): Promise<Site | null> {
   const base = getApiUrl()
   if (!base || !accessToken || !tenantSlug || !siteId) return null
@@ -1820,5 +1852,366 @@ export async function deleteAdminTemplate(
     return res.ok
   } catch {
     return false
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Content API (posts, events, media, pages) — Task 1.95
+// -----------------------------------------------------------------------------
+
+export interface ContentPost {
+  id: string
+  slug: string
+  title: string
+  body: string
+  status: string
+  published_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ContentEvent {
+  id: string
+  title: string
+  event_date: string
+  venue: string
+  location: string
+  status: string
+  published_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ContentMedia {
+  id: string
+  s3_key: string
+  caption: string
+  sort_order?: number | null
+  status: string
+  published_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ContentPage {
+  path: string
+  title: string
+  body: string
+  status: string
+  published_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+function contentHeaders(tenantSlug: string, accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+    "X-Tenant-Slug": tenantSlug,
+    ...getImpersonateHeader(),
+  }
+}
+
+function contentBase(_tenantSlug: string, siteId: string) {
+  return `${getApiUrl()}/api/tenant/sites/${encodeURIComponent(siteId)}`
+}
+
+export async function fetchContentPosts(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<ContentPost[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return []
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/posts`, {
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { posts: ContentPost[] }
+    return data.posts ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createContentPost(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { slug?: string; title?: string; body?: string; status?: string }
+): Promise<ContentPost | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/posts`, {
+      method: "POST",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { post: ContentPost }
+    return data.post ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function updateContentPost(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  postId: string,
+  body: { slug?: string; title?: string; body?: string; status?: string }
+): Promise<ContentPost | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !postId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/posts/${postId}`, {
+      method: "PUT",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { post: ContentPost }
+    return data.post ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteContentPost(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  postId: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !postId) return false
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/posts/${postId}`, {
+      method: "DELETE",
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+export async function fetchContentEvents(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<ContentEvent[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return []
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/events`, {
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { events: ContentEvent[] }
+    return data.events ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createContentEvent(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { title?: string; event_date?: string; venue?: string; location?: string; status?: string }
+): Promise<ContentEvent | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/events`, {
+      method: "POST",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { event: ContentEvent }
+    return data.event ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function updateContentEvent(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  eventId: string,
+  body: { title?: string; event_date?: string; venue?: string; location?: string; status?: string }
+): Promise<ContentEvent | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !eventId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/events/${eventId}`, {
+      method: "PUT",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { event: ContentEvent }
+    return data.event ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteContentEvent(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  eventId: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !eventId) return false
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/events/${eventId}`, {
+      method: "DELETE",
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+export async function fetchContentMedia(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<ContentMedia[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return []
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/media`, {
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { media: ContentMedia[] }
+    return data.media ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createContentMedia(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { s3_key: string; caption?: string; sort_order?: number; status?: string }
+): Promise<ContentMedia | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/media`, {
+      method: "POST",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { media: ContentMedia }
+    return data.media ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function updateContentMedia(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  mediaId: string,
+  body: { caption?: string; sort_order?: number; status?: string }
+): Promise<ContentMedia | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !mediaId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/media/${mediaId}`, {
+      method: "PUT",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { media: ContentMedia }
+    return data.media ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteContentMedia(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  mediaId: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !mediaId) return false
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/media/${mediaId}`, {
+      method: "DELETE",
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    return res.status === 204
+  } catch {
+    return false
+  }
+}
+
+/** Upload URL for pre-signed POST (Task 1.89). Body: content_length, filename. */
+export interface UploadUrlResponse {
+  url: string
+  method: string
+  fields: Record<string, string>
+  key: string
+}
+
+/** Presigned URL for media display. GET /api/tenant/sites/{id}/media/{id}/url */
+export async function fetchMediaPresignedUrl(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  mediaId: string
+): Promise<string | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !mediaId) return null
+  try {
+    const res = await fetch(
+      `${contentBase(tenantSlug, siteId)}/media/${mediaId}/url`,
+      { headers: contentHeaders(tenantSlug, accessToken) }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as { url: string }
+    return data.url ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function fetchUploadUrl(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { content_length: number; filename: string }
+): Promise<UploadUrlResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/upload-url`, {
+      method: "POST",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as UploadUrlResponse
+  } catch {
+    return null
   }
 }

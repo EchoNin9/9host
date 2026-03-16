@@ -84,7 +84,7 @@ def _site_to_response(item: dict) -> dict:
     sk = item.get("sk", "")
     site_id = sk.replace("SITE#", "") if sk.startswith("SITE#") else ""
 
-    return {
+    out = {
         "id": site_id,
         "name": item.get("name", ""),
         "slug": item.get("slug", ""),
@@ -93,6 +93,10 @@ def _site_to_response(item: dict) -> dict:
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
+    branding = item.get("branding")
+    if isinstance(branding, dict):
+        out["branding"] = branding
+    return out
 
 
 def _list_sites(table, tenant_slug: str) -> dict:
@@ -227,6 +231,19 @@ def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
             item["template_id"] = tid
         else:
             item.pop("template_id", None)
+
+    # Branding (Task 2.94): logo_s3_key, primary_color, font_family
+    branding = body.get("branding")
+    if branding is not None:
+        if isinstance(branding, dict):
+            item["branding"] = {
+                k: v for k, v in branding.items()
+                if k in ("logo_s3_key", "primary_color", "font_family") and v is not None
+            }
+            if not item["branding"]:
+                item.pop("branding", None)
+        else:
+            item.pop("branding", None)
 
     item["updated_at"] = datetime.now(timezone.utc).isoformat()
 

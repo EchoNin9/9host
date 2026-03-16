@@ -533,6 +533,27 @@ def _update_media(table, tenant_slug: str, site_id: str, media_id: str, body: di
     return _json_response(200, {"media": _media_to_response(item, site_id)})
 
 
+def _get_media_presigned_url(s3_client, tenant_slug: str, site_id: str, media_id: str, table) -> dict:
+    """GET /api/tenant/sites/{id}/media/{id}/url — presigned S3 URL for display."""
+    key = {"pk": pk_tenant(tenant_slug), "sk": sk_site_media(site_id, media_id)}
+    resp = table.get_item(Key=key)
+    item = resp.get("Item")
+    if not item:
+        return _json_response(404, {"error": "Media not found."})
+    s3_key = item.get("s3_key", "")
+    if not s3_key:
+        return _json_response(404, {"error": "Media has no S3 object."})
+    try:
+        url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": S3_MEDIA_BUCKET, "Key": s3_key},
+            ExpiresIn=3600,
+        )
+        return _json_response(200, {"url": url})
+    except Exception:
+        return _json_response(500, {"error": "Failed to generate URL."})
+
+
 def _delete_media(
     table, tenant_slug: str, site_id: str, media_id: str, s3_client, region: str
 ) -> dict:
@@ -649,6 +670,9 @@ def content_handler(event: dict, context: dict) -> dict:
             return _delete_event(table, tenant_slug, site_id, id_or_path)
 
     if entity == "media":
+        path_rstrip = path.rstrip("/")
+        if method == "GET" and id_or_path and path_rstrip.endswith("/url"):
+            return _get_media_presigned_url(s3_client, tenant_slug, site_id, id_or_path, table)
         if method == "GET" and not id_or_path:
             return _list_media(table, tenant_slug, site_id)
         if method == "GET" and id_or_path:

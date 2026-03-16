@@ -1,5 +1,5 @@
 import { Link, useParams, Navigate } from "react-router-dom"
-import { FileText, Newspaper, Calendar, Image } from "lucide-react"
+import { FileText, Newspaper, Calendar, Image, Palette } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
 import { useSites } from "@/hooks/use-sites"
 import { Button } from "@/components/ui/button"
@@ -11,16 +11,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { PostsEditor } from "@/components/content-editors/posts-editor"
+import { EventsEditor } from "@/components/content-editors/events-editor"
+import { MediaEditor } from "@/components/content-editors/media-editor"
+import { BrandingEditor } from "@/components/content-editors/branding-editor"
 
 /**
  * Content editor shell (Task 2.90).
- * Layout with sidebar, page/post/event/media tabs.
- * Placeholder for per-module editors (2.91–2.94).
+ * Layout with sidebar, page/post/event/media/branding tabs.
+ * Per-module editors (2.91–2.94).
  */
 function SiteContentEditor() {
   const { tenantSlug, tenantBasePath } = useTenant()
   const { siteId } = useParams<{ siteId: string }>()
-  const { sites, loading } = useSites(tenantSlug)
+  const { sites, loading, refetch } = useSites(tenantSlug)
   const base = tenantBasePath || `/${tenantSlug}`
 
   const site = siteId ? sites.find((s) => s.id === siteId) : null
@@ -82,35 +86,30 @@ function SiteContentEditor() {
             <Image className="mr-2 size-4" />
             Media
           </TabsTrigger>
+          <TabsTrigger value="branding" className="justify-start">
+            <Palette className="mr-2 size-4" />
+            Branding
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pages" className="mt-0 flex-1">
           <ContentPlaceholder
             title="Pages"
             description="Manage static pages (home, about, contact, etc.)."
-            moduleRef="2.91"
+            moduleRef="TBD"
           />
         </TabsContent>
         <TabsContent value="posts" className="mt-0 flex-1">
-          <ContentPlaceholder
-            title="Posts"
-            description="Blog posts and updates. Draft vs Published."
-            moduleRef="2.91"
-          />
+          <PostsEditor siteId={siteId!} />
         </TabsContent>
         <TabsContent value="events" className="mt-0 flex-1">
-          <ContentPlaceholder
-            title="Events"
-            description="Events, shows, tour dates. Date and venue."
-            moduleRef="2.92"
-          />
+          <EventsEditor siteId={siteId!} />
         </TabsContent>
         <TabsContent value="media" className="mt-0 flex-1">
-          <ContentPlaceholder
-            title="Media"
-            description="Image gallery, uploads. Caption and reorder."
-            moduleRef="2.93"
-          />
+          <MediaEditor siteId={siteId!} />
+        </TabsContent>
+        <TabsContent value="branding" className="mt-0 flex-1">
+          <BrandingEditor site={site!} onSaved={refetch} />
         </TabsContent>
       </Tabs>
     </div>

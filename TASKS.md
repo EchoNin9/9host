@@ -193,10 +193,10 @@
 | | **Web Hosting — Phase 2: Content & Modules** | | |
 | 2.89 | Module Marketplace expansion: add updates/blog, events_shows, media_gallery, branding to tenant-modules | DONE | Depends on 1.94. |
 | 2.90 | Content editor shell: site content editor layout (sidebar, page/post/event/media tabs). Placeholder for per-module editors | DONE | site-content-editor.tsx, /sites/:siteId/edit, Edit content in dropdown. |
-| 2.91 | Updates/Blog editor: list posts, create/edit/delete. Draft vs Published. Publish flow | TODO | Depends on 1.95, 2.90. |
-| 2.92 | Events/Shows editor: list events, CRUD, date/venue | TODO | Depends on 1.95, 2.90. |
-| 2.93 | Media gallery editor: upload via pre-signed POST, list, caption, reorder | TODO | Depends on 1.95, 1.91, 2.90. |
-| 2.94 | Branding editor: logo, colors, fonts. Store in site settings or content | TODO | Depends on 1.95, 2.90. |
+| 2.91 | Updates/Blog editor: list posts, create/edit/delete. Draft vs Published. Publish flow | DONE | posts-editor.tsx, content API. |
+| 2.92 | Events/Shows editor: list events, CRUD, date/venue | DONE | events-editor.tsx. |
+| 2.93 | Media gallery editor: upload via pre-signed POST, list, caption, reorder | DONE | media-editor.tsx, presigned URL endpoint. |
+| 2.94 | Branding editor: logo, colors, fonts. Store in site settings or content | DONE | branding-editor.tsx, site.branding. |
 
 ### Agent 4 — Self-Serve (Future)
 
