@@ -131,6 +131,20 @@ data "aws_iam_policy_document" "deploy" {
     ]
   }
 
+  # Create/update IAM roles (e.g. 9host-acm-handler) — CI needs CreateRole, AttachRolePolicy, PassRole
+  statement {
+    sid    = "IAMRole"
+    effect = "Allow"
+    actions = [
+      "iam:CreateRole",
+      "iam:DeleteRole",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:PassRole"
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/9host-*"]
+  }
+
   # Inline role policies (e.g. 9host-api-lambda) — CI needs PutRolePolicy for Cognito/other updates
   statement {
     sid    = "IAMRolePolicy"
@@ -315,7 +329,8 @@ data "aws_iam_policy_document" "deploy" {
       "events:DeleteRule",
       "events:RemoveTargets",
       "events:DescribeRule",
-      "events:ListTargetsByRule"
+      "events:ListTargetsByRule",
+      "events:ListTagsForResource"
     ]
     resources = ["arn:aws:events:*:*:rule/9host-*"]
   }
