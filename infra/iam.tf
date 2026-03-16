@@ -307,6 +307,20 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   statement {
+    sid    = "EventBridge"
+    effect = "Allow"
+    actions = [
+      "events:PutRule",
+      "events:PutTargets",
+      "events:DeleteRule",
+      "events:RemoveTargets",
+      "events:DescribeRule",
+      "events:ListTargetsByRule"
+    ]
+    resources = ["arn:aws:events:*:*:rule/9host-*"]
+  }
+
+  statement {
     sid    = "CloudFront"
     effect = "Allow"
     actions = [

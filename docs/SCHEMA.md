@@ -110,11 +110,12 @@ PK: TENANT#acme
 SK: DOMAIN#example.com
 ---
 site_id: string        # SITE#id
-status: string         # pending | verified
+status: string         # pending | verified | PENDING_VALIDATION | ACTIVE (Task 1.99)
 created_at: string
 updated_at: string
 verification_cname_target: string   # (optional) Task 1.81. CNAME target user should add (e.g. CloudFront domain)
 verification_txt_record: string     # (optional) Task 1.81. TXT value for ownership verification (e.g. 9host-verify=abc123)
+acm_certificate_arn: string        # (optional) Task 1.99. ACM cert ARN when requested; EventBridge adds alias on ISSUED
 ```
 
 ### User Permissions (Task 1.25)

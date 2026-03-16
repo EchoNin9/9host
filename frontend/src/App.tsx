@@ -44,7 +44,7 @@ import {
   getSwitchTenantUrl,
   type TenantContextValue,
 } from "@/contexts/tenant-context"
-import { createTenantWithError, getToken } from "@/lib/api"
+import { createTenantWithError, fetchDefaultSite, getToken } from "@/lib/api"
 
 /**
  * Provides tenant context derived from React Router's :tenantSlug param.
@@ -80,17 +80,44 @@ function TenantRouteProvider() {
 }
 
 /**
- * Root route: redirects to /:tenantSlug when accessed via tenant subdomain,
- * otherwise renders the Landing page.
+ * Root route: redirects to default site or /:tenantSlug when accessed via tenant subdomain,
+ * otherwise renders the Landing page (Task 1.98).
  */
 function RootRoute() {
   const subdomainSlug = useMemo(
     () => extractTenantFromHost(window.location.hostname),
     []
   )
+  const [resolving, setResolving] = useState(true)
+  const [redirectTo, setRedirectTo] = useState<string | null>(null)
 
-  if (subdomainSlug) return <Navigate to={`/${subdomainSlug}`} replace />
-  return <Landing />
+  useEffect(() => {
+    if (!subdomainSlug) {
+      setResolving(false)
+      return
+    }
+    let cancelled = false
+    fetchDefaultSite(subdomainSlug).then((data) => {
+      if (cancelled) return
+      if (data?.site_id) {
+        setRedirectTo(`/site/${data.site_id}/`)
+      } else {
+        setRedirectTo(`/${subdomainSlug}`)
+      }
+      setResolving(false)
+    }).catch(() => {
+      if (!cancelled) {
+        setRedirectTo(`/${subdomainSlug}`)
+        setResolving(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [subdomainSlug])
+
+  if (!subdomainSlug) return <Landing />
+  if (resolving) return null
+  if (redirectTo) return <Navigate to={redirectTo} replace />
+  return <Navigate to={`/${subdomainSlug}`} replace />
 }
 
 function CreateTenantSheet({

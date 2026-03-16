@@ -99,6 +99,7 @@ resource "aws_iam_role_policy" "api_lambda" {
           "s3:GetObject",
           "s3:HeadObject",
           "s3:DeleteObject",
+          "s3:CopyObject",
           "s3:ListBucket"
         ]
         Resource = [

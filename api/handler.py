@@ -47,6 +47,8 @@ from templates_handler import get_templates_handler
 from validate_slug_handler import validate_slug_handler
 from upload_handler import upload_url_handler
 from content_handler import content_handler
+from publish_handler import publish_handler
+from default_site_handler import default_site_handler
 
 
 # CORS headers for Lambda proxy — API Gateway cors_configuration may not apply to $default
@@ -142,6 +144,9 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
     if method == "GET" and path in ("/api/validate-slug", "/api/validate-slug/"):
         return _with_cors(validate_slug_handler(event, context))
 
+    if method == "GET" and path in ("/api/tenant/default-site", "/api/tenant/default-site/"):
+        return _with_cors(default_site_handler(event, context))
+
     if path in ("/api/tenant", "/api/tenant/"):
         if method == "GET":
             return _with_cors(get_tenant_handler(event, context))
@@ -159,6 +164,10 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
             if len(parts) >= 6 and parts[-1] == "upload-url":
                 if method == "POST":
                     return _with_cors(upload_url_handler(event, context))
+        # Publish: POST /api/tenant/sites/{id}/publish (Task 1.96)
+        if "/publish" in path and path.endswith("/publish"):
+            if method == "POST":
+                return _with_cors(publish_handler(event, context))
         # Content CRUD: /api/tenant/sites/{id}/pages|posts|events|media (Task 1.95)
         if "/pages" in path or "/posts" in path or "/events" in path or "/media" in path:
             return _with_cors(content_handler(event, context))
