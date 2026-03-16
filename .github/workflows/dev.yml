@@ -2,6 +2,7 @@
 name: Deploy Staging
 
 on:
+  workflow_dispatch:
   push:
     branches: [develop]
     paths-ignore:
