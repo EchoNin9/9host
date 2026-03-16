@@ -80,7 +80,7 @@ jobs:
         run: tofu apply -auto-approve -no-color -target=aws_iam_policy.deploy -var="github_org_repo=${{ github.repository }}" -var='domains=["echo9.net"]'
 
       - name: Wait for IAM propagation
-        run: sleep 15
+        run: sleep 45
 
       - name: OpenTofu apply
         working-directory: infra
