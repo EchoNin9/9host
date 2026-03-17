@@ -88,7 +88,8 @@ resource "aws_iam_role_policy" "api_lambda" {
         Action = ["secretsmanager:GetSecretValue"]
         Resource = [
           aws_secretsmanager_secret.stripe.arn,
-          aws_secretsmanager_secret.jwt_signing.arn
+          aws_secretsmanager_secret.jwt_signing.arn,
+          aws_secretsmanager_secret.cloudns.arn
         ]
       },
       {
@@ -143,6 +144,9 @@ resource "aws_lambda_function" "api" {
       JWT_SECRET_ARN             = aws_secretsmanager_secret.jwt_signing.arn
       CLOUDFRONT_CUSTOM_DOMAIN   = aws_cloudfront_distribution.sites.domain_name
       CLOUDFRONT_SITES_DOMAIN    = aws_cloudfront_distribution.sites.domain_name
+      CLOUDNS_SECRET_ARN         = aws_secretsmanager_secret.cloudns.arn
+      CLOUDNS_ZONE               = var.domains[0]
+      CLOUDNS_CF_TARGET          = aws_cloudfront_distribution.sites.domain_name
     }
   }
 

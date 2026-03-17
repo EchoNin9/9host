@@ -22,6 +22,7 @@ import bcrypt
 import boto3
 
 from auth_helpers import get_sub_from_access_token, is_superadmin
+from cloudns_helpers import add_site_cname, delete_site_cname
 from tier_config import tier_rank as _tier_rank, VALID_TIERS
 from dynamodb_helpers import (
     get_domain_item,
@@ -387,6 +388,7 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         if template_id:
             item["template_id"] = template_id
         table.put_item(Item=item)
+        add_site_cname(slug)
         return _json_response(201, {"site": _site_to_response(item)})
 
     if method == "PUT" and site_id:
@@ -395,6 +397,7 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         if not item:
             return _json_response(404, {"error": "Site not found."})
 
+        old_slug = item.get("slug", "")
         body = _parse_body(event) or {}
         if body.get("name") is not None:
             item["name"] = str(body["name"]).strip()
@@ -416,13 +419,19 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
             item["gsi4pk"] = gsi4pk_slug(slug_val)
             item["gsi4sk"] = gsi4sk_site(site_id)
         table.put_item(Item=item)
+        if old_slug and old_slug != slug_val:
+            delete_site_cname(old_slug)
+        if slug_val:
+            add_site_cname(slug_val)
         return _json_response(200, {"site": _site_to_response(item)})
 
     if method == "DELETE" and site_id:
         key = get_site_item(tenant_slug, site_id)
-        if not table.get_item(Key=key).get("Item"):
+        item = table.get_item(Key=key).get("Item")
+        if not item:
             return _json_response(404, {"error": "Site not found."})
         table.delete_item(Key=key)
+        delete_site_cname(item.get("slug", ""))
         return _json_response(204, {}, empty_body=True)
 
     return _json_response(405, {"error": "Method not allowed."})

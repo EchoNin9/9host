@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 import boto3
 
 from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
+from cloudns_helpers import add_site_cname, delete_site_cname
 from dynamodb_helpers import (
     get_site_item,
     get_tenant_item,
@@ -184,6 +185,7 @@ def _create_site(table, tenant_slug: str, body: dict) -> dict:
         item["template_id"] = template_id
 
     table.put_item(Item=item)
+    add_site_cname(slug)
     return _json_response(201, {"site": _site_to_response(item)})
 
 
@@ -191,6 +193,7 @@ def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
     """Update site."""
     key = get_site_item(tenant_slug, site_id)
     resp = table.get_item(Key=key)
+    old_item = resp.get("Item")
     item = resp.get("Item")
     if not item:
         return _json_response(404, {"error": "Site not found."})
@@ -253,7 +256,12 @@ def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
         item["gsi4pk"] = gsi4pk_slug(slug_val)
         item["gsi4sk"] = gsi4sk_site(site_id)
 
+    old_slug = (old_item or {}).get("slug", "")
     table.put_item(Item=item)
+    if old_slug and old_slug != slug_val:
+        delete_site_cname(old_slug)
+    if slug_val:
+        add_site_cname(slug_val)
     return _json_response(200, {"site": _site_to_response(item)})
 
 
@@ -261,10 +269,12 @@ def _delete_site(table, tenant_slug: str, site_id: str) -> dict:
     """Delete site."""
     key = get_site_item(tenant_slug, site_id)
     resp = table.get_item(Key=key)
-    if not resp.get("Item"):
+    item = resp.get("Item")
+    if not item:
         return _json_response(404, {"error": "Site not found."})
 
     table.delete_item(Key=key)
+    delete_site_cname(item.get("slug", ""))
     return _json_response(204, {}, empty_body=True)
 
 
