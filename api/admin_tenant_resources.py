@@ -14,6 +14,7 @@ import json
 import os
 import re
 import secrets
+import traceback
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import unquote
@@ -331,10 +332,23 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
     site_id = parts[1] if len(parts) > 1 else None
 
     if method == "GET" and not site_id:
-        params = query_sites_in_tenant(tenant_slug)
-        resp = table.query(**params)
-        sites = [_site_to_response(it) for it in resp.get("Items", [])]
-        return _json_response(200, {"sites": sites})
+        # #region agent log
+        try:
+            params = query_sites_in_tenant(tenant_slug)
+            resp = table.query(**params)
+            sites = [_site_to_response(it) for it in resp.get("Items", [])]
+            return _json_response(200, {"sites": sites})
+        except Exception as e:
+            return _json_response(
+                500,
+                {
+                    "error": "admin_list_sites_failed",
+                    "message": str(e),
+                    "type": type(e).__name__,
+                    "traceback": traceback.format_exc(),
+                },
+            )
+        # #endregion
 
     if method == "GET" and site_id:
         key = get_site_item(tenant_slug, site_id)

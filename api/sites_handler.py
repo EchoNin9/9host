@@ -11,6 +11,7 @@ Query param template={slug} overrides site.template_id.
 import json
 import os
 import re
+import traceback
 import uuid
 from datetime import datetime, timezone
 
@@ -102,10 +103,23 @@ def _site_to_response(item: dict) -> dict:
 
 def _list_sites(table, tenant_slug: str) -> dict:
     """List sites in tenant."""
-    params = query_sites_in_tenant(tenant_slug)
-    resp = table.query(**params)
-    sites = [_site_to_response(item) for item in resp.get("Items", [])]
-    return _json_response(200, {"sites": sites})
+    # #region agent log
+    try:
+        params = query_sites_in_tenant(tenant_slug)
+        resp = table.query(**params)
+        sites = [_site_to_response(item) for item in resp.get("Items", [])]
+        return _json_response(200, {"sites": sites})
+    except Exception as e:
+        return _json_response(
+            500,
+            {
+                "error": "list_sites_failed",
+                "message": str(e),
+                "type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+            },
+        )
+    # #endregion
 
 
 def _get_site(table, tenant_slug: str, site_id: str) -> dict:
