@@ -209,6 +209,18 @@ export async function fetchAllTenants(
     const res = await fetch(`${base}/api/admin/tenants`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
+    // #region agent log
+    if (!res.ok) {
+      const bodyText = await res.text()
+      let bodyJson: unknown = null
+      try {
+        bodyJson = bodyText ? JSON.parse(bodyText) : null
+      } catch {
+        bodyJson = bodyText
+      }
+      console.warn('[9host debug] fetchAllTenants failed:',{status:res.status,hasToken:!!accessToken,body:bodyJson})
+    }
+    // #endregion
     if (res.status === 403) return { tenants: [], isSuperadmin: false }
     if (!res.ok) return { tenants: [], isSuperadmin: false }
     const data = (await res.json()) as AdminTenantsResponse
@@ -987,10 +999,25 @@ export async function fetchSites(
     const res = await fetch(`${base}/api/tenant/sites`, {
       headers: sitesHeaders(tenantSlug, accessToken),
     })
+    // #region agent log
+    if (!res.ok) {
+      const bodyText = await res.text()
+      let bodyJson: unknown = null
+      try {
+        bodyJson = bodyText ? JSON.parse(bodyText) : null
+      } catch {
+        bodyJson = bodyText
+      }
+      console.warn('[9host debug] fetchSites failed:',{status:res.status,tenantSlug,hasToken:!!accessToken,body:bodyJson})
+    }
+    // #endregion
     if (!res.ok) return []
     const data = (await res.json()) as SitesResponse
     return data.sites ?? []
-  } catch {
+  } catch (e) {
+    // #region agent log
+    console.warn('[9host debug] fetchSites threw:',{error:String(e)})
+    // #endregion
     return []
   }
 }

@@ -109,10 +109,12 @@ def lambda_handler(event: dict, context: dict) -> dict:
     except Exception as e:
         import traceback
 
+        tb = traceback.format_exc()
+        print(f"[9host] 500: {type(e).__name__}: {e}\n{tb}")  # CloudWatch
         detail = {
             "type": type(e).__name__,
             "message": str(e),
-            "traceback": traceback.format_exc(),
+            "traceback": tb,
         }
         return _error_500(str(e), detail=detail)
 

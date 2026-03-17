@@ -353,6 +353,9 @@ def sites_handler(event: dict, context: dict) -> dict:
     GET/POST/PUT/DELETE /api/tenant/sites — tenant-scoped sites CRUD.
     Requires tenant_slug (X-Tenant-Slug or subdomain), Cognito auth, tenant membership.
     """
+    # #region agent log
+    print(f"[9host debug] sites_handler entry tenant_slug={event.get('tenant_slug')}")
+    # #endregion
     tenant_slug = event.get("tenant_slug")
     if not tenant_slug:
         return _json_response(
@@ -368,7 +371,15 @@ def sites_handler(event: dict, context: dict) -> dict:
     table = dynamodb.Table(table_name)
 
     region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
+    # #region agent log
+    try:
+        auth_result = require_tenant_auth(event, table, tenant_slug, region)
+        print(f"[9host debug] sites_handler auth ok={auth_result[0] is True}")
+    except Exception as auth_err:
+        import traceback
+        print(f"[9host debug] sites_handler require_tenant_auth threw: {auth_err}\n{traceback.format_exc()}")
+        raise
+    # #endregion
     if auth_result[0] is not True:
         _, err_resp = auth_result
         return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
@@ -387,7 +398,16 @@ def sites_handler(event: dict, context: dict) -> dict:
     is_list_or_create = path in (base_path, f"{base_path}/")
 
     if method == "GET" and is_list_or_create:
-        return _list_sites(table, tenant_slug)
+        # #region agent log
+        try:
+            result = _list_sites(table, tenant_slug)
+            print("[9host debug] sites_handler _list_sites ok")
+            return result
+        except Exception as list_err:
+            import traceback
+            print(f"[9host debug] sites_handler _list_sites threw: {list_err}\n{traceback.format_exc()}")
+            raise
+        # #endregion
 
     # GET /api/tenant/sites/{id}/preview (Task 1.79)
     if method == "GET" and site_id and _is_preview_path(path):
