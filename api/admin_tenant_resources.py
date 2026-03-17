@@ -336,7 +336,9 @@ def admin_sites_handler(event: dict, context: dict, tenant_slug: str, path_suffi
         try:
             params = query_sites_in_tenant(tenant_slug)
             resp = table.query(**params)
-            sites = [_site_to_response(it) for it in resp.get("Items", [])]
+            content_markers = ("#PAGE#", "#POST#", "#EVENT#", "#MEDIA#")
+            items = [i for i in resp.get("Items", []) if not any(m in (i.get("sk") or "") for m in content_markers)]
+            sites = [_site_to_response(it) for it in items]
             return _json_response(200, {"sites": sites})
         except Exception as e:
             return _json_response(

@@ -102,12 +102,15 @@ def _site_to_response(item: dict) -> dict:
 
 
 def _list_sites(table, tenant_slug: str) -> dict:
-    """List sites in tenant."""
+    """List sites in tenant. Excludes content items (SITE#id#PAGE#, etc.) — filter in app (sk cannot be in FilterExpression)."""
     # #region agent log
     try:
         params = query_sites_in_tenant(tenant_slug)
         resp = table.query(**params)
-        sites = [_site_to_response(item) for item in resp.get("Items", [])]
+        # Exclude content items: SITE#id#PAGE#, SITE#id#POST#, etc.
+        content_markers = ("#PAGE#", "#POST#", "#EVENT#", "#MEDIA#")
+        items = [i for i in resp.get("Items", []) if not any(m in (i.get("sk") or "") for m in content_markers)]
+        sites = [_site_to_response(item) for item in items]
         return _json_response(200, {"sites": sites})
     except Exception as e:
         return _json_response(
