@@ -12,14 +12,15 @@ import uuid
 
 import boto3
 
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
+from auth_helpers import require_tenant_auth, role_can_upload
 from dynamodb_helpers import get_site_item, get_tenant_item
 from middleware import with_tenant
 from tier_config import upload_limit_bytes
 
 
 S3_MEDIA_BUCKET = "9host-media"
-FILENAME_SAFE = re.compile(r"^[a-zA-Z0-9._-]+$")
+# Sanitize: replace unsafe chars with underscore. Block path traversal.
+FILENAME_UNSAFE = re.compile(r"[^a-zA-Z0-9._-]|[.]{2,}|[/\\]")
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -80,11 +81,13 @@ def upload_url_handler(event: dict, context: dict) -> dict:
 
     _, sub_or_username, role, is_cognito = auth_result
     if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug)
-        if not ok:
-            return _json_response(403, {"error": err or "Admin or manager role required."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
+        from auth_helpers import get_user_role_in_tenant
+
+        role_in_tenant = get_user_role_in_tenant(table, sub_or_username, tenant_slug)
+        if not role_can_upload(role_in_tenant or ""):
+            return _json_response(403, {"error": "Admin, manager, or editor role required to upload."})
+    elif not role_can_upload(role):
+        return _json_response(403, {"error": "Admin, manager, or editor role required to upload."})
 
     site_key = get_site_item(tenant_slug, site_id)
     site_resp = table.get_item(Key=site_key)
@@ -114,11 +117,19 @@ def upload_url_handler(event: dict, context: dict) -> dict:
     filename = (body.get("filename") or "").strip()
     if not filename:
         return _json_response(400, {"error": "filename required."})
-    if not FILENAME_SAFE.match(filename):
-        return _json_response(400, {"error": "filename must contain only letters, numbers, dots, underscores, hyphens."})
+    # Sanitize: "My Photo.png" -> "My_Photo.png", block path traversal
+    safe_name = FILENAME_UNSAFE.sub("_", filename)
+    safe_name = re.sub(r"_+", "_", safe_name).strip("_")  # collapse multiple _, trim
+    if not safe_name:
+        safe_name = "upload"
+    # Preserve extension if present
+    if "." in safe_name and not safe_name.startswith("."):
+        base, ext = safe_name.rsplit(".", 1)
+        if ext and len(ext) <= 6 and ext.isalnum():
+            safe_name = f"{base or 'upload'}.{ext.lower()}"
 
     unique = str(uuid.uuid4())[:8]
-    key = f"{tenant_slug}/{site_id}/{unique}-{filename}"
+    key = f"{tenant_slug}/{site_id}/{unique}-{safe_name}"
 
     s3 = boto3.client("s3", region_name=region)
     presigned = s3.generate_presigned_post(

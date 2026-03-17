@@ -197,6 +197,12 @@ def role_is_admin_or_manager(role: str) -> bool:
     return False
 
 
+def role_can_upload(role: str) -> bool:
+    """Check if role can upload media/branding (admin, manager, editor)."""
+    r = (role or "").lower()
+    return r in ("admin", "manager", "editor")
+
+
 def is_superadmin(
     sub: str,
     user_pool_id: str,

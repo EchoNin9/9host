@@ -97,6 +97,7 @@
 | 1.100 | Domain activation workflow: on DNS verify pass, request ACM cert, store cert ARN, status `PENDING_VALIDATION` | DONE | POST /api/tenant/domains/{domain}/activate. dnspython, ACM RequestCertificate. |
 | 1.100b | ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda. On ISSUED: add alias, update domain → ACTIVE. Zero polling | DONE | EventBridge 9host-acm-certificate-available, Lambda 9host-acm-handler. |
 | 1.101 | **FIX: upload-url 500** — POST /api/tenant/sites/{id}/upload-url returns 500 (branding/media upload fails) | DONE | Wrong args to require_tenant_admin_or_manager; extract sub from auth_result, handle tenant_user. |
+| 1.102 | **FIX: upload-url 403/400** — Allow editor role; sanitize filenames (spaces, parens) | DONE | role_can_upload(admin/manager/editor); FILENAME_UNSAFE sanitize instead of reject. |
 
 ### Agent 2 — Frontend / UI
 
