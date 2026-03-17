@@ -1,11 +1,11 @@
 /**
- * CloudFront Function: Site content path rewrite (Task 1.97).
+ * CloudFront Function: Site content path rewrite (Task 1.97, 1.108).
  *
- * Resolves Host header → tenant, path /site/{site_id}/* → S3 key
- * {tenant}/{site_id}/published/current/{rest}
+ * Path formats:
+ *   /site/{site_id}/*     — tenant from Host (e.g. acme.echo9.net)
+ *   /site/{tenant}/{site_id}/* — tenant from path (site-slug subdomains)
  *
- * Example: acme.echo9.net/site/abc-123/index.html
- *   → S3 key: acme/abc-123/published/current/index.html
+ * S3 key: {tenant}/{site_id}/published/current/{rest}
  */
 function handler(event) {
   var request = event.request;
@@ -15,31 +15,34 @@ function handler(event) {
   // Extract tenant from Host (e.g. acme.echo9.net → acme)
   var hostObj = headers.host || {};
   var host = (hostObj.value !== undefined && hostObj.value !== null) ? String(hostObj.value) : "";
-  var tenant = "";
+  var tenantFromHost = "";
   var dot = host.indexOf(".");
   if (dot > 0) {
-    tenant = host.substring(0, dot).toLowerCase();
-  }
-  if (!tenant) {
-    return request;
+    tenantFromHost = host.substring(0, dot).toLowerCase();
   }
 
-  // Path format: /site/{site_id}/... or /site/{site_id}
   if (!uri.startsWith("/site/")) {
     return request;
   }
   var rest = uri.substring(6); // after "/site/"
-  var slash = rest.indexOf("/");
+  var parts = rest.split("/").filter(Boolean);
+  var tenant = tenantFromHost;
   var siteId;
   var pathPart;
-  if (slash >= 0) {
-    siteId = rest.substring(0, slash);
-    pathPart = rest.substring(slash + 1);
-  } else {
-    siteId = rest;
+
+  // /site/{tenant}/{site_id}/... — tenant in path (Task 1.108)
+  if (parts.length >= 2) {
+    tenant = parts[0].toLowerCase();
+    siteId = parts[1];
+    pathPart = parts.slice(2).join("/");
+  } else if (parts.length === 1) {
+    siteId = parts[0];
     pathPart = "";
+  } else {
+    return request;
   }
-  if (!siteId) {
+
+  if (!siteId || !tenant) {
     return request;
   }
 
@@ -48,7 +51,6 @@ function handler(event) {
     pathPart = pathPart ? pathPart + "index.html" : "index.html";
   }
 
-  // Rewrite to S3 path: {tenant}/{site_id}/published/current/{path}
   request.uri = "/" + tenant + "/" + siteId + "/published/current/" + pathPart;
   return request;
 }

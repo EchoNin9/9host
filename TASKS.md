@@ -100,8 +100,15 @@
 | 1.102 | **FIX: upload-url 403/400** — Allow editor role; sanitize filenames (spaces, parens) | DONE | role_can_upload(admin/manager/editor); FILENAME_UNSAFE sanitize instead of reject. |
 | 1.103 | **FIX: S3 CORS on 9host-media** — Browser upload blocked: No 'Access-Control-Allow-Origin' | DONE | aws_s3_bucket_cors_configuration for presigned POST from *.echo9.net, *.echo9.ca, localhost. |
 | 1.103 | CloudNS site CNAME sync: add/delete `{site-slug}.echo9.net` on site create/update/delete | DONE | api/cloudns_helpers.py; hooks in sites_handler + admin_tenant_resources. Lambda: CloudNS secret + CLOUDNS_ZONE env. |
-| 1.104 | **FIX: GET /api/tenant/sites 500** — ValidationException: FilterExpression cannot use pk/sk | DONE | Remove FilterExpression from query_sites_in_tenant; filter content items (PAGE, POST, etc.) in app. |
-| 1.105 | **FIX: Superadmin impersonation 403** — tenant routes return "Not a member" when impersonating | DONE | require_tenant_auth + require_tenant_admin_or_manager allow when X-Impersonate-Tenant matches and user is superadmin. |
+| 1.104 | **FIX: GET /api/tenant/sites 500** — ValidationException: FilterExpression cannot use pk/sk | DONE | Remove FilterExpression from query_sites_in_tenant; filter content items (PAGE, POST, etc.) in app. dynamodb_helpers, sites_handler, admin_tenant_resources. |
+| 1.105 | **FIX: Superadmin impersonation 403** — tenant routes return "Not a member" when impersonating | DONE | require_tenant_auth + require_tenant_admin_or_manager allow when X-Impersonate-Tenant matches and user is superadmin. auth_helpers, all handlers calling require_tenant_admin_or_manager. |
+| 1.106 | Remove debug instrumentation (CloudWatch prints, api.ts console.warn) | TODO | handler.py, middleware.py, sites_handler.py, frontend api.ts. Safe to remove after 1.104/1.105 verified. |
+| | **Published Site Viewing — {site-slug}.echo9.net displays tenant site** | | |
+| 1.107 | Site-slug resolution: extend default_site_handler to try bySiteSlug GSI first, then S3 default.json. Return `{site_id, tenant_slug}` when subdomain is site slug | DONE | api/default_site_handler.py, dynamodb_helpers. Resolves jinks1.echo9.net → tenant + site_id. Unblocks 2.98. |
+| 1.108 | CF Function: support `/site/{tenant}/{site_id}/*` path format; use tenant from path when present, else from Host | DONE | infra/cf-site-content.js. Enables site-slug subdomains where tenant ≠ subdomain. |
+| 1.109 | Publish: template-aware rendering (components, sections), posts index/detail, events page, branding injection | TODO | api/publish_handler.py. Use template.components; render /blog/, /posts/{slug}/, /events/; site.branding. |
+| 1.110 | Media origin: add 9host-media to sites CloudFront, `/media/*` behavior, CF Function rewrite to S3 key, bucket policy | TODO | infra/cloudfront.tf, cf-site-content.js, s3.tf. Media URLs /media/{tenant}/{site}/{filename}. |
+| 1.111 | Publish: wire media URLs as `/media/{tenant}/{site}/{filename}` in rendered HTML | TODO | api/publish_handler.py. Depends on 1.110. |
 
 ### Agent 2 — Frontend / UI
 
@@ -203,6 +210,8 @@
 | 2.92 | Events/Shows editor: list events, CRUD, date/venue | DONE | events-editor.tsx. |
 | 2.93 | Media gallery editor: upload via pre-signed POST, list, caption, reorder | DONE | media-editor.tsx, presigned URL endpoint. |
 | 2.94 | Branding editor: logo, colors, fonts. Store in site settings or content | DONE | branding-editor.tsx, site.branding. |
+| | **Published Site Viewing** | | |
+| 2.98 | RootRoute: when default-site API returns `tenant_slug`, redirect to `/site/{tenant}/{site_id}/` | TODO | App.tsx RootRoute, api.ts fetchDefaultSite. Depends on 1.107. |
 
 ### Agent 4 — Self-Serve (Future)
 
@@ -272,7 +281,18 @@ Optimized for **concurrent agent work**. See [docs/WEB_HOSTING_PLAN.md](docs/WEB
 - 1.97–1.100b Site content origin, default site, custom domain ACM, domain activation, EventBridge validation
 - 2.89–2.94 Module marketplace expansion, content editor shell, blog/events/media/branding editors
 
-**Next:** Post-MVP deferred (1.92 routing split, 1.101 tenant templates, 1.103 quota override) or net-new work. See Web Hosting — Post-MVP table.
+**Next:** Published Site Viewing (1.107–1.111, 2.98) or Post-MVP deferred. See batches below.
+
+### Batches 17–20 — Published Site Viewing (2026-03-17)
+
+| Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Concurrency |
+|-------|-------------------|--------------------|-------------|
+| **17** | 1.107 Site-slug resolution, 1.108 CF Function path format | — | agent1 only |
+| **18** | — | 2.98 RootRoute redirect with tenant_slug (← 1.107) | agent2 only |
+| **19** | 1.109 Publish template-aware rendering, 1.110 Media origin | — | agent1 only |
+| **20** | 1.111 Publish media URLs (← 1.110) | — | agent1 only |
+
+> **Execution order:** 17 → 18 (agent2 can start after 1.107). 19 and 20 sequential.
 
 ---
 

@@ -1,8 +1,9 @@
 """
-Default site resolution (Task 1.98).
+Default site resolution (Task 1.98, 1.107).
 
-GET /api/tenant/default-site — returns {site_id} for tenant's default published site.
-Reads from S3 {tenant}/default.json written by publish flow.
+GET /api/tenant/default-site — returns {site_id} or {site_id, tenant_slug}.
+1. Try bySiteSlug GSI: if subdomain is a site slug, return {site_id, tenant_slug}.
+2. Else read S3 {tenant}/default.json (tenant subdomain).
 """
 
 import json
@@ -11,6 +12,7 @@ import os
 import boto3
 from botocore.exceptions import ClientError as BotoClientError
 
+from dynamodb_helpers import resolve_site_slug_by_subdomain
 from middleware import with_tenant
 
 S3_SITES_BUCKET = "9host-sites"
@@ -27,11 +29,12 @@ def _json_response(status: int, body: dict) -> dict:
 @with_tenant
 def default_site_handler(event: dict, context: dict) -> dict:
     """
-    GET /api/tenant/default-site — tenant's default site ID (Task 1.98).
+    GET /api/tenant/default-site — tenant's default site ID (Task 1.98, 1.107).
     No auth required for public site resolution.
+    Subdomain may be tenant slug (acme.echo9.net) or site slug (jinks1.echo9.net).
     """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
+    subdomain = event.get("tenant_slug")  # from Host or X-Tenant-Slug
+    if not subdomain:
         return _json_response(400, {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."})
 
     table_name = os.environ.get("DYNAMODB_TABLE")
@@ -39,10 +42,19 @@ def default_site_handler(event: dict, context: dict) -> dict:
         return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
 
     region = os.environ.get("AWS_REGION", "us-east-1")
-    s3_client = boto3.client("s3", region_name=region)
+    dynamodb = boto3.resource("dynamodb", region_name=region)
+    table = dynamodb.Table(table_name)
 
+    # 1. Try bySiteSlug GSI: subdomain as site slug (Task 1.107)
+    resolved = resolve_site_slug_by_subdomain(table, subdomain)
+    if resolved:
+        tenant_slug, site_id = resolved
+        return _json_response(200, {"site_id": site_id, "tenant_slug": tenant_slug})
+
+    # 2. Treat subdomain as tenant, read S3 default.json
+    s3_client = boto3.client("s3", region_name=region)
     try:
-        obj = s3_client.get_object(Bucket=S3_SITES_BUCKET, Key=f"{tenant_slug}/default.json")
+        obj = s3_client.get_object(Bucket=S3_SITES_BUCKET, Key=f"{subdomain}/default.json")
         data = json.loads(obj["Body"].read().decode())
         site_id = data.get("site_id")
         if not site_id:

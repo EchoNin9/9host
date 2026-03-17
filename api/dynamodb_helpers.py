@@ -90,6 +90,30 @@ def query_by_site_slug(site_slug: str) -> dict[str, Any]:
     }
 
 
+def resolve_site_slug_by_subdomain(table, subdomain: str) -> tuple[str, str] | None:
+    """
+    Resolve subdomain as site slug via bySiteSlug GSI (Task 1.107).
+    Returns (tenant_slug, site_id) if found, else None.
+    Site item: pk=TENANT#{tenant}, sk=SITE#{site_id}.
+    """
+    slug_lower = (subdomain or "").strip().lower()
+    if not slug_lower:
+        return None
+    params = query_by_site_slug(slug_lower)
+    resp = table.query(**params)
+    items = resp.get("Items", [])
+    if not items:
+        return None
+    item = items[0]
+    pk = item.get("pk", "")
+    sk = item.get("sk", "")
+    if pk.startswith("TENANT#") and sk.startswith("SITE#"):
+        tenant_slug = pk[7:]  # strip "TENANT#"
+        site_id = sk[5:]  # strip "SITE#"
+        return (tenant_slug, site_id)
+    return None
+
+
 def slug_is_taken(table, slug: str, exclude_site_id: str | None = None) -> bool:
     """
     Check if slug is taken by a tenant or site (Task 1.77).
