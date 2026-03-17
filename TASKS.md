@@ -96,6 +96,7 @@
 | 1.99 | Custom domain ACM + CloudFront: dedicated ACM cert per domain (not SAN). On cert issued, add alias to sites distribution | DONE | EventBridge ACM Certificate Available → Lambda 9host-acm-handler, add alias, domain ACTIVE. |
 | 1.100 | Domain activation workflow: on DNS verify pass, request ACM cert, store cert ARN, status `PENDING_VALIDATION` | DONE | POST /api/tenant/domains/{domain}/activate. dnspython, ACM RequestCertificate. |
 | 1.100b | ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda. On ISSUED: add alias, update domain → ACTIVE. Zero polling | DONE | EventBridge 9host-acm-certificate-available, Lambda 9host-acm-handler. |
+| 1.101 | **FIX: upload-url 500** — POST /api/tenant/sites/{id}/upload-url returns 500 (branding/media upload fails) | DONE | Wrong args to require_tenant_admin_or_manager; extract sub from auth_result, handle tenant_user. |
 
 ### Agent 2 — Frontend / UI
 
@@ -237,6 +238,8 @@
 
 Optimized for **concurrent agent work**. See [docs/WEB_HOSTING_PLAN.md](docs/WEB_HOSTING_PLAN.md) for full plan.
 
+### Batches 9–16 — ✅ Complete (2026-03-16)
+
 | Batch | Agent 1 (Backend) | Agent 2 (Frontend) | Concurrency |
 |-------|-------------------|--------------------|-------------|
 | **9** | 1.88 Storage tracking, 1.90 Sites S3, 1.91 Media S3 | 2.90 Content editor shell | agent1 + agent2 |
@@ -250,6 +253,23 @@ Optimized for **concurrent agent work**. See [docs/WEB_HOSTING_PLAN.md](docs/WEB
 
 > **Arrows (←)** = depends on. Batches are sequential; agents within a batch run concurrently.
 > **Parallel start (no deps):** 1.88, 1.90, 1.91, 1.94, 2.90.
+
+### Save Point: Web Hosting MVP complete (2026-03-16)
+
+**Status:** All Web Hosting batches 9–16 complete. Tasks 1.88–1.100b, 2.89–2.94 done. Deploy Staging GHA passing.
+
+**Completed this session:**
+- **1.100b** — ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda 9host-acm-handler. On ISSUED: add alias, update domain → ACTIVE. Zero polling.
+
+**Completed (batches 9–16):**
+- 1.88–1.91 Storage, upload limits, Sites S3, Media S3
+- 1.93–1.96b Content entities, CRUD API, publish, rollback
+- 1.97–1.100b Site content origin, default site, custom domain ACM, domain activation, EventBridge validation
+- 2.89–2.94 Module marketplace expansion, content editor shell, blog/events/media/branding editors
+
+**Next:** Post-MVP deferred (1.92 routing split, 1.101 tenant templates, 1.103 quota override) or net-new work. See Web Hosting — Post-MVP table.
+
+---
 
 ### Previous Task Batches (1.76–1.84, 2.75–2.87) — ✅ Complete
 

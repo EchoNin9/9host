@@ -12,7 +12,7 @@ import uuid
 
 import boto3
 
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager
+from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
 from dynamodb_helpers import get_site_item, get_tenant_item
 from middleware import with_tenant
 from tier_config import upload_limit_bytes
@@ -78,7 +78,12 @@ def upload_url_handler(event: dict, context: dict) -> dict:
         _, err_resp = auth_result
         return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
 
-    if not require_tenant_admin_or_manager(event, table, tenant_slug, region):
+    _, sub_or_username, role, is_cognito = auth_result
+    if is_cognito:
+        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug)
+        if not ok:
+            return _json_response(403, {"error": err or "Admin or manager role required."})
+    elif not role_is_admin_or_manager(role):
         return _json_response(403, {"error": "Admin or manager role required."})
 
     site_key = get_site_item(tenant_slug, site_id)
