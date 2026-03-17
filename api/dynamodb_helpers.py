@@ -232,12 +232,17 @@ def query_users_in_tenant(tenant_slug: str) -> dict[str, Any]:
 
 
 def query_sites_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list sites in tenant."""
+    """Query params: list sites in tenant. Excludes content items (PAGE, POST, EVENT, MEDIA)."""
     return {
         "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "FilterExpression": "NOT (contains(sk, :page) OR contains(sk, :post) OR contains(sk, :event) OR contains(sk, :media))",
         "ExpressionAttributeValues": {
             ":pk": pk_tenant(tenant_slug),
             ":sk_prefix": "SITE#",
+            ":page": "#PAGE#",
+            ":post": "#POST#",
+            ":event": "#EVENT#",
+            ":media": "#MEDIA#",
         },
     }
 
