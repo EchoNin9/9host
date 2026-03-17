@@ -74,7 +74,7 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
     sub = sub_or_username if is_cognito else None
 
     if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
         if not ok:
             return _json_response(403, {"error": err or "Forbidden."})
     elif not role_is_admin_or_manager(role):
@@ -170,7 +170,7 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
     sub = sub_or_username if is_cognito else None
 
     if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
         if not ok:
             return _json_response(403, {"error": err or "Forbidden."})
     elif not role_is_admin_or_manager(role):

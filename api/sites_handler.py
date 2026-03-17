@@ -424,7 +424,7 @@ def sites_handler(event: dict, context: dict) -> dict:
     # POST/PUT/DELETE require admin or manager (Task 1.24)
     if method in ("POST", "PUT", "DELETE"):
         if is_cognito:
-            ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug)
+            ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
             if not ok:
                 return _json_response(403, {"error": err or "Forbidden."})
         elif not role_is_admin_or_manager(role):

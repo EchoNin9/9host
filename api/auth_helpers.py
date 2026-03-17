@@ -160,6 +160,11 @@ def require_tenant_auth(
             "statusCode": 401,
             "body": '{"error": "Unauthorized. Provide Authorization: Bearer <access_token>."}',
         }
+    # Superadmin impersonation: X-Impersonate-Tenant allows access without membership
+    impersonate = _get_header(event, "x-impersonate-tenant")
+    if impersonate and impersonate.strip().lower() == tenant_slug:
+        if is_superadmin(sub, os.environ.get("USER_POOL_ID", ""), region=region):
+            return True, sub, "admin", True
     from dynamodb_helpers import query_tenants_for_user
 
     params = query_tenants_for_user(sub)
@@ -175,11 +180,18 @@ def require_tenant_auth(
     }
 
 
-def require_tenant_admin_or_manager(table, sub: str, tenant_slug: str) -> tuple[bool, str | None]:
+def require_tenant_admin_or_manager(
+    table, sub: str, tenant_slug: str, event: dict | None = None
+) -> tuple[bool, str | None]:
     """
     Require admin or manager role for tenant. Returns (True, None) if ok,
-    (False, error_message) if not.
+    (False, error_message) if not. When event has X-Impersonate-Tenant and user is superadmin, allows.
     """
+    if event:
+        impersonate = _get_header(event, "x-impersonate-tenant")
+        if impersonate and impersonate.strip().lower() == tenant_slug:
+            if is_superadmin(sub, os.environ.get("USER_POOL_ID", ""), os.environ.get("AWS_REGION", "us-east-1")):
+                return True, None
     role = get_user_role_in_tenant(table, sub, tenant_slug)
     if role is None:
         return False, "Not a member of this tenant."

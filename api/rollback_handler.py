@@ -146,7 +146,7 @@ def rollback_handler(event: dict, context: dict) -> dict:
     _, sub_or_username, role, is_cognito = auth_result
 
     if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug)
+        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
         if not ok:
             return _json_response(403, {"error": err or "Forbidden."})
     elif not role_is_admin_or_manager(role):

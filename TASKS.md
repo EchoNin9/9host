@@ -101,6 +101,7 @@
 | 1.103 | **FIX: S3 CORS on 9host-media** — Browser upload blocked: No 'Access-Control-Allow-Origin' | DONE | aws_s3_bucket_cors_configuration for presigned POST from *.echo9.net, *.echo9.ca, localhost. |
 | 1.103 | CloudNS site CNAME sync: add/delete `{site-slug}.echo9.net` on site create/update/delete | DONE | api/cloudns_helpers.py; hooks in sites_handler + admin_tenant_resources. Lambda: CloudNS secret + CLOUDNS_ZONE env. |
 | 1.104 | **FIX: GET /api/tenant/sites 500** — ValidationException: FilterExpression cannot use pk/sk | DONE | Remove FilterExpression from query_sites_in_tenant; filter content items (PAGE, POST, etc.) in app. |
+| 1.105 | **FIX: Superadmin impersonation 403** — tenant routes return "Not a member" when impersonating | DONE | require_tenant_auth + require_tenant_admin_or_manager allow when X-Impersonate-Tenant matches and user is superadmin. |
 
 ### Agent 2 — Frontend / UI
 
