@@ -218,7 +218,7 @@ export async function fetchAllTenants(
       } catch {
         bodyJson = bodyText
       }
-      console.warn('[9host debug] fetchAllTenants failed:',{status:res.status,hasToken:!!accessToken,body:bodyJson})
+      console.warn('[9host debug] fetchAllTenants failed:', JSON.stringify({status:res.status,hasToken:!!accessToken,body:bodyJson}, null, 2))
     }
     // #endregion
     if (res.status === 403) return { tenants: [], isSuperadmin: false }
@@ -1008,7 +1008,7 @@ export async function fetchSites(
       } catch {
         bodyJson = bodyText
       }
-      console.warn('[9host debug] fetchSites failed:',{status:res.status,tenantSlug,hasToken:!!accessToken,body:bodyJson})
+      console.warn('[9host debug] fetchSites failed:', JSON.stringify({status:res.status,tenantSlug,hasToken:!!accessToken,body:bodyJson}, null, 2))
     }
     // #endregion
     if (!res.ok) return []
