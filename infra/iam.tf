@@ -213,6 +213,7 @@ data "aws_iam_policy_document" "deploy" {
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketTagging",
       "s3:PutBucketVersioning",
+      "s3:PutBucketCors",
       "s3:PutObject",
       "s3:DeleteObject",
       "s3:ListBucket",
