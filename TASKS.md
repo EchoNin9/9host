@@ -98,6 +98,8 @@
 | 1.100b | ACM validation via EventBridge: rule on `aws.acm` cert status → Lambda. On ISSUED: add alias, update domain → ACTIVE. Zero polling | DONE | EventBridge 9host-acm-certificate-available, Lambda 9host-acm-handler. |
 | 1.101 | **FIX: upload-url 500** — POST /api/tenant/sites/{id}/upload-url returns 500 (branding/media upload fails) | DONE | Wrong args to require_tenant_admin_or_manager; extract sub from auth_result, handle tenant_user. |
 | 1.102 | **FIX: upload-url 403/400** — Allow editor role; sanitize filenames (spaces, parens) | DONE | role_can_upload(admin/manager/editor); FILENAME_UNSAFE sanitize instead of reject. |
+| 1.103 | **FIX: S3 CORS on 9host-media** — Browser upload blocked: No 'Access-Control-Allow-Origin' | DONE | aws_s3_bucket_cors_configuration for presigned POST from *.echo9.net, *.echo9.ca, localhost. |
+| 1.103 | CloudNS site CNAME sync: add/delete `{site-slug}.echo9.net` on site create/update/delete | TODO | api/cloudns_helpers.py; hooks in sites_handler + admin_tenant_resources. Lambda: CloudNS secret + CLOUDNS_ZONE env. See plan. |
 
 ### Agent 2 — Frontend / UI
 

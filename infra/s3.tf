@@ -171,3 +171,17 @@ resource "aws_s3_bucket_versioning" "media" {
     status = "Enabled"
   }
 }
+
+# CORS for browser uploads: presigned POST from stage/prod frontends
+# *.echo9.net covers stage.echo9.net, prod.echo9.net, tenant.stage.echo9.net, etc.
+resource "aws_s3_bucket_cors_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  cors_rule {
+    allowed_headers   = ["*"]
+    allowed_methods   = ["POST", "PUT"]
+    allowed_origins   = ["https://*.echo9.net", "https://*.echo9.ca", "http://localhost:5173", "http://localhost:3000"]
+    expose_headers    = ["ETag"]
+    max_age_seconds   = 3600
+  }
+}
