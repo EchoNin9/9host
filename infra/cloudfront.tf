@@ -235,6 +235,18 @@ resource "aws_cloudfront_function" "site_content" {
 }
 
 # ------------------------------------------------------------------------------
+# Task 1.110: CloudFront Function — /media/{tenant}/{site}/{filename} → S3
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_function" "media_content" {
+  name    = "9host-media-content"
+  runtime = "cloudfront-js-2.0"
+  comment = "Media path rewrite: /media/{tenant}/{site}/{filename} → S3"
+  publish = true
+
+  code = file("${path.module}/cf-media-content.js")
+}
+
+# ------------------------------------------------------------------------------
 # Task 1.78: Wildcard distribution for *.echo9.net (sites + tenant subdomains)
 # Serves tenant admin SPA. Task 1.97: 9host-sites origin for published site content.
 # ------------------------------------------------------------------------------
@@ -261,6 +273,39 @@ resource "aws_cloudfront_distribution" "sites" {
     domain_name              = aws_s3_bucket.sites.bucket_regional_domain_name
     origin_id                = "S3-9host-sites"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  # Task 1.110: 9host-media origin for tenant uploads
+  origin {
+    domain_name              = aws_s3_bucket.media.bucket_regional_domain_name
+    origin_id                = "S3-9host-media"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  # Task 1.110: Media — /media/{tenant}/{site}/{filename} → 9host-media
+  ordered_cache_behavior {
+    path_pattern           = "/media/*"
+    target_origin_id       = "S3-9host-media"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.media_content.arn
+    }
+
+    min_ttl     = 0
+    default_ttl = 86400
+    max_ttl     = 31536000
   }
 
   # Task 1.97: Site content — /site/{site_id}/* → 9host-sites

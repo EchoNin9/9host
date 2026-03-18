@@ -185,3 +185,30 @@ resource "aws_s3_bucket_cors_configuration" "media" {
     max_age_seconds   = 3600
   }
 }
+
+# Task 1.110: Allow CloudFront sites distribution to read media (for /media/*)
+resource "aws_s3_bucket_policy" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowCloudFrontSites"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.media.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.sites.arn
+          }
+        }
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.media]
+}
