@@ -18,17 +18,24 @@ function isValidSlug(slug: string): boolean {
   return Boolean(SLUG_PATTERN.test(s)) && s.length <= 64;
 }
 
-export function extractTenantFromHost(hostname: string, domain = "echo9.net"): string | null {
+const SUPPORTED_DOMAINS = ["echo9.net", "echo9.ca"];
+
+export function extractTenantFromHost(hostname: string, domain?: string): string | null {
   const host = hostname.toLowerCase();
+  const baseDomain =
+    domain ??
+    SUPPORTED_DOMAINS.find((d) => host === d || host.endsWith(`.${d}`)) ??
+    "echo9.net";
+
   const platformHosts = [
-    `stage.${domain}`,
-    `prod.${domain}`,
-    `www.${domain}`,
-    domain,
+    `stage.${baseDomain}`,
+    `prod.${baseDomain}`,
+    `www.${baseDomain}`,
+    baseDomain,
   ];
   if (platformHosts.includes(host)) return null;
 
-  const suffix = `.${domain}`;
+  const suffix = `.${baseDomain}`;
   if (host.endsWith(suffix)) {
     const subdomain = host.slice(0, -suffix.length);
     if (subdomain && isValidSlug(subdomain)) return subdomain;

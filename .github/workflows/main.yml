@@ -96,11 +96,18 @@ jobs:
           TABLE=$(cd infra && tofu output -raw dynamodb_table_name)
           python scripts/backfill_gsi4_sites.py --table "$TABLE"
 
-      - name: Sync frontend to S3 (production)
+      - name: Sync frontend to S3 (production + staging for sites dist)
         run: |
           aws s3 sync frontend/dist/ s3://9host-frontend-production/ --delete
+          aws s3 cp s3://9host-frontend-production/index.html s3://9host-frontend-production/index.html --metadata-directive REPLACE --cache-control "no-cache, no-store, must-revalidate" --content-type "text/html; charset=utf-8"
+          aws s3 sync frontend/dist/ s3://9host-frontend-staging/ --delete
+          aws s3 cp s3://9host-frontend-staging/index.html s3://9host-frontend-staging/index.html --metadata-directive REPLACE --cache-control "no-cache, no-store, must-revalidate" --content-type "text/html; charset=utf-8"
 
-      - name: Invalidate CloudFront cache (production)
+      - name: Invalidate CloudFront cache (production + staging + sites)
         run: |
-          DIST_ID=$(cd infra && tofu output -raw cloudfront_production_distribution_id)
-          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          PROD_ID=$(cd infra && tofu output -raw cloudfront_production_distribution_id)
+          STAGE_ID=$(cd infra && tofu output -raw cloudfront_staging_distribution_id)
+          SITES_ID=$(cd infra && tofu output -raw cloudfront_sites_distribution_id)
+          aws cloudfront create-invalidation --distribution-id "$PROD_ID" --paths "/*"
+          aws cloudfront create-invalidation --distribution-id "$STAGE_ID" --paths "/*"
+          aws cloudfront create-invalidation --distribution-id "$SITES_ID" --paths "/*"

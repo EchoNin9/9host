@@ -100,6 +100,7 @@ jobs:
       - name: Sync frontend to S3 (staging)
         run: |
           aws s3 sync frontend/dist/ s3://9host-frontend-staging/ --delete
+          aws s3 cp s3://9host-frontend-staging/index.html s3://9host-frontend-staging/index.html --metadata-directive REPLACE --cache-control "no-cache, no-store, must-revalidate" --content-type "text/html; charset=utf-8"
 
       - name: Invalidate CloudFront cache (staging + sites)
         run: |

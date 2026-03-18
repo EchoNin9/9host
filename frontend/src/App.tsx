@@ -101,10 +101,13 @@ function RootRoute() {
       if (cancelled) return
       if (data?.site_id) {
         const tenant = data.tenant_slug ?? subdomainSlug
-        setRedirectTo(`/site/${tenant}/${data.site_id}/`)
-      } else {
-        setRedirectTo(`/${subdomainSlug}`)
+        const target = `/site/${tenant}/${data.site_id}/`
+        // Full page navigation so CloudFront /site/* behavior serves published content
+        // (client-side Navigate keeps us in SPA and matches /:tenantSlug with "site")
+        window.location.replace(target)
+        return
       }
+      setRedirectTo(`/${subdomainSlug}`)
       setResolving(false)
     }).catch(() => {
       if (!cancelled) {

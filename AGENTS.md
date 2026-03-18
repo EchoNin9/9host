@@ -19,8 +19,6 @@
 
 See **TASKS.md** for the full task list. Agents should reference it before starting work.
 
-- [ ] Migrate single-user schema to multi-tenant [agent1]
-- [ ] Design Tenant Admin Sidebar [agent2]
-- [ ] Integrate Roborev post-commit hooks [agent1]
-- [ ] FeatureFlag utility + HOC [agent2]
-- [ ] Stripe tier subscriptions [agent3]
+- [ ] Published Site Viewing: site-slug resolution, CF path format (1.107, 1.108) [agent1]
+- [ ] Published Site Viewing: RootRoute redirect with tenant_slug (2.98) [agent2]
+- [ ] Published Site Viewing: template-aware publish, media origin (1.109–1.111) [agent1]
