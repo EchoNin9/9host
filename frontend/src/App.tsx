@@ -100,7 +100,8 @@ function RootRoute() {
     fetchDefaultSite(subdomainSlug).then((data) => {
       if (cancelled) return
       if (data?.site_id) {
-        setRedirectTo(`/site/${data.site_id}/`)
+        const tenant = data.tenant_slug ?? subdomainSlug
+        setRedirectTo(`/site/${tenant}/${data.site_id}/`)
       } else {
         setRedirectTo(`/${subdomainSlug}`)
       }

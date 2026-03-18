@@ -211,7 +211,7 @@
 | 2.93 | Media gallery editor: upload via pre-signed POST, list, caption, reorder | DONE | media-editor.tsx, presigned URL endpoint. |
 | 2.94 | Branding editor: logo, colors, fonts. Store in site settings or content | DONE | branding-editor.tsx, site.branding. |
 | | **Published Site Viewing** | | |
-| 2.98 | RootRoute: when default-site API returns `tenant_slug`, redirect to `/site/{tenant}/{site_id}/` | TODO | App.tsx RootRoute, api.ts fetchDefaultSite. Depends on 1.107. |
+| 2.98 | RootRoute: when default-site API returns `tenant_slug`, redirect to `/site/{tenant}/{site_id}/` | DONE | App.tsx RootRoute, api.ts fetchDefaultSite. Depends on 1.107. |
 
 ### Agent 4 — Self-Serve (Future)
 

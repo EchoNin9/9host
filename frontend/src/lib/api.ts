@@ -260,19 +260,22 @@ function tenantHeaders(tenantSlug: string, accessToken: string) {
 }
 
 /**
- * Fetch default site ID for tenant (Task 1.98). Public — no auth required.
- * Returns { site_id } or null if no default site published.
+ * Fetch default site ID for subdomain (Task 1.98, 1.107). Public — no auth required.
+ * Returns { site_id } or { site_id, tenant_slug } or null if no default site published.
+ * When subdomain is a site slug (e.g. jinks1.echo9.net), API returns tenant_slug.
  */
-export async function fetchDefaultSite(tenantSlug: string): Promise<{ site_id: string } | null> {
+export async function fetchDefaultSite(
+  subdomainSlug: string
+): Promise<{ site_id: string; tenant_slug?: string } | null> {
   const base = getApiUrl()
-  if (!base || !tenantSlug) return null
+  if (!base || !subdomainSlug) return null
 
   try {
     const res = await fetch(`${base}/api/tenant/default-site`, {
-      headers: { "X-Tenant-Slug": tenantSlug },
+      headers: { "X-Tenant-Slug": subdomainSlug },
     })
     if (!res.ok) return null
-    return (await res.json()) as { site_id: string }
+    return (await res.json()) as { site_id: string; tenant_slug?: string }
   } catch {
     return null
   }
