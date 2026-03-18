@@ -108,7 +108,7 @@
 | 1.108 | CF Function: support `/site/{tenant}/{site_id}/*` path format; use tenant from path when present, else from Host | DONE | infra/cf-site-content.js. Enables site-slug subdomains where tenant ≠ subdomain. |
 | 1.109 | Publish: template-aware rendering (components, sections), posts index/detail, events page, branding injection | DONE | api/publish_handler.py. Use template.components; render /blog/, /posts/{slug}/, /events/; site.branding. |
 | 1.110 | Media origin: add 9host-media to sites CloudFront, `/media/*` behavior, CF Function rewrite to S3 key, bucket policy | DONE | infra/cloudfront.tf, cf-media-content.js, s3.tf. Media URLs /media/{tenant}/{site}/{filename}. |
-| 1.111 | Publish: wire media URLs as `/media/{tenant}/{site}/{filename}` in rendered HTML | TODO | api/publish_handler.py. Depends on 1.110. |
+| 1.111 | Publish: wire media URLs as `/media/{tenant}/{site}/{filename}` in rendered HTML | DONE | api/publish_handler.py. Gallery page, body URL rewrite, logo. Depends on 1.110. |
 
 ### Agent 2 — Frontend / UI
 

@@ -7,11 +7,13 @@ POST /api/tenant/sites/{id}/publish — atomic versioned publish:
 
 Task 1.109: Template-aware rendering — components, sections, /blog/, /posts/{slug}/,
 /events/, branding injection.
+Task 1.111: Wire media URLs as /media/{tenant}/{site}/{filename} in rendered HTML.
 """
 
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import boto3
@@ -48,11 +50,28 @@ def _escape_html(s: str) -> str:
 
 
 def _media_url(s3_key: str, media_base: str) -> str:
-    """Build media URL for published HTML. media_base e.g. /media"""
+    """Build media URL for published HTML (Task 1.111). Format: /media/{tenant}/{site}/{filename}."""
     if not s3_key:
         return ""
     base = (media_base or "/media").rstrip("/")
     return f"{base}/{s3_key}"
+
+
+def _rewrite_body_media_urls(body: str, tenant_slug: str, site_id: str, media_base: str) -> str:
+    """Rewrite S3/presigned URLs in body to /media/{tenant}/{site}/{filename} (Task 1.111)."""
+    if not body or not isinstance(body, str):
+        return body or ""
+    # Match S3 URLs containing {tenant}/{site_id}/... (e.g. presigned or direct)
+    pattern = re.compile(
+        r"https?://[^\s\"'<>]*?/" + re.escape(f"{tenant_slug}/{site_id}/") + r"([^\s\"'<>?#]+)",
+        re.IGNORECASE,
+    )
+    base = (media_base or "/media").rstrip("/")
+
+    def repl(m: re.Match) -> str:
+        return f"{base}/{tenant_slug}/{site_id}/{m.group(1)}"
+
+    return pattern.sub(repl, body)
 
 
 def _branding_styles(branding: dict) -> str:
@@ -90,8 +109,8 @@ def _html_header(site_name: str, branding: dict, media_base: str, nav_links: str
   </header>"""
 
 
-def _nav_links(pages: list, has_posts: bool, has_events: bool) -> str:
-    """Build nav links from pages + blog + events."""
+def _nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = False) -> str:
+    """Build nav links from pages + blog + events + gallery (Task 1.111)."""
     links = []
     for p in pages:
         path = (p.get("path") or "").strip()
@@ -101,13 +120,26 @@ def _nav_links(pages: list, has_posts: bool, has_events: bool) -> str:
         links.append('<li><a href="/blog/">Blog</a></li>')
     if has_events:
         links.append('<li><a href="/events/">Events</a></li>')
+    if has_media:
+        links.append('<li><a href="/gallery/">Gallery</a></li>')
     return "\n      ".join(links) if links else ""
 
 
 def _render_page_html(
-    path: str, title: str, body: str, site_name: str, branding: dict, media_base: str, nav: str
+    path: str,
+    title: str,
+    body: str,
+    site_name: str,
+    branding: dict,
+    media_base: str,
+    nav: str,
+    tenant_slug: str = "",
+    site_id: str = "",
 ) -> str:
-    """Render a single page as HTML (Task 1.109: branding)."""
+    """Render a single page as HTML (Task 1.109, 1.111: branding, media URL rewrite)."""
+    body_rewritten = (
+        _rewrite_body_media_urls(body, tenant_slug, site_id, media_base) if tenant_slug and site_id else (body or "")
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -117,17 +149,17 @@ def _render_page_html(
 {_html_header(site_name, branding, media_base, nav)}
   <main>
     <h2>{_escape_html(title or path)}</h2>
-    <div class="content">{body or ""}</div>
+    <div class="content">{body_rewritten}</div>
   </main>
 </body>
 </html>"""
 
 
 def _render_index_html(
-    site_name: str, pages: list, posts: list, events: list, branding: dict, media_base: str
+    site_name: str, pages: list, posts: list, events: list, branding: dict, media_base: str, has_media: bool = False
 ) -> str:
-    """Render index.html with links (Task 1.109: branding, nav)."""
-    nav = _nav_links(pages, bool(posts), bool(events))
+    """Render index.html with links (Task 1.109, 1.111: branding, nav, gallery)."""
+    nav = _nav_links(pages, bool(posts), bool(events), has_media)
     links = "".join(
         f'    <li><a href="/{p["path"]}/">{_escape_html(p["title"] or p["path"])}</a></li>\n'
         for p in pages
@@ -179,9 +211,19 @@ def _render_blog_index(
 
 
 def _render_post_detail(
-    post: dict, site_name: str, branding: dict, media_base: str, nav: str
+    post: dict,
+    site_name: str,
+    branding: dict,
+    media_base: str,
+    nav: str,
+    tenant_slug: str = "",
+    site_id: str = "",
 ) -> str:
-    """Render /posts/{slug}/ detail (Task 1.109)."""
+    """Render /posts/{slug}/ detail (Task 1.109, 1.111: media URL rewrite)."""
+    body = post.get("body", "")
+    body_rewritten = (
+        _rewrite_body_media_urls(body, tenant_slug, site_id, media_base) if tenant_slug and site_id else body
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -191,7 +233,7 @@ def _render_post_detail(
 {_html_header(site_name, branding, media_base, nav)}
   <main>
     <h2>{_escape_html(post.get("title", ""))}</h2>
-    <div class="content">{post.get("body", "")}</div>
+    <div class="content">{body_rewritten}</div>
   </main>
 </body>
 </html>"""
@@ -219,6 +261,31 @@ def _render_events_page(
     <ul class="events-list">
 {items or "    <li>No events yet.</li>\n"}
     </ul>
+  </main>
+</body>
+</html>"""
+
+
+def _render_gallery_page(
+    site_name: str, media: list, branding: dict, media_base: str, nav: str
+) -> str:
+    """Render /gallery/ page with media using /media/{tenant}/{site}/{filename} URLs (Task 1.111)."""
+    items = "".join(
+        f'    <figure><img src="{_escape_html(_media_url(m.get("s3_key", ""), media_base))}" alt="{_escape_html(m.get("caption", ""))}"><figcaption>{_escape_html(m.get("caption", ""))}</figcaption></figure>\n'
+        for m in media
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{_html_head("Gallery", site_name, branding)}
+</head>
+<body>
+{_html_header(site_name, branding, media_base, nav)}
+  <main>
+    <h2>Gallery</h2>
+    <div class="media-gallery">
+{items or "    <p>No media yet.</p>\n"}
+    </div>
   </main>
 </body>
 </html>"""
@@ -374,21 +441,24 @@ def _publish_site(
     template_item: dict,
     media_base: str,
 ) -> dict:
-    """Perform the publish flow (Task 1.109: template-aware, blog, events, branding)."""
+    """Perform the publish flow (Task 1.109, 1.111: template-aware, blog, events, branding, media URLs)."""
     site_name = site_item.get("name", "Site")
     branding = site_item.get("branding") if isinstance(site_item.get("branding"), dict) else {}
     content = _collect_published_content(table, tenant_slug, site_id)
     pages = content["pages"]
     posts = content["posts"]
     events = content["events"]
+    media = content["media"]
 
-    nav = _nav_links(pages, bool(posts), bool(events))
+    nav = _nav_links(pages, bool(posts), bool(events), bool(media))
 
     # Build files to publish
     files = {}
 
     # index.html
-    files["index.html"] = _render_index_html(site_name, pages, posts, events, branding, media_base)
+    files["index.html"] = _render_index_html(
+        site_name, pages, posts, events, branding, media_base, bool(media)
+    )
 
     # Per-page HTML (template components: pages)
     for p in pages:
@@ -396,7 +466,8 @@ def _publish_site(
         if not path:
             continue
         html = _render_page_html(
-            p["path"], p["title"], p["body"], site_name, branding, media_base, nav
+            p["path"], p["title"], p["body"], site_name, branding, media_base, nav,
+            tenant_slug, site_id,
         )
         files[f"{path}/index.html"] = html
 
@@ -409,7 +480,7 @@ def _publish_site(
         slug = (post.get("slug") or "").strip()
         if slug:
             files[f"posts/{slug}/index.html"] = _render_post_detail(
-                post, site_name, branding, media_base, nav
+                post, site_name, branding, media_base, nav, tenant_slug, site_id
             )
 
     # Task 1.109: /events/
@@ -418,8 +489,16 @@ def _publish_site(
             site_name, events, branding, media_base, nav
         )
 
+    # Task 1.111: /gallery/ (media with /media/{tenant}/{site}/{filename} URLs)
+    if media:
+        files["gallery/index.html"] = _render_gallery_page(
+            site_name, media, branding, media_base, nav
+        )
+
     if not files:
-        files["index.html"] = _render_index_html(site_name, [], [], [], branding, media_base)
+        files["index.html"] = _render_index_html(
+            site_name, [], [], [], branding, media_base, bool(media)
+        )
 
     base = f"{tenant_slug}/{site_id}"
     version = _get_next_version(s3_client, S3_SITES_BUCKET, f"{base}/")
