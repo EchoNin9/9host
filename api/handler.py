@@ -44,10 +44,12 @@ from site_auth_handler import site_login_handler
 from stripe_webhook_handler import stripe_webhook_handler
 from tenants_handler import create_tenant_handler as self_serve_create_tenant_handler, get_tenants_handler
 from templates_handler import get_templates_handler
+from tenant_templates_handler import tenant_templates_handler
 from validate_slug_handler import validate_slug_handler
 from upload_handler import upload_url_handler
 from content_handler import content_handler
-from publish_handler import publish_handler
+from publish_handler import draft_publish_handler, publish_handler
+from draft_handler import draft_token_handler
 from rollback_handler import rollback_handler
 from default_site_handler import default_site_handler
 
@@ -175,6 +177,14 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
         if "/rollback" in path and path.endswith("/rollback"):
             if method == "POST":
                 return _with_cors(rollback_handler(event, context))
+        # Draft token: GET /api/tenant/sites/{id}/draft-token (Task 1.117)
+        if "/draft-token" in path and path.endswith("/draft-token"):
+            if method == "GET":
+                return _with_cors(draft_token_handler(event, context))
+        # Draft publish: POST /api/tenant/sites/{id}/draft-publish (Task 1.116)
+        if "/draft-publish" in path and path.endswith("/draft-publish"):
+            if method == "POST":
+                return _with_cors(draft_publish_handler(event, context))
         # Content CRUD: /api/tenant/sites/{id}/pages|posts|events|media (Task 1.95)
         if "/pages" in path or "/posts" in path or "/events" in path or "/media" in path:
             return _with_cors(content_handler(event, context))
@@ -203,6 +213,9 @@ def _lambda_handler_impl(event: dict, context: dict) -> dict:
 
     if method == "GET" and path in ("/api/templates", "/api/templates/"):
         return _with_cors(get_templates_handler(event, context))
+
+    if path.startswith("/api/tenant/templates"):
+        return _with_cors(tenant_templates_handler(event, context))
 
     # Stripe webhook (Task 1.19) — no tenant, no Cognito auth
     if path.startswith("/api/webhooks/stripe"):

@@ -25,6 +25,7 @@ function handler(event) {
     return request;
   }
   var rest = uri.substring(6); // after "/site/"
+  var trailingSlash = rest.endsWith("/");
   var parts = rest.split("/").filter(Boolean);
   var tenant = tenantFromHost;
   var siteId;
@@ -46,9 +47,15 @@ function handler(event) {
     return request;
   }
 
-  // Trailing slash or empty path → index.html
-  if (!pathPart || pathPart.endsWith("/")) {
-    pathPart = pathPart ? pathPart + "index.html" : "index.html";
+  // Resolve path to S3 key: directories → index.html, files pass through
+  if (!pathPart) {
+    pathPart = "index.html";
+  } else if (trailingSlash) {
+    // URL ended with / (e.g. /about/) — treat as directory
+    pathPart = pathPart + "/index.html";
+  } else if (pathPart.indexOf(".") === -1) {
+    // No file extension (e.g. /about) — treat as directory
+    pathPart = pathPart + "/index.html";
   }
 
   request.uri = "/" + tenant + "/" + siteId + "/published/current/" + pathPart;

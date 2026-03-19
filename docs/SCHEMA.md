@@ -103,6 +103,27 @@ updated_at: string
 
 **Access:** GET /api/templates returns tenant-tier-filtered list. Superadmin CRUD via /api/admin/templates.
 
+### Tenant Template (Task 1.123 — Forked from Platform)
+
+Tenant-owned templates. Pro+ tier. Copy-on-write from platform template.
+
+```
+PK: TENANT#acme
+SK: TEMPLATE#my-band-theme
+---
+slug: string           # Unique within tenant (e.g. my-band-theme)
+name: string           # Display name
+description: string    # Optional
+forked_from: string    # Original platform template slug (e.g. musician-band)
+tier_required: string  # Inherited or overridden
+components: map        # Merged from base + customizations
+customizations: map    # (optional) Overrides: default_branding, css_overrides, components.pages, etc.
+created_at: string
+updated_at: string
+```
+
+**Access:** GET/POST/PUT/DELETE /api/tenant/templates. Pro+ tier.
+
 ### Custom Domain (Pro+)
 
 ```

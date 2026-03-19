@@ -139,7 +139,6 @@ def with_tenant(
         domains_val = domains or os.environ.get("DOMAINS")
         tenant_slug = extract_tenant_slug(event, domains=domains_val)
         # #region agent log
-        print(f"[9host debug] with_tenant extracted tenant_slug={tenant_slug}")
         # #endregion
 
         # X-Impersonate-Tenant: superadmin can override tenant_slug
@@ -154,10 +153,8 @@ def with_tenant(
                 sub = get_sub_from_access_token(event, region=region)
                 if sub and is_superadmin(sub, user_pool_id, region=region):
                     tenant_slug = impersonate.strip().lower()
-                print("[9host debug] with_tenant impersonate check done")
             except Exception as imp_err:
                 import traceback
-                print(f"[9host debug] with_tenant impersonate threw: {imp_err}\n{traceback.format_exc()}")
                 raise
             # #endregion
 

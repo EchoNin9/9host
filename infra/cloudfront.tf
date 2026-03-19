@@ -235,6 +235,18 @@ resource "aws_cloudfront_function" "site_content" {
 }
 
 # ------------------------------------------------------------------------------
+# Task 1.118: CloudFront Function — /preview?token=jwt → draft S3 path
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_function" "preview_content" {
+  name    = "9host-preview-content"
+  runtime = "cloudfront-js-2.0"
+  comment = "Draft preview: /preview?token=jwt → S3 draft/ path"
+  publish = true
+
+  code = file("${path.module}/cf-preview-content.js")
+}
+
+# ------------------------------------------------------------------------------
 # Task 1.110: CloudFront Function — /media/{tenant}/{site}/{filename} → S3
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_function" "media_content" {
@@ -244,6 +256,19 @@ resource "aws_cloudfront_function" "media_content" {
   publish = true
 
   code = file("${path.module}/cf-media-content.js")
+}
+
+# ------------------------------------------------------------------------------
+# SPA routing for default behavior — replaces distribution-level custom_error_response
+# so /site/* and /media/* behaviors can return real S3 errors instead of the SPA.
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_function" "spa_routing" {
+  name    = "9host-spa-routing"
+  runtime = "cloudfront-js-2.0"
+  comment = "SPA routing: non-file paths → /index.html (admin frontend)"
+  publish = true
+
+  code = file("${path.module}/cf-spa-routing.js")
 }
 
 # ------------------------------------------------------------------------------
@@ -308,6 +333,32 @@ resource "aws_cloudfront_distribution" "sites" {
     max_ttl     = 31536000
   }
 
+  # Task 1.118: Draft preview — /preview*?token=jwt → 9host-sites draft/
+  ordered_cache_behavior {
+    path_pattern           = "/preview*"
+    target_origin_id       = "S3-9host-sites"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = true
+      cookies {
+        forward = "none"
+      }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.preview_content.arn
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+  }
+
   # Task 1.97: Site content — /site/{site_id}/* → 9host-sites
   ordered_cache_behavior {
     path_pattern           = "/site/*"
@@ -348,24 +399,22 @@ resource "aws_cloudfront_distribution" "sites" {
       }
     }
 
+    # SPA routing: CF Function rewrites non-file paths to /index.html
+    # (replaces custom_error_response so /site/* can return real S3 errors)
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_routing.arn
+    }
+
     min_ttl     = 0
     default_ttl = 3600
     max_ttl     = 86400
   }
 
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
+  # custom_error_response removed: SPA routing is now handled by the
+  # cf-spa-routing.js CF Function on the default behavior. This allows
+  # /site/* and /media/* behaviors to return real S3 403/404 errors
+  # instead of silently serving the React SPA.
 
   viewer_certificate {
     acm_certificate_arn      = aws_acm_certificate.wildcard.arn

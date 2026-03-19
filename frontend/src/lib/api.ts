@@ -209,18 +209,6 @@ export async function fetchAllTenants(
     const res = await fetch(`${base}/api/admin/tenants`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
-    // #region agent log
-    if (!res.ok) {
-      const bodyText = await res.text()
-      let bodyJson: unknown = null
-      try {
-        bodyJson = bodyText ? JSON.parse(bodyText) : null
-      } catch {
-        bodyJson = bodyText
-      }
-      console.warn('[9host debug] fetchAllTenants failed:', JSON.stringify({status:res.status,hasToken:!!accessToken,body:bodyJson}, null, 2))
-    }
-    // #endregion
     if (res.status === 403) return { tenants: [], isSuperadmin: false }
     if (!res.ok) return { tenants: [], isSuperadmin: false }
     const data = (await res.json()) as AdminTenantsResponse
@@ -266,7 +254,7 @@ function tenantHeaders(tenantSlug: string, accessToken: string) {
  */
 export async function fetchDefaultSite(
   subdomainSlug: string
-): Promise<{ site_id: string; tenant_slug?: string } | null> {
+): Promise<{ site_id: string; tenant_slug?: string; published?: boolean } | null> {
   const base = getApiUrl()
   if (!base || !subdomainSlug) return null
 
@@ -275,7 +263,7 @@ export async function fetchDefaultSite(
       headers: { "X-Tenant-Slug": subdomainSlug },
     })
     if (!res.ok) return null
-    return (await res.json()) as { site_id: string; tenant_slug?: string }
+    return (await res.json()) as { site_id: string; tenant_slug?: string; published?: boolean }
   } catch {
     return null
   }
@@ -1002,25 +990,10 @@ export async function fetchSites(
     const res = await fetch(`${base}/api/tenant/sites`, {
       headers: sitesHeaders(tenantSlug, accessToken),
     })
-    // #region agent log
-    if (!res.ok) {
-      const bodyText = await res.text()
-      let bodyJson: unknown = null
-      try {
-        bodyJson = bodyText ? JSON.parse(bodyText) : null
-      } catch {
-        bodyJson = bodyText
-      }
-      console.warn('[9host debug] fetchSites failed:', JSON.stringify({status:res.status,tenantSlug,hasToken:!!accessToken,body:bodyJson}, null, 2))
-    }
-    // #endregion
     if (!res.ok) return []
     const data = (await res.json()) as SitesResponse
     return data.sites ?? []
-  } catch (e) {
-    // #region agent log
-    console.warn('[9host debug] fetchSites threw:',{error:String(e)})
-    // #endregion
+  } catch {
     return []
   }
 }
@@ -1157,6 +1130,88 @@ export async function fetchSitePreview(
     return data.preview ?? null
   } catch {
     return null
+  }
+}
+
+/** Draft preview token response (Task 1.117). */
+export interface DraftTokenResponse {
+  token: string
+  preview_url: string
+  expires_in: number
+}
+
+/**
+ * Get draft preview token. Returns preview_url to open in new tab.
+ * Call draft-publish first to ensure latest content is rendered.
+ */
+export async function fetchDraftToken(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<DraftTokenResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${encodeURIComponent(siteId)}/draft-token`, {
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as DraftTokenResponse
+    return data
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Publish draft to S3 (render current content to draft/ prefix).
+ * Call before opening preview to ensure latest state.
+ */
+export async function fetchDraftPublish(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<{ files_count: number } | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${encodeURIComponent(siteId)}/draft-publish`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { draft: { files_count: number } }
+    return data.draft ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Publish site to S3 (Task 1.96). Renders template + content to static HTML,
+ * uploads to published/v{N}/, swaps current.json pointer.
+ * Admin/manager only. Returns version info on success.
+ */
+export async function publishSite(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<{ version: number; published_at: string; files_count: number; is_default: boolean } | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${encodeURIComponent(siteId)}/publish`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: string }).error || `Publish failed (${res.status})`)
+    }
+    const data = (await res.json()) as { publish: { version: number; published_at: string; files_count: number; is_default: boolean } }
+    return data.publish ?? null
+  } catch (e) {
+    throw e
   }
 }
 
@@ -1736,6 +1791,10 @@ export interface Template {
   components: Record<string, unknown>
   created_at?: string
   updated_at?: string
+  /** Task 1.124: true if tenant-owned forked template */
+  is_custom?: boolean
+  /** Task 1.124: original platform template slug when forked */
+  forked_from?: string
 }
 
 export interface TemplatesResponse {
@@ -1758,6 +1817,28 @@ export async function fetchTemplates(
     return data.templates ?? []
   } catch {
     return []
+  }
+}
+
+/** Fork a platform template (Task 1.123). Pro+ only. */
+export async function forkTemplate(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { template_slug: string; name?: string; slug?: string }
+): Promise<{ slug: string; name: string } | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/templates/fork`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { template: { slug: string; name: string } }
+    return data.template ?? null
+  } catch {
+    return null
   }
 }
 
@@ -1945,6 +2026,91 @@ function contentHeaders(tenantSlug: string, accessToken: string) {
 function contentBase(_tenantSlug: string, siteId: string) {
   return `${getApiUrl()}/api/tenant/sites/${encodeURIComponent(siteId)}`
 }
+
+// --- Pages CRUD ---
+
+export async function fetchContentPages(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<ContentPage[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return []
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages`, {
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { pages: ContentPage[] }
+    return data.pages ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createContentPage(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { path: string; title: string; body?: string; status?: string }
+): Promise<ContentPage | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages`, {
+      method: "POST",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as ContentPage
+  } catch {
+    return null
+  }
+}
+
+export async function updateContentPage(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  pagePath: string,
+  body: { title?: string; body?: string; status?: string }
+): Promise<ContentPage | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !pagePath) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages/${encodeURIComponent(pagePath)}`, {
+      method: "PUT",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as ContentPage
+  } catch {
+    return null
+  }
+}
+
+export async function deleteContentPage(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  pagePath: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !pagePath) return false
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages/${encodeURIComponent(pagePath)}`, {
+      method: "DELETE",
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// --- Posts CRUD ---
 
 export async function fetchContentPosts(
   tenantSlug: string,

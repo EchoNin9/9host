@@ -126,9 +126,18 @@ export function BrandingEditor({ site, onSaved }: { site: Site; onSaved?: () => 
                 onChange={handleLogoUpload}
                 disabled={saving}
               />
-              <div className="flex size-20 items-center justify-center rounded border bg-muted">
+              <div className="flex size-20 items-center justify-center overflow-hidden rounded border bg-muted">
                 {logoS3Key ? (
-                  <span className="text-xs text-muted-foreground">Logo uploaded</span>
+                  <img
+                    src={`/media/${logoS3Key}`}
+                    alt="Site logo"
+                    className="size-full object-contain"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none"
+                      ;(e.target as HTMLImageElement).parentElement!.innerHTML =
+                        '<span class="text-xs text-muted-foreground">Logo uploaded</span>'
+                    }}
+                  />
                 ) : (
                   <ImageIcon className="size-10 text-muted-foreground" />
                 )}

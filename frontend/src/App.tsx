@@ -81,7 +81,7 @@ function TenantRouteProvider() {
 
 /**
  * Root route: redirects to default site or /:tenantSlug when accessed via tenant subdomain,
- * otherwise renders the Landing page (Task 1.98).
+ * otherwise renders the Landing page (Task 1.98, 2.98a).
  */
 function RootRoute() {
   const subdomainSlug = useMemo(
@@ -90,6 +90,7 @@ function RootRoute() {
   )
   const [resolving, setResolving] = useState(true)
   const [redirectTo, setRedirectTo] = useState<string | null>(null)
+  const [siteNotFound, setSiteNotFound] = useState(false)
 
   useEffect(() => {
     if (!subdomainSlug) {
@@ -99,19 +100,21 @@ function RootRoute() {
     let cancelled = false
     fetchDefaultSite(subdomainSlug).then((data) => {
       if (cancelled) return
-      if (data?.site_id) {
+      if (data?.site_id && data.published !== false) {
         const tenant = data.tenant_slug ?? subdomainSlug
         const target = `/site/${tenant}/${data.site_id}/`
-        // Full page navigation so CloudFront /site/* behavior serves published content
-        // (client-side Navigate keeps us in SPA and matches /:tenantSlug with "site")
         window.location.replace(target)
         return
       }
-      setRedirectTo(`/${subdomainSlug}`)
+      if (data?.tenant_slug) {
+        setRedirectTo(`/${data.tenant_slug}`)
+      } else {
+        setSiteNotFound(true)
+      }
       setResolving(false)
     }).catch(() => {
       if (!cancelled) {
-        setRedirectTo(`/${subdomainSlug}`)
+        setSiteNotFound(true)
         setResolving(false)
       }
     })
@@ -120,8 +123,32 @@ function RootRoute() {
 
   if (!subdomainSlug) return <Landing />
   if (resolving) return null
+  if (siteNotFound) return <SiteNotFound slug={subdomainSlug} />
   if (redirectTo) return <Navigate to={redirectTo} replace />
   return <Navigate to={`/${subdomainSlug}`} replace />
+}
+
+function SiteNotFound({ slug }: { slug: string }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-8">
+      <Card className="w-full max-w-md text-center">
+        <CardHeader>
+          <CardTitle>Site not found</CardTitle>
+          <CardDescription>
+            No published site exists at <strong>{slug}</strong>.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-sm text-muted-foreground">
+            This site may not exist or has not been published yet.
+          </p>
+          <Button asChild variant="secondary">
+            <Link to="/">Back to home</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
 }
 
 function CreateTenantSheet({
