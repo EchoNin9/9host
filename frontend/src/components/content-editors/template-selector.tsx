@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { getToken, fetchTemplates, updateSite, type Template, type Site } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
 
