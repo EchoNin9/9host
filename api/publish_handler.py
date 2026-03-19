@@ -229,7 +229,6 @@ def _publish_site(
     features = resolved_features or {}
     has_blog = features.get("updates_blog", True)
     has_events = features.get("events_shows", True)
-    has_media = features.get("media_gallery", True)
     has_branding = features.get("branding", True)
 
     site_name = site_item.get("name", "Site")
@@ -240,7 +239,8 @@ def _publish_site(
     pages = content["pages"]
     posts = content["posts"] if has_blog else []
     events = content["events"] if has_events else []
-    media = content["media"] if has_media else []
+    # Media: always publish if items exist (tier gating is enforced in admin UI upload, not at publish)
+    media = content["media"]
 
     from templates.base_layout import nav_links
 
@@ -428,7 +428,6 @@ def _draft_publish_site(
     features = resolved_features or {}
     has_blog = features.get("updates_blog", True)
     has_events = features.get("events_shows", True)
-    has_media = features.get("media_gallery", True)
     has_branding = features.get("branding", True)
 
     site_name = site_item.get("name", "Site")
@@ -439,7 +438,8 @@ def _draft_publish_site(
     pages = content["pages"]
     posts = content["posts"] if has_blog else []
     events = content["events"] if has_events else []
-    media = content["media"] if has_media else []
+    # Media: always include if items exist (tier gating is enforced in admin UI upload, not at publish)
+    media = content["media"]
 
     from templates.base_layout import nav_links
 
