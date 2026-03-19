@@ -450,12 +450,25 @@ def _draft_publish_site(
 (function(){var t=new URLSearchParams(location.search).get("token");if(t){document.querySelectorAll("a[href]").forEach(function(a){try{var u=new URL(a.href,location.origin);if(u.origin===location.origin&&u.pathname.startsWith("/preview")){u.searchParams.set("token",t);a.href=u.pathname+u.search}}catch(e){}})}})();
 </script>"""
 
+    # Inline CSS for draft: replace <link stylesheet> with <style> block
+    # because /preview/style.css can't be loaded without a token in the URL.
+    css_content = renderer.render_css()
+    import re
+    def _inline_css(html: str) -> str:
+        return re.sub(
+            r'<link\s+rel="stylesheet"\s+href="[^"]*style\.css">',
+            f"<style>\n{css_content}\n</style>",
+            html,
+        )
+
+    def _draft_html(html: str) -> str:
+        return _inline_css(html) + _TOKEN_SCRIPT
+
     files = {}
-    files["style.css"] = renderer.render_css()
-    files["index.html"] = renderer.render_index(
+    files["index.html"] = _draft_html(renderer.render_index(
         site_name, pages, posts, events, branding, media_base, bool(media), base_path="",
         site_base=site_base,
-    ) + _TOKEN_SCRIPT
+    ))
 
     for p in pages:
         path = p.get("path", "").strip()
@@ -465,32 +478,32 @@ def _draft_publish_site(
             p["path"], p["title"], p["body"], site_name, branding, media_base, nav,
             tenant_slug, site_id, base_path="../",
         )
-        files[f"{path}/index.html"] = html + _TOKEN_SCRIPT
+        files[f"{path}/index.html"] = _draft_html(html)
 
     if posts:
-        files["blog/index.html"] = renderer.render_blog_index(
+        files["blog/index.html"] = _draft_html(renderer.render_blog_index(
             site_name, posts, branding, media_base, nav, base_path="../",
             site_base=site_base,
-        ) + _TOKEN_SCRIPT
+        ))
     for post in posts:
         slug = (post.get("slug") or "").strip()
         if slug:
-            files[f"posts/{slug}/index.html"] = renderer.render_post_detail(
+            files[f"posts/{slug}/index.html"] = _draft_html(renderer.render_post_detail(
                 post, site_name, branding, media_base, nav,
                 tenant_slug, site_id, base_path="../../"
-            ) + _TOKEN_SCRIPT
+            ))
 
     if events:
-        files["events/index.html"] = renderer.render_events(
+        files["events/index.html"] = _draft_html(renderer.render_events(
             site_name, events, branding, media_base, nav, base_path="../"
-        ) + _TOKEN_SCRIPT
+        ))
     if media:
-        files["gallery/index.html"] = renderer.render_gallery(
+        files["gallery/index.html"] = _draft_html(renderer.render_gallery(
             site_name, media, branding, media_base, nav, base_path="../"
-        ) + _TOKEN_SCRIPT
+        ))
 
-    files["404.html"] = renderer.render_404(site_name, branding, media_base, nav, base_path="",
-                                            site_base=site_base) + _TOKEN_SCRIPT
+    files["404.html"] = _draft_html(renderer.render_404(site_name, branding, media_base, nav, base_path="",
+                                                         site_base=site_base))
 
     draft_prefix = f"{tenant_slug}/{site_id}/draft/"
     for path, content in files.items():
