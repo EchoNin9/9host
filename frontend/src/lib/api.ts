@@ -2027,6 +2027,91 @@ function contentBase(_tenantSlug: string, siteId: string) {
   return `${getApiUrl()}/api/tenant/sites/${encodeURIComponent(siteId)}`
 }
 
+// --- Pages CRUD ---
+
+export async function fetchContentPages(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<ContentPage[]> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return []
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages`, {
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { pages: ContentPage[] }
+    return data.pages ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function createContentPage(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  body: { path: string; title: string; body?: string; status?: string }
+): Promise<ContentPage | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages`, {
+      method: "POST",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as ContentPage
+  } catch {
+    return null
+  }
+}
+
+export async function updateContentPage(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  pagePath: string,
+  body: { title?: string; body?: string; status?: string }
+): Promise<ContentPage | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !pagePath) return null
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages/${encodeURIComponent(pagePath)}`, {
+      method: "PUT",
+      headers: contentHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as ContentPage
+  } catch {
+    return null
+  }
+}
+
+export async function deleteContentPage(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string,
+  pagePath: string
+): Promise<boolean> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId || !pagePath) return false
+  try {
+    const res = await fetch(`${contentBase(tenantSlug, siteId)}/pages/${encodeURIComponent(pagePath)}`, {
+      method: "DELETE",
+      headers: contentHeaders(tenantSlug, accessToken),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+// --- Posts CRUD ---
+
 export async function fetchContentPosts(
   tenantSlug: string,
   accessToken: string | null,

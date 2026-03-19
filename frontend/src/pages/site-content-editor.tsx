@@ -1,23 +1,18 @@
 import { Link, useParams, Navigate } from "react-router-dom"
 import { useState } from "react"
-import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload } from "lucide-react"
+import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload, LayoutTemplate } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
 import { useSites } from "@/hooks/use-sites"
 import { getToken, fetchDraftPublish, fetchDraftToken, publishSite } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { FeatureGate } from "@/components/feature-gate"
+import { PagesEditor } from "@/components/content-editors/pages-editor"
 import { PostsEditor } from "@/components/content-editors/posts-editor"
 import { EventsEditor } from "@/components/content-editors/events-editor"
 import { MediaEditor } from "@/components/content-editors/media-editor"
 import { BrandingEditor } from "@/components/content-editors/branding-editor"
+import { TemplateSelector } from "@/components/content-editors/template-selector"
 
 /**
  * Content editor shell (Task 2.90).
@@ -177,14 +172,14 @@ function SiteContentEditor() {
             <Palette className="mr-2 size-4" />
             Branding
           </TabsTrigger>
+          <TabsTrigger value="templates" className="justify-start">
+            <LayoutTemplate className="mr-2 size-4" />
+            Templates
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pages" className="mt-0 flex-1">
-          <ContentPlaceholder
-            title="Pages"
-            description="Manage static pages (home, about, contact, etc.)."
-            moduleRef="TBD"
-          />
+          <PagesEditor siteId={siteId!} />
         </TabsContent>
         <TabsContent value="posts" className="mt-0 flex-1">
           <FeatureGate feature="updates_blog">
@@ -206,32 +201,11 @@ function SiteContentEditor() {
             <BrandingEditor site={site!} onSaved={refetch} />
           </FeatureGate>
         </TabsContent>
+        <TabsContent value="templates" className="mt-0 flex-1">
+          <TemplateSelector site={site!} onSaved={refetch} />
+        </TabsContent>
       </Tabs>
     </div>
-  )
-}
-
-function ContentPlaceholder({
-  title,
-  description,
-  moduleRef,
-}: {
-  title: string
-  description: string
-  moduleRef: string
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground">
-          Placeholder for {title} editor. Task {moduleRef}.
-        </p>
-      </CardContent>
-    </Card>
   )
 }
 
