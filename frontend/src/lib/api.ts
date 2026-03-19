@@ -1188,6 +1188,34 @@ export async function fetchDraftPublish(
 }
 
 /**
+ * Publish site to S3 (Task 1.96). Renders template + content to static HTML,
+ * uploads to published/v{N}/, swaps current.json pointer.
+ * Admin/manager only. Returns version info on success.
+ */
+export async function publishSite(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<{ version: number; published_at: string; files_count: number; is_default: boolean } | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${encodeURIComponent(siteId)}/publish`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error((err as { error?: string }).error || `Publish failed (${res.status})`)
+    }
+    const data = (await res.json()) as { publish: { version: number; published_at: string; files_count: number; is_default: boolean } }
+    return data.publish ?? null
+  } catch (e) {
+    throw e
+  }
+}
+
+/**
  * Delete a site.
  */
 export async function deleteSite(

@@ -1,9 +1,9 @@
 import { Link, useParams, Navigate } from "react-router-dom"
 import { useState } from "react"
-import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink } from "lucide-react"
+import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
 import { useSites } from "@/hooks/use-sites"
-import { getToken, fetchDraftPublish, fetchDraftToken } from "@/lib/api"
+import { getToken, fetchDraftPublish, fetchDraftToken, publishSite } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -31,6 +31,9 @@ function SiteContentEditor() {
   const base = tenantBasePath || `/${tenantSlug}`
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [publishLoading, setPublishLoading] = useState(false)
+  const [publishMessage, setPublishMessage] = useState<string | null>(null)
+  const [publishError, setPublishError] = useState<string | null>(null)
 
   const site = siteId ? sites.find((s) => s.id === siteId) : null
 
@@ -55,6 +58,33 @@ function SiteContentEditor() {
       setPreviewError("Preview failed")
     } finally {
       setPreviewLoading(false)
+    }
+  }
+
+  const handlePublish = async () => {
+    if (!tenantSlug || !siteId) return
+    setPublishError(null)
+    setPublishMessage(null)
+    setPublishLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) {
+        setPublishError("Not authenticated")
+        return
+      }
+      const result = await publishSite(tenantSlug, token, siteId)
+      if (result) {
+        setPublishMessage(
+          `Published v${result.version} (${result.files_count} files). Changes may take a few minutes to appear globally.`
+        )
+        void refetch()
+      } else {
+        setPublishError("Publish returned no result")
+      }
+    } catch (e) {
+      setPublishError(e instanceof Error ? e.message : "Publish failed")
+    } finally {
+      setPublishLoading(false)
     }
   }
 
@@ -105,8 +135,22 @@ function SiteContentEditor() {
             <ExternalLink className="mr-2 size-4" />
             {previewLoading ? "Preparing…" : "Preview draft"}
           </Button>
+          <Button
+            size="sm"
+            onClick={handlePublish}
+            disabled={publishLoading}
+          >
+            <Upload className="mr-2 size-4" />
+            {publishLoading ? "Publishing…" : "Publish"}
+          </Button>
           {previewError && (
             <span className="text-sm text-destructive">{previewError}</span>
+          )}
+          {publishError && (
+            <span className="text-sm text-destructive">{publishError}</span>
+          )}
+          {publishMessage && (
+            <span className="text-sm text-green-600 dark:text-green-400">{publishMessage}</span>
           )}
         </div>
       </div>
