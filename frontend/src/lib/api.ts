@@ -209,18 +209,6 @@ export async function fetchAllTenants(
     const res = await fetch(`${base}/api/admin/tenants`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
-    // #region agent log
-    if (!res.ok) {
-      const bodyText = await res.text()
-      let bodyJson: unknown = null
-      try {
-        bodyJson = bodyText ? JSON.parse(bodyText) : null
-      } catch {
-        bodyJson = bodyText
-      }
-      console.warn('[9host debug] fetchAllTenants failed:', JSON.stringify({status:res.status,hasToken:!!accessToken,body:bodyJson}, null, 2))
-    }
-    // #endregion
     if (res.status === 403) return { tenants: [], isSuperadmin: false }
     if (!res.ok) return { tenants: [], isSuperadmin: false }
     const data = (await res.json()) as AdminTenantsResponse
@@ -1002,25 +990,10 @@ export async function fetchSites(
     const res = await fetch(`${base}/api/tenant/sites`, {
       headers: sitesHeaders(tenantSlug, accessToken),
     })
-    // #region agent log
-    if (!res.ok) {
-      const bodyText = await res.text()
-      let bodyJson: unknown = null
-      try {
-        bodyJson = bodyText ? JSON.parse(bodyText) : null
-      } catch {
-        bodyJson = bodyText
-      }
-      console.warn('[9host debug] fetchSites failed:', JSON.stringify({status:res.status,tenantSlug,hasToken:!!accessToken,body:bodyJson}, null, 2))
-    }
-    // #endregion
     if (!res.ok) return []
     const data = (await res.json()) as SitesResponse
     return data.sites ?? []
-  } catch (e) {
-    // #region agent log
-    console.warn('[9host debug] fetchSites threw:',{error:String(e)})
-    // #endregion
+  } catch {
     return []
   }
 }
@@ -1155,6 +1128,60 @@ export async function fetchSitePreview(
     if (!res.ok) return null
     const data = (await res.json()) as { preview: SitePreviewData }
     return data.preview ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Draft preview token response (Task 1.117). */
+export interface DraftTokenResponse {
+  token: string
+  preview_url: string
+  expires_in: number
+}
+
+/**
+ * Get draft preview token. Returns preview_url to open in new tab.
+ * Call draft-publish first to ensure latest content is rendered.
+ */
+export async function fetchDraftToken(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<DraftTokenResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${encodeURIComponent(siteId)}/draft-token`, {
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as DraftTokenResponse
+    return data
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Publish draft to S3 (render current content to draft/ prefix).
+ * Call before opening preview to ensure latest state.
+ */
+export async function fetchDraftPublish(
+  tenantSlug: string,
+  accessToken: string | null,
+  siteId: string
+): Promise<{ files_count: number } | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !siteId) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/sites/${encodeURIComponent(siteId)}/draft-publish`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { draft: { files_count: number } }
+    return data.draft ?? null
   } catch {
     return null
   }
@@ -1736,6 +1763,10 @@ export interface Template {
   components: Record<string, unknown>
   created_at?: string
   updated_at?: string
+  /** Task 1.124: true if tenant-owned forked template */
+  is_custom?: boolean
+  /** Task 1.124: original platform template slug when forked */
+  forked_from?: string
 }
 
 export interface TemplatesResponse {
@@ -1758,6 +1789,28 @@ export async function fetchTemplates(
     return data.templates ?? []
   } catch {
     return []
+  }
+}
+
+/** Fork a platform template (Task 1.123). Pro+ only. */
+export async function forkTemplate(
+  tenantSlug: string,
+  accessToken: string | null,
+  body: { template_slug: string; name?: string; slug?: string }
+): Promise<{ slug: string; name: string } | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug) return null
+  try {
+    const res = await fetch(`${base}/api/tenant/templates/fork`, {
+      method: "POST",
+      headers: sitesHeaders(tenantSlug, accessToken),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { template: { slug: string; name: string } }
+    return data.template ?? null
+  } catch {
+    return null
   }
 }
 

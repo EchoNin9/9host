@@ -102,13 +102,31 @@
 | 1.103 | CloudNS site CNAME sync: add/delete `{site-slug}.echo9.net` on site create/update/delete | DONE | api/cloudns_helpers.py; hooks in sites_handler + admin_tenant_resources. Lambda: CloudNS secret + CLOUDNS_ZONE env. |
 | 1.104 | **FIX: GET /api/tenant/sites 500** — ValidationException: FilterExpression cannot use pk/sk | DONE | Remove FilterExpression from query_sites_in_tenant; filter content items (PAGE, POST, etc.) in app. dynamodb_helpers, sites_handler, admin_tenant_resources. |
 | 1.105 | **FIX: Superadmin impersonation 403** — tenant routes return "Not a member" when impersonating | DONE | require_tenant_auth + require_tenant_admin_or_manager allow when X-Impersonate-Tenant matches and user is superadmin. auth_helpers, all handlers calling require_tenant_admin_or_manager. |
-| 1.106 | Remove debug instrumentation (CloudWatch prints, api.ts console.warn) | TODO | handler.py, middleware.py, sites_handler.py, frontend api.ts. Safe to remove after 1.104/1.105 verified. |
+| 1.106 | Remove debug instrumentation (CloudWatch prints, api.ts console.warn) | DONE | handler.py, middleware.py, sites_handler.py, frontend api.ts. |
 | | **Published Site Viewing — {site-slug}.echo9.net displays tenant site** | | |
 | 1.107 | Site-slug resolution: extend default_site_handler to try bySiteSlug GSI first, then S3 default.json. Return `{site_id, tenant_slug}` when subdomain is site slug | DONE | api/default_site_handler.py, dynamodb_helpers. Resolves jinks1.echo9.net → tenant + site_id. Unblocks 2.98. |
 | 1.108 | CF Function: support `/site/{tenant}/{site_id}/*` path format; use tenant from path when present, else from Host | DONE | infra/cf-site-content.js. Enables site-slug subdomains where tenant ≠ subdomain. |
 | 1.109 | Publish: template-aware rendering (components, sections), posts index/detail, events page, branding injection | DONE | api/publish_handler.py. Use template.components; render /blog/, /posts/{slug}/, /events/; site.branding. |
 | 1.110 | Media origin: add 9host-media to sites CloudFront, `/media/*` behavior, CF Function rewrite to S3 key, bucket policy | DONE | infra/cloudfront.tf, cf-media-content.js, s3.tf. Media URLs /media/{tenant}/{site}/{filename}. |
 | 1.111 | Publish: wire media URLs as `/media/{tenant}/{site}/{filename}` in rendered HTML | DONE | api/publish_handler.py. Gallery page, body URL rewrite, logo. Depends on 1.110. |
+| | **Live Site Hosting MVP (docs/WEB_HOSTING_LIVE_PLAN.md)** | | Batch 21–28 |
+| 1.112 | Template layout system: `api/templates/` directory, `base_layout.py`, `TemplateRenderer` base class | DONE | Batch 21 |
+| 1.113 | Template layouts: musician_band, personal_tech, personal_resume, professional_services, business_generic | DONE | Batch 21 |
+| 1.114 | CSS theme generation per template: responsive, typography, color palette, component styles | DONE | Batch 22 |
+| 1.115 | Refactor `publish_handler.py` to use template renderer system | DONE | Batch 22 |
+| 1.116 | Draft publish: render draft HTML to `{tenant}/{site}/draft/` on save | DONE | Batch 24 |
+| 1.117 | Draft token API: `GET /api/tenant/sites/{id}/draft-token` (JWT, 1hr expiry) | DONE | Batch 23 |
+| 1.118 | CF Function: `/preview` path handling with JWT exp check, rewrite to draft S3 prefix | DONE | Batch 24 |
+| 1.119 | CloudFront KVS for custom domain mapping | DEFERRED | Phase 3 cancelled; CF Functions cannot change origin by host |
+| 1.120 | Update `9host-acm-handler` Lambda: write/delete domain mapping in KVS on activation/deletion | DEFERRED | Phase 3 cancelled |
+| 1.121 | Update `cf-site-content.js`: KVS lookup for non-echo9 hosts | DEFERRED | Phase 3 cancelled |
+| 1.122 | Publish: respect module toggles (`resolved_features`) | DONE | Batch 25 |
+| 1.123 | Tenant template schema + fork API: `POST /api/tenant/templates/fork` | DONE | Batch 26 |
+| 1.124 | Tenant template CRUD: `GET/PUT/DELETE /api/tenant/templates` | DONE | Batch 27 |
+| 1.125 | Publish: resolve tenant templates first, then platform | DONE | Batch 27 |
+| 1.126 | Custom domain: update `default_site_handler` for non-echo9 hosts (byDomain GSI) | DEFERRED | Phase 3 cancelled |
+| 1.127 | Published site 404 page (template-aware) | DONE | Batch 28 |
+| 1.128 | SEO: sitemap.xml + robots.txt on publish, meta tags in HTML | DONE | Batch 28 |
 
 ### Agent 2 — Frontend / UI
 
@@ -212,6 +230,12 @@
 | 2.94 | Branding editor: logo, colors, fonts. Store in site settings or content | DONE | branding-editor.tsx, site.branding. |
 | | **Published Site Viewing** | | |
 | 2.98 | RootRoute: when default-site API returns `tenant_slug`, redirect to `/site/{tenant}/{site_id}/` | DONE | App.tsx RootRoute, api.ts fetchDefaultSite. Depends on 1.107. |
+| | **Live Site Hosting MVP** | | Batch 21–28 |
+| 2.99 | Content editor: gate tabs by module (FeatureGate on Posts/Events/Media/Branding) | DONE | Batch 21 |
+| 2.100 | Draft preview button in content editor: call draft-token API, open in new tab | DONE | Batch 23 |
+| 2.101 | Template fork UI: "Customize" button in template picker, fork flow | DONE | Batch 26 |
+| 2.102 | Tenant template settings page: edit name, default branding, pages, custom CSS | DONE | Batch 27 (MVP lite: ForkTemplateSheet) |
+| 2.103 | Template picker: show tenant templates with "Custom" badge alongside platform templates | DONE | Batch 27 |
 
 ### Agent 4 — Self-Serve (Future)
 

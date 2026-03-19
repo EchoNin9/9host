@@ -314,6 +314,25 @@ def get_template_item(slug: str) -> dict[str, Any]:
     }
 
 
+def get_tenant_template_item(tenant_slug: str, template_slug: str) -> dict[str, Any]:
+    """GetItem params for tenant-owned template (Task 1.123)."""
+    return {
+        "pk": pk_tenant(tenant_slug),
+        "sk": sk_template(template_slug),
+    }
+
+
+def query_tenant_templates(tenant_slug: str) -> dict[str, Any]:
+    """Query params: list tenant's templates (forked)."""
+    return {
+        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
+        "ExpressionAttributeValues": {
+            ":pk": pk_tenant(tenant_slug),
+            ":sk_prefix": "TEMPLATE#",
+        },
+    }
+
+
 def query_templates() -> dict[str, Any]:
     """Query params: list all platform templates."""
     return {

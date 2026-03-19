@@ -11,7 +11,7 @@ import os
 import boto3
 
 from auth_helpers import require_tenant_auth
-from dynamodb_helpers import get_tenant_item, query_templates
+from dynamodb_helpers import get_tenant_item, query_templates, query_tenant_templates
 from middleware import with_tenant
 from tier_config import tier_rank as _tier_rank
 
@@ -56,12 +56,10 @@ def get_templates_handler(event: dict, context: dict) -> dict:
         return _json_response(404, {"error": "Tenant not found."})
     tenant_tier_rank = _tier_rank(tenant_item.get("tier", "FREE"))
 
-    # Query all platform templates
+    # Query platform templates
     resp = table.query(**query_templates())
-    items = resp.get("Items", [])
-
     templates = []
-    for item in items:
+    for item in resp.get("Items", []):
         sk = item.get("sk", "")
         if not sk.startswith("TEMPLATE#"):
             continue
@@ -74,7 +72,27 @@ def get_templates_handler(event: dict, context: dict) -> dict:
                 "description": item.get("description", ""),
                 "tier_required": tier_required,
                 "components": item.get("components") or {},
+                "is_custom": False,
             })
 
-    templates.sort(key=lambda t: t["slug"])
+    # Query tenant templates (Task 1.124)
+    tenant_resp = table.query(**query_tenant_templates(tenant_slug))
+    for item in tenant_resp.get("Items", []):
+        sk = item.get("sk", "")
+        if not sk.startswith("TEMPLATE#"):
+            continue
+        slug = sk.replace("TEMPLATE#", "")
+        tier_required = item.get("tier_required", "FREE")
+        if _tier_rank(tier_required) <= tenant_tier_rank:
+            templates.append({
+                "slug": slug,
+                "name": item.get("name", slug),
+                "description": item.get("description", ""),
+                "tier_required": tier_required,
+                "components": item.get("components") or {},
+                "forked_from": item.get("forked_from"),
+                "is_custom": True,
+            })
+
+    templates.sort(key=lambda t: (not t.get("is_custom"), t["slug"]))
     return _json_response(200, {"templates": templates})

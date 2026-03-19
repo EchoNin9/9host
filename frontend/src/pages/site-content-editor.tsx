@@ -1,7 +1,9 @@
 import { Link, useParams, Navigate } from "react-router-dom"
-import { FileText, Newspaper, Calendar, Image, Palette } from "lucide-react"
+import { useState } from "react"
+import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
 import { useSites } from "@/hooks/use-sites"
+import { getToken, fetchDraftPublish, fetchDraftToken } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -11,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { FeatureGate } from "@/components/feature-gate"
 import { PostsEditor } from "@/components/content-editors/posts-editor"
 import { EventsEditor } from "@/components/content-editors/events-editor"
 import { MediaEditor } from "@/components/content-editors/media-editor"
@@ -26,8 +29,34 @@ function SiteContentEditor() {
   const { siteId } = useParams<{ siteId: string }>()
   const { sites, loading, refetch } = useSites(tenantSlug)
   const base = tenantBasePath || `/${tenantSlug}`
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const site = siteId ? sites.find((s) => s.id === siteId) : null
+
+  const handlePreviewDraft = async () => {
+    if (!tenantSlug || !siteId || !site?.slug) return
+    setPreviewError(null)
+    setPreviewLoading(true)
+    try {
+      const token = await getToken()
+      if (!token) {
+        setPreviewError("Not authenticated")
+        return
+      }
+      await fetchDraftPublish(tenantSlug, token, siteId)
+      const data = await fetchDraftToken(tenantSlug, token, siteId)
+      if (data?.preview_url) {
+        window.open(data.preview_url, "_blank", "noopener,noreferrer")
+      } else {
+        setPreviewError("Could not get preview URL")
+      }
+    } catch {
+      setPreviewError("Preview failed")
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
 
   if (!tenantSlug || !siteId) {
     return <Navigate to={base ? `${base}/sites` : "/"} replace />
@@ -66,6 +95,20 @@ function SiteContentEditor() {
             Content editor — {site.slug || site.id}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePreviewDraft}
+            disabled={previewLoading || !site?.slug}
+          >
+            <ExternalLink className="mr-2 size-4" />
+            {previewLoading ? "Preparing…" : "Preview draft"}
+          </Button>
+          {previewError && (
+            <span className="text-sm text-destructive">{previewError}</span>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="pages" orientation="vertical" className="flex flex-1 gap-6">
@@ -100,16 +143,24 @@ function SiteContentEditor() {
           />
         </TabsContent>
         <TabsContent value="posts" className="mt-0 flex-1">
-          <PostsEditor siteId={siteId!} />
+          <FeatureGate feature="updates_blog">
+            <PostsEditor siteId={siteId!} />
+          </FeatureGate>
         </TabsContent>
         <TabsContent value="events" className="mt-0 flex-1">
-          <EventsEditor siteId={siteId!} />
+          <FeatureGate feature="events_shows">
+            <EventsEditor siteId={siteId!} />
+          </FeatureGate>
         </TabsContent>
         <TabsContent value="media" className="mt-0 flex-1">
-          <MediaEditor siteId={siteId!} />
+          <FeatureGate feature="media_gallery">
+            <MediaEditor siteId={siteId!} />
+          </FeatureGate>
         </TabsContent>
         <TabsContent value="branding" className="mt-0 flex-1">
-          <BrandingEditor site={site!} onSaved={refetch} />
+          <FeatureGate feature="branding">
+            <BrandingEditor site={site!} onSaved={refetch} />
+          </FeatureGate>
         </TabsContent>
       </Tabs>
     </div>

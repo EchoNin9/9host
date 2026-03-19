@@ -235,6 +235,18 @@ resource "aws_cloudfront_function" "site_content" {
 }
 
 # ------------------------------------------------------------------------------
+# Task 1.118: CloudFront Function — /preview?token=jwt → draft S3 path
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_function" "preview_content" {
+  name    = "9host-preview-content"
+  runtime = "cloudfront-js-2.0"
+  comment = "Draft preview: /preview?token=jwt → S3 draft/ path"
+  publish = true
+
+  code = file("${path.module}/cf-preview-content.js")
+}
+
+# ------------------------------------------------------------------------------
 # Task 1.110: CloudFront Function — /media/{tenant}/{site}/{filename} → S3
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_function" "media_content" {
@@ -306,6 +318,32 @@ resource "aws_cloudfront_distribution" "sites" {
     min_ttl     = 0
     default_ttl = 86400
     max_ttl     = 31536000
+  }
+
+  # Task 1.118: Draft preview — /preview*?token=jwt → 9host-sites draft/
+  ordered_cache_behavior {
+    path_pattern           = "/preview*"
+    target_origin_id       = "S3-9host-sites"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = true
+      cookies {
+        forward = "none"
+      }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.preview_content.arn
+    }
+
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
   }
 
   # Task 1.97: Site content — /site/{site_id}/* → 9host-sites
