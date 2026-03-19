@@ -14,6 +14,21 @@ function handler(event) {
     return request;
   }
 
+  // Redirect /preview?token=X to /preview/?token=X so relative paths resolve correctly
+  if (uri === "/preview") {
+    var qsParts = [];
+    for (var k in qs) {
+      if (qs[k] && qs[k].value !== undefined) {
+        qsParts.push(k + "=" + encodeURIComponent(qs[k].value));
+      }
+    }
+    return {
+      statusCode: 301,
+      statusDescription: "Moved Permanently",
+      headers: { location: { value: "/preview/" + (qsParts.length ? "?" + qsParts.join("&") : "") } },
+    };
+  }
+
   var token = qs.token && qs.token.value;
   if (!token) {
     return { statusCode: 403, statusDescription: "Forbidden", body: "Missing token" };
