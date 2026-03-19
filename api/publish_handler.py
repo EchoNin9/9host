@@ -68,7 +68,8 @@ def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool
         }
         resp = table.query(**params)
         for item in resp.get("Items", []):
-            if published_only and (item.get("status") or "").upper() != "PUBLISHED":
+            # Media items are uploaded assets — no draft/published lifecycle
+            if published_only and entity != "MEDIA" and (item.get("status") or "").upper() != "PUBLISHED":
                 continue
             if entity == "PAGE":
                 pages.append({
