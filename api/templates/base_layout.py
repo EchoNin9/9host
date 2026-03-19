@@ -65,19 +65,24 @@ def branding_styles(branding: dict) -> str:
     return "<style>\n:root {\n" + "\n".join(parts) + "\n}\n</style>\n  "
 
 
-def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = False) -> str:
-    """Build nav links from pages + blog + events + gallery."""
+def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = False, site_base: str = "") -> str:
+    """Build nav links from pages + blog + events + gallery.
+
+    site_base: URL prefix for all internal links (e.g. '/site/{tenant}/{site_id}').
+    Empty string produces root-relative paths.
+    """
+    base = site_base.rstrip("/")
     links = []
     for p in pages:
         path = (p.get("path") or "").strip()
         if path:
-            links.append(f'<li><a href="/{path}/">{escape_html(p.get("title") or path)}</a></li>')
+            links.append(f'<li><a href="{base}/{path}/">{escape_html(p.get("title") or path)}</a></li>')
     if has_posts:
-        links.append('<li><a href="/blog/">Blog</a></li>')
+        links.append(f'<li><a href="{base}/blog/">Blog</a></li>')
     if has_events:
-        links.append('<li><a href="/events/">Events</a></li>')
+        links.append(f'<li><a href="{base}/events/">Events</a></li>')
     if has_media:
-        links.append('<li><a href="/gallery/">Gallery</a></li>')
+        links.append(f'<li><a href="{base}/gallery/">Gallery</a></li>')
     return "\n      ".join(links) if links else ""
 
 
@@ -149,19 +154,21 @@ class TemplateRenderer(ABC):
         base_path: str = "",
         meta_description: str = "",
         meta_image: str = "",
+        site_base: str = "",
     ) -> str:
         """Render index.html."""
-        nav = nav_links(pages, bool(posts), bool(events), has_media)
+        sb = site_base.rstrip("/")
+        nav = nav_links(pages, bool(posts), bool(events), has_media, site_base=site_base)
         links = "".join(
-            f'    <li><a href="/{p["path"]}/">{escape_html(p["title"] or p["path"])}</a></li>\n'
+            f'    <li><a href="{sb}/{p["path"]}/">{escape_html(p["title"] or p["path"])}</a></li>\n'
             for p in pages
         )
         if posts:
-            links += '    <li><a href="/blog/">Blog</a></li>\n'
+            links += f'    <li><a href="{sb}/blog/">Blog</a></li>\n'
         if events:
-            links += '    <li><a href="/events/">Events</a></li>\n'
+            links += f'    <li><a href="{sb}/events/">Events</a></li>\n'
         if has_media:
-            links += '    <li><a href="/gallery/">Gallery</a></li>\n'
+            links += f'    <li><a href="{sb}/gallery/">Gallery</a></li>\n'
         head = self.html_head(
             site_name, site_name, branding, media_base, base_path,
             meta_description=meta_description, meta_image=meta_image,
@@ -231,10 +238,12 @@ class TemplateRenderer(ABC):
         media_base: str,
         nav: str,
         base_path: str = "",
+        site_base: str = "",
     ) -> str:
         """Render /blog/ index."""
+        sb = site_base.rstrip("/")
         items = "".join(
-            f'    <li><a href="/posts/{escape_html(p["slug"])}/">{escape_html(p["title"] or p["slug"])}</a></li>\n'
+            f'    <li><a href="{sb}/posts/{escape_html(p["slug"])}/">{escape_html(p["title"] or p["slug"])}</a></li>\n'
             for p in posts
         )
         head = self.html_head("Blog", site_name, branding, media_base, base_path)
@@ -367,8 +376,10 @@ class TemplateRenderer(ABC):
         media_base: str,
         nav: str,
         base_path: str = "",
+        site_base: str = "",
     ) -> str:
         """Render template-aware 404 page (Task 1.127)."""
+        sb = site_base.rstrip("/")
         head = self.html_head("Page not found", site_name, branding, media_base, base_path)
         header = self.html_header(site_name, branding, media_base, nav)
         return f"""<!DOCTYPE html>
@@ -381,7 +392,7 @@ class TemplateRenderer(ABC):
   <main class="main-content">
     <h2 class="page-title">Page not found</h2>
     <p>The page you requested could not be found.</p>
-    <p><a href="/">Return to home</a></p>
+    <p><a href="{sb}/">Return to home</a></p>
   </main>
 </body>
 </html>"""

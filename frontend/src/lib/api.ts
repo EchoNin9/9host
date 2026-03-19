@@ -254,7 +254,7 @@ function tenantHeaders(tenantSlug: string, accessToken: string) {
  */
 export async function fetchDefaultSite(
   subdomainSlug: string
-): Promise<{ site_id: string; tenant_slug?: string } | null> {
+): Promise<{ site_id: string; tenant_slug?: string; published?: boolean } | null> {
   const base = getApiUrl()
   if (!base || !subdomainSlug) return null
 
@@ -263,7 +263,7 @@ export async function fetchDefaultSite(
       headers: { "X-Tenant-Slug": subdomainSlug },
     })
     if (!res.ok) return null
-    return (await res.json()) as { site_id: string; tenant_slug?: string }
+    return (await res.json()) as { site_id: string; tenant_slug?: string; published?: boolean }
   } catch {
     return null
   }

@@ -127,6 +127,10 @@
 | 1.126 | Custom domain: update `default_site_handler` for non-echo9 hosts (byDomain GSI) | DEFERRED | Phase 3 cancelled |
 | 1.127 | Published site 404 page (template-aware) | DONE | Batch 28 |
 | 1.128 | SEO: sitemap.xml + robots.txt on publish, meta tags in HTML | DONE | Batch 28 |
+| | **Published Site Viewing — Fixes (site-slug shows admin, links wrong, templates)** | | |
+| 1.107a | **FIX: site-slug resolution** — Ensure default-site returns `{site_id, tenant_slug}` for site-slug subdomains when site is published. Debug bySiteSlug GSI, current.json, API response | DONE | Always return {site_id, tenant_slug, published} when GSI resolves. No more falling through to tenant path. |
+| 1.108a | **FIX: published site links** — Use `/site/{tenant}/{site_id}/` as base path for all internal links (nav, pages, blog, events, gallery). Root-relative links hit SPA | DONE | site_base param in nav_links, render_index, render_blog_index, render_404. publish_handler passes site_base. |
+| 1.115a | **FIX: templates not applied** — Verify publish uses template renderer; ensure template_id on site; re-publish existing sites to apply templates | DONE | Fallback to business-generic renderer when template slug not found. |
 
 ### Agent 2 — Frontend / UI
 
@@ -236,6 +240,7 @@
 | 2.101 | Template fork UI: "Customize" button in template picker, fork flow | DONE | Batch 26 |
 | 2.102 | Tenant template settings page: edit name, default branding, pages, custom CSS | DONE | Batch 27 (MVP lite: ForkTemplateSheet) |
 | 2.103 | Template picker: show tenant templates with "Custom" badge alongside platform templates | DONE | Batch 27 |
+| 2.98a | **FIX: RootRoute fallback** — When fetchDefaultSite fails, show "Site not found" instead of redirecting to tenant admin | DONE | SiteNotFound component. Use published flag from API. |
 
 ### Agent 4 — Self-Serve (Future)
 

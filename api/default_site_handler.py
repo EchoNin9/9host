@@ -45,24 +45,25 @@ def default_site_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb", region_name=region)
     table = dynamodb.Table(table_name)
 
-    # 1. Try bySiteSlug GSI: subdomain as site slug (Task 1.107)
+    # 1. Try bySiteSlug GSI: subdomain as site slug (Task 1.107, 1.107a)
     resolved = resolve_site_slug_by_subdomain(table, subdomain)
     if resolved:
         tenant_slug, site_id = resolved
-        # Only return if site has published content (avoids redirect to 404 → SPA fallback)
         s3_client = boto3.client("s3", region_name=region)
+        published = False
         try:
             s3_client.head_object(
                 Bucket=S3_SITES_BUCKET,
                 Key=f"{tenant_slug}/{site_id}/published/current.json",
             )
-            return _json_response(200, {"site_id": site_id, "tenant_slug": tenant_slug})
-        except BotoClientError as e:
-            err_code = e.response.get("Error", {}).get("Code", "")
-            if err_code in ("404", "NoSuchKey"):
-                pass  # fall through to try as tenant or 404
-            else:
-                return _json_response(500, {"error": "Failed to resolve default site."})
+            published = True
+        except BotoClientError:
+            pass
+        return _json_response(200, {
+            "site_id": site_id,
+            "tenant_slug": tenant_slug,
+            "published": published,
+        })
 
     # 2. Treat subdomain as tenant, read S3 default.json
     s3_client = boto3.client("s3", region_name=region)

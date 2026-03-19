@@ -287,10 +287,12 @@ def _publish_site(
     media_base: str,
     resolved_features: dict | None = None,
 ) -> dict:
-    """Perform the publish flow (Task 1.109, 1.111, 1.115, 1.122, 1.125: template-aware, tenant templates)."""
+    """Perform the publish flow (Task 1.109, 1.111, 1.115, 1.115a, 1.122, 1.125: template-aware, tenant templates)."""
     # Use forked_from for renderer selection; forked templates inherit base layout
     base_slug = (template_item.get("forked_from") or template_item.get("slug") or "").strip().lower()
     renderer = get_renderer(base_slug)
+    if not renderer:
+        renderer = get_renderer("business-generic")
     if not renderer:
         raise ValueError(f"No renderer for template: {base_slug}")
 
@@ -312,7 +314,9 @@ def _publish_site(
 
     from templates.base_layout import nav_links
 
-    nav = nav_links(pages, bool(posts), bool(events), bool(media))
+    # Task 1.108a: site_base prefix for all internal links so they work under /site/{tenant}/{site_id}/
+    site_base = f"/site/{tenant_slug}/{site_id}"
+    nav = nav_links(pages, bool(posts), bool(events), bool(media), site_base=site_base)
 
     # Build files to publish (Task 1.115: template renderer + style.css)
     files = {}
@@ -324,7 +328,7 @@ def _publish_site(
     meta_image = media_url(branding.get("logo_s3_key", ""), media_base) if branding and branding.get("logo_s3_key") else ""
     files["index.html"] = renderer.render_index(
         site_name, pages, posts, events, branding, media_base, bool(media), base_path="",
-        meta_description=site_name, meta_image=meta_image,
+        meta_description=site_name, meta_image=meta_image, site_base=site_base,
     )
 
     # Per-page HTML
@@ -342,7 +346,7 @@ def _publish_site(
     # /blog/ (posts index)
     if posts:
         files["blog/index.html"] = renderer.render_blog_index(
-            site_name, posts, branding, media_base, nav, base_path="../"
+            site_name, posts, branding, media_base, nav, base_path="../", site_base=site_base,
         )
 
     # /posts/{slug}/ (post detail)
@@ -367,7 +371,7 @@ def _publish_site(
         )
 
     # 404 page (Task 1.127)
-    files["404.html"] = renderer.render_404(site_name, branding, media_base, nav, base_path="")
+    files["404.html"] = renderer.render_404(site_name, branding, media_base, nav, base_path="", site_base=site_base)
 
     # SEO (Task 1.128): sitemap.xml, robots.txt
     domains = (os.environ.get("DOMAINS") or "echo9.net").split(",")
@@ -486,6 +490,8 @@ def _draft_publish_site(
     """Render draft HTML to S3 draft/ prefix (Task 1.116, 1.122, 1.125). No versioning."""
     base_slug = (template_item.get("forked_from") or template_item.get("slug") or "").strip().lower()
     renderer = get_renderer(base_slug)
+    if not renderer:
+        renderer = get_renderer("business-generic")
     if not renderer:
         raise ValueError(f"No renderer for template: {base_slug}")
 
