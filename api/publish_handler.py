@@ -46,19 +46,19 @@ def _json_response(status: int, body: dict) -> dict:
     }
 
 
-def _collect_published_content(table, tenant_slug: str, site_id: str) -> dict:
-    """Fetch all PUBLISHED content for the site."""
+def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool = True) -> dict:
+    """Fetch site content from DynamoDB.
+
+    Args:
+        published_only: If True, only include items with status=PUBLISHED.
+                       If False, include all items (for draft preview).
+    """
     pages = []
     posts = []
     events = []
     media = []
 
-    for entity, sk_prefix in [
-        ("PAGE", "PAGE#"),
-        ("POST", "POST#"),
-        ("EVENT", "EVENT#"),
-        ("MEDIA", "MEDIA#"),
-    ]:
+    for entity in ("PAGE", "POST", "EVENT", "MEDIA"):
         params = {
             "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk)",
             "ExpressionAttributeValues": {
@@ -68,104 +68,33 @@ def _collect_published_content(table, tenant_slug: str, site_id: str) -> dict:
         }
         resp = table.query(**params)
         for item in resp.get("Items", []):
-            if (item.get("status") or "").upper() != "PUBLISHED":
+            if published_only and (item.get("status") or "").upper() != "PUBLISHED":
                 continue
             if entity == "PAGE":
-                path = item.get("path", "")
-                pages.append(
-                    {
-                        "path": path,
-                        "title": item.get("title", ""),
-                        "body": item.get("body", ""),
-                    }
-                )
+                pages.append({
+                    "path": item.get("path", ""),
+                    "title": item.get("title", ""),
+                    "body": item.get("body", ""),
+                })
             elif entity == "POST":
-                slug = item.get("slug", "")
-                posts.append(
-                    {
-                        "slug": slug,
-                        "title": item.get("title", ""),
-                        "body": item.get("body", ""),
-                        "excerpt": item.get("excerpt", ""),
-                        "featured_image_s3_key": item.get("featured_image_s3_key", ""),
-                    }
-                )
+                posts.append({
+                    "slug": item.get("slug", ""),
+                    "title": item.get("title", ""),
+                    "body": item.get("body", ""),
+                    "excerpt": item.get("excerpt", ""),
+                    "featured_image_s3_key": item.get("featured_image_s3_key", ""),
+                })
             elif entity == "EVENT":
-                events.append(
-                    {
-                        "title": item.get("title", ""),
-                        "event_date": item.get("event_date", ""),
-                        "venue": item.get("venue", ""),
-                    }
-                )
+                events.append({
+                    "title": item.get("title", ""),
+                    "event_date": item.get("event_date", ""),
+                    "venue": item.get("venue", ""),
+                })
             elif entity == "MEDIA":
-                media.append(
-                    {
-                        "s3_key": item.get("s3_key", ""),
-                        "caption": item.get("caption", ""),
-                    }
-                )
-
-    return {"pages": pages, "posts": posts, "events": events, "media": media}
-
-
-def _collect_draft_content(table, tenant_slug: str, site_id: str) -> dict:
-    """Fetch all content (DRAFT + PUBLISHED) for draft preview. Prefer latest."""
-    pages = []
-    posts = []
-    events = []
-    media = []
-
-    for entity, sk_prefix in [
-        ("PAGE", "PAGE#"),
-        ("POST", "POST#"),
-        ("EVENT", "EVENT#"),
-        ("MEDIA", "MEDIA#"),
-    ]:
-        params = {
-            "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk)",
-            "ExpressionAttributeValues": {
-                ":pk": pk_tenant(tenant_slug),
-                ":sk": f"SITE#{site_id}#{entity}#",
-            },
-        }
-        resp = table.query(**params)
-        for item in resp.get("Items", []):
-            if entity == "PAGE":
-                path = item.get("path", "")
-                pages.append(
-                    {
-                        "path": path,
-                        "title": item.get("title", ""),
-                        "body": item.get("body", ""),
-                    }
-                )
-            elif entity == "POST":
-                slug = item.get("slug", "")
-                posts.append(
-                    {
-                        "slug": slug,
-                        "title": item.get("title", ""),
-                        "body": item.get("body", ""),
-                        "excerpt": item.get("excerpt", ""),
-                        "featured_image_s3_key": item.get("featured_image_s3_key", ""),
-                    }
-                )
-            elif entity == "EVENT":
-                events.append(
-                    {
-                        "title": item.get("title", ""),
-                        "event_date": item.get("event_date", ""),
-                        "venue": item.get("venue", ""),
-                    }
-                )
-            elif entity == "MEDIA":
-                media.append(
-                    {
-                        "s3_key": item.get("s3_key", ""),
-                        "caption": item.get("caption", ""),
-                    }
-                )
+                media.append({
+                    "s3_key": item.get("s3_key", ""),
+                    "caption": item.get("caption", ""),
+                })
 
     return {"pages": pages, "posts": posts, "events": events, "media": media}
 
@@ -306,7 +235,7 @@ def _publish_site(
     branding = (
         site_item.get("branding") if has_branding and isinstance(site_item.get("branding"), dict) else {}
     )
-    content = _collect_published_content(table, tenant_slug, site_id)
+    content = _collect_content(table, tenant_slug, site_id, published_only=True)
     pages = content["pages"]
     posts = content["posts"] if has_blog else []
     events = content["events"] if has_events else []
@@ -505,7 +434,7 @@ def _draft_publish_site(
     branding = (
         site_item.get("branding") if has_branding and isinstance(site_item.get("branding"), dict) else {}
     )
-    content = _collect_draft_content(table, tenant_slug, site_id)
+    content = _collect_content(table, tenant_slug, site_id, published_only=False)
     pages = content["pages"]
     posts = content["posts"] if has_blog else []
     events = content["events"] if has_events else []

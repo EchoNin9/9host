@@ -259,6 +259,19 @@ resource "aws_cloudfront_function" "media_content" {
 }
 
 # ------------------------------------------------------------------------------
+# SPA routing for default behavior — replaces distribution-level custom_error_response
+# so /site/* and /media/* behaviors can return real S3 errors instead of the SPA.
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_function" "spa_routing" {
+  name    = "9host-spa-routing"
+  runtime = "cloudfront-js-2.0"
+  comment = "SPA routing: non-file paths → /index.html (admin frontend)"
+  publish = true
+
+  code = file("${path.module}/cf-spa-routing.js")
+}
+
+# ------------------------------------------------------------------------------
 # Task 1.78: Wildcard distribution for *.echo9.net (sites + tenant subdomains)
 # Serves tenant admin SPA. Task 1.97: 9host-sites origin for published site content.
 # ------------------------------------------------------------------------------
@@ -386,24 +399,22 @@ resource "aws_cloudfront_distribution" "sites" {
       }
     }
 
+    # SPA routing: CF Function rewrites non-file paths to /index.html
+    # (replaces custom_error_response so /site/* can return real S3 errors)
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_routing.arn
+    }
+
     min_ttl     = 0
     default_ttl = 3600
     max_ttl     = 86400
   }
 
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
+  # custom_error_response removed: SPA routing is now handled by the
+  # cf-spa-routing.js CF Function on the default behavior. This allows
+  # /site/* and /media/* behaviors to return real S3 403/404 errors
+  # instead of silently serving the React SPA.
 
   viewer_certificate {
     acm_certificate_arn      = aws_acm_certificate.wildcard.arn

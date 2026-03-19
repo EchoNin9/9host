@@ -73,7 +73,7 @@ def default_site_handler(event: dict, context: dict) -> dict:
         site_id = data.get("site_id")
         if not site_id:
             return _json_response(404, {"error": "No default site."})
-        return _json_response(200, {"site_id": site_id})
+        return _json_response(200, {"site_id": site_id, "published": True})
     except BotoClientError as e:
         if e.response["Error"]["Code"] == "NoSuchKey":
             return _json_response(404, {"error": "No default site."})
