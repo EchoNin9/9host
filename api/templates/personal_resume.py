@@ -4,7 +4,7 @@ Personal Resume template (Task 1.113).
 Single-page feel, timeline, skills bars. For resume/CV sites.
 """
 
-from .base_layout import TemplateRenderer
+from .base_layout import TemplateRenderer, rich_text_content_css
 
 
 class PersonalResumeRenderer(TemplateRenderer):

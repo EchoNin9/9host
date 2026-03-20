@@ -4,7 +4,7 @@ Personal Tech template (Task 1.113).
 Clean, code-friendly, project cards. For developer/tech portfolios.
 """
 
-from .base_layout import TemplateRenderer
+from .base_layout import TemplateRenderer, rich_text_content_css
 
 
 class PersonalTechRenderer(TemplateRenderer):

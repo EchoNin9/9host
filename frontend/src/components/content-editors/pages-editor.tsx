@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { getToken } from "@/lib/api"
 import {
   fetchContentPages,
@@ -288,7 +288,7 @@ function PageFormSheet({
       if (!v && isDirty && !confirm("You have unsaved changes. Discard?")) return
       onOpenChange(v)
     }}>
-      <SheetContent aria-describedby={undefined} className="overflow-y-auto">
+      <SheetContent aria-describedby={undefined} className="overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {page ? "Edit page" : "Add page"}
@@ -323,13 +323,11 @@ function PageFormSheet({
             />
           </div>
           <div>
-            <Label htmlFor="body">Body</Label>
-            <Textarea
-              id="body"
+            <Label>Body</Label>
+            <RichTextEditor
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={setBody}
               placeholder="Page content…"
-              rows={10}
             />
           </div>
           <div>

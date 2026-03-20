@@ -31,7 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { getToken } from "@/lib/api"
 import {
   fetchContentPosts,
@@ -314,13 +314,11 @@ function PostFormSheet({
             />
           </div>
           <div>
-            <Label htmlFor="body">Body</Label>
-            <Textarea
-              id="body"
+            <Label>Body</Label>
+            <RichTextEditor
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={setBody}
               placeholder="Post content…"
-              rows={8}
             />
           </div>
           <div>

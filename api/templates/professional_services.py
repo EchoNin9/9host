@@ -4,7 +4,7 @@ Professional Services template (Task 1.113).
 Corporate, case study cards. For consultant/agency sites.
 """
 
-from .base_layout import TemplateRenderer
+from .base_layout import TemplateRenderer, rich_text_content_css
 
 
 class ProfessionalServicesRenderer(TemplateRenderer):

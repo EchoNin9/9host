@@ -86,6 +86,48 @@ def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = 
     return "\n      ".join(links) if links else ""
 
 
+def rich_text_content_css() -> str:
+    """Shared CSS for rich text (TipTap) HTML output in .content blocks (Task 3.5)."""
+    return """
+/* Rich text content styles (Task 3.5) */
+.content h1 { font-size: 1.75rem; font-weight: 700; margin: 1.5rem 0 0.75rem; }
+.content h2 { font-size: 1.4rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.content h3 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+.content ul { list-style: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+.content ol { list-style: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+.content li { margin-bottom: 0.25rem; }
+.content blockquote {
+  border-left: 3px solid var(--brand-primary, var(--template-primary, #6b7280));
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: var(--template-muted, #6b7280);
+  font-style: italic;
+}
+.content pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.content code {
+  background: rgba(0,0,0,0.06);
+  border-radius: 3px;
+  padding: 0.125rem 0.375rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875em;
+}
+.content pre code { background: none; padding: 0; border-radius: 0; }
+.content a { color: var(--brand-primary, var(--template-primary, #2563eb)); text-decoration: underline; }
+.content a:hover { opacity: 0.8; }
+.content u { text-decoration: underline; }
+"""
+
+
 class TemplateRenderer(ABC):
     """
     Base class for template-specific HTML/CSS rendering.

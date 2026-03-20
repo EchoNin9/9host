@@ -4,7 +4,7 @@ Musician/Band template (Task 1.113).
 Dark theme, hero image, tour dates grid. For band/artist sites.
 """
 
-from .base_layout import TemplateRenderer
+from .base_layout import TemplateRenderer, rich_text_content_css
 
 
 class MusicianBandRenderer(TemplateRenderer):

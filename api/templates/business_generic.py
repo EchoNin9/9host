@@ -4,7 +4,7 @@ Business Generic template (Task 1.113).
 Features grid, team section, CTA. For generic business sites.
 """
 
-from .base_layout import TemplateRenderer
+from .base_layout import TemplateRenderer, rich_text_content_css
 
 
 class BusinessGenericRenderer(TemplateRenderer):
