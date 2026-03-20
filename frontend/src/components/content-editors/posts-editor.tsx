@@ -2,7 +2,7 @@
  * Updates/Blog editor (Task 2.91).
  * List posts, create/edit/delete. Draft vs Published. Publish flow.
  */
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import {
   Card,
@@ -216,16 +216,33 @@ function PostFormSheet({
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [status, setStatus] = useState<"DRAFT" | "PUBLISHED">("DRAFT")
+  const initialValues = useRef({ slug: "", title: "", body: "", status: "DRAFT" })
+  const isDirty = slug !== initialValues.current.slug ||
+    title !== initialValues.current.title ||
+    body !== initialValues.current.body ||
+    status !== initialValues.current.status
 
   useEffect(() => {
     if (open) {
-      setSlug(post?.slug ?? "")
-      setTitle(post?.title ?? "")
-      setBody(post?.body ?? "")
-      setStatus((post?.status?.toUpperCase() as "DRAFT" | "PUBLISHED") || "DRAFT")
+      const s = post?.slug ?? ""
+      const t = post?.title ?? ""
+      const b = post?.body ?? ""
+      const st = (post?.status?.toUpperCase() as "DRAFT" | "PUBLISHED") || "DRAFT"
+      setSlug(s)
+      setTitle(t)
+      setBody(b)
+      setStatus(st)
+      initialValues.current = { slug: s, title: t, body: b, status: st }
       setError(null)
     }
   }, [open, post, setError])
+
+  useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [isDirty])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -262,10 +279,20 @@ function PostFormSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(v) => {
+      if (!v && isDirty && !confirm("You have unsaved changes. Discard?")) return
+      onOpenChange(v)
+    }}>
       <SheetContent aria-describedby={undefined} className="overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{post ? "Edit post" : "Add post"}</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            {post ? "Edit post" : "Add post"}
+            {isDirty && (
+              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                Unsaved
+              </span>
+            )}
+          </SheetTitle>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>

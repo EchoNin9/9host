@@ -92,6 +92,8 @@ def _site_to_response(item: dict) -> dict:
         "slug": item.get("slug", ""),
         "status": item.get("status", "draft"),
         "template_id": item.get("template_id"),
+        "published_at": item.get("published_at"),
+        "published_version": item.get("published_version"),
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }

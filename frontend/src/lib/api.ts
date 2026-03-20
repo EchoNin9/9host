@@ -955,6 +955,8 @@ export interface Site {
   status: string
   template_id?: string
   branding?: SiteBranding
+  published_at?: string | null
+  published_version?: number | null
   created_at: string
   updated_at: string
 }

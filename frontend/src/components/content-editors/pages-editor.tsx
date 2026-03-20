@@ -2,7 +2,7 @@
  * Pages editor — CRUD for static pages (home, about, contact, etc.).
  * Modeled after PostsEditor (Task 2.91).
  */
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import {
   Card,
@@ -216,16 +216,33 @@ function PageFormSheet({
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [status, setStatus] = useState<"DRAFT" | "PUBLISHED">("DRAFT")
+  const initialValues = useRef({ path: "", title: "", body: "", status: "DRAFT" })
+  const isDirty = path !== initialValues.current.path ||
+    title !== initialValues.current.title ||
+    body !== initialValues.current.body ||
+    status !== initialValues.current.status
 
   useEffect(() => {
     if (open) {
-      setPath(page?.path ?? "")
-      setTitle(page?.title ?? "")
-      setBody(page?.body ?? "")
-      setStatus((page?.status?.toUpperCase() as "DRAFT" | "PUBLISHED") || "DRAFT")
+      const p = page?.path ?? ""
+      const t = page?.title ?? ""
+      const b = page?.body ?? ""
+      const s = (page?.status?.toUpperCase() as "DRAFT" | "PUBLISHED") || "DRAFT"
+      setPath(p)
+      setTitle(t)
+      setBody(b)
+      setStatus(s)
+      initialValues.current = { path: p, title: t, body: b, status: s }
       setError(null)
     }
   }, [open, page, setError])
+
+  useEffect(() => {
+    if (!isDirty) return
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener("beforeunload", handler)
+    return () => window.removeEventListener("beforeunload", handler)
+  }, [isDirty])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -267,10 +284,20 @@ function PageFormSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(v) => {
+      if (!v && isDirty && !confirm("You have unsaved changes. Discard?")) return
+      onOpenChange(v)
+    }}>
       <SheetContent aria-describedby={undefined} className="overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>{page ? "Edit page" : "Add page"}</SheetTitle>
+          <SheetTitle className="flex items-center gap-2">
+            {page ? "Edit page" : "Add page"}
+            {isDirty && (
+              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                Unsaved
+              </span>
+            )}
+          </SheetTitle>
         </SheetHeader>
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
