@@ -93,7 +93,7 @@ def _site_to_response(item: dict) -> dict:
         "status": item.get("status", "draft"),
         "template_id": item.get("template_id"),
         "published_at": item.get("published_at"),
-        "published_version": item.get("published_version"),
+        "published_version": int(item["published_version"]) if item.get("published_version") is not None else None,
         "created_at": item.get("created_at", ""),
         "updated_at": item.get("updated_at", ""),
     }
