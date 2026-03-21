@@ -6,7 +6,15 @@
  * tenant-scoped requests include X-Impersonate-Tenant header for superadmin.
  */
 
-let _impersonateTenant: string | null = null
+// Initialize from localStorage eagerly so the first API calls (before
+// ImpersonationProvider's useEffect fires) already carry the header.
+let _impersonateTenant: string | null = (() => {
+  try {
+    return localStorage.getItem("9host-impersonate")
+  } catch {
+    return null
+  }
+})()
 
 /** Set impersonation target (superadmin only). Call with null to clear. */
 export function setImpersonateTenant(slug: string | null): void {
@@ -955,6 +963,8 @@ export interface Site {
   status: string
   template_id?: string
   branding?: SiteBranding
+  published_at?: string | null
+  published_version?: number | null
   created_at: string
   updated_at: string
 }
@@ -2063,7 +2073,8 @@ export async function createContentPage(
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
-    return (await res.json()) as ContentPage
+    const data = (await res.json()) as { page: ContentPage }
+    return data.page ?? null
   } catch {
     return null
   }
@@ -2085,7 +2096,8 @@ export async function updateContentPage(
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
-    return (await res.json()) as ContentPage
+    const data = (await res.json()) as { page: ContentPage }
+    return data.page ?? null
   } catch {
     return null
   }

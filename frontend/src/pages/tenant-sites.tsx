@@ -28,6 +28,7 @@ import { useTenant } from "@/hooks/use-tenant"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
 import { SitePreview } from "@/components/site-preview"
+import { TemplatePicker } from "@/components/template-picker"
 import { getToken, validateSlug, fetchTemplates, forkTemplate, type Site, type Template } from "@/lib/api"
 
 const SLUG_DEBOUNCE_MS = 400
@@ -288,24 +289,17 @@ function SiteForm({
         </p>
       </div>
       <div>
-        <label htmlFor="site-template" className="text-sm font-medium">
+        <label className="text-sm font-medium">
           Template (optional)
         </label>
-        <select
-          id="site-template"
-          value={templateId}
-          onChange={(e) => setTemplateId(e.target.value)}
-          className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-        >
-          <option value="">No template (Blank site)</option>
-          {templates.map((t) => (
-            <option key={t.slug} value={t.slug}>
-              {t.name}
-              {t.is_custom ? " (Custom)" : ""}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <div className="mt-2">
+          <TemplatePicker
+            templates={templates}
+            value={templateId}
+            onChange={setTemplateId}
+          />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
           Templates are filtered by your tier. Pro+ sees more options.
         </p>
         <FeatureGate feature="custom_domains">

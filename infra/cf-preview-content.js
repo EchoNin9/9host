@@ -14,6 +14,21 @@ function handler(event) {
     return request;
   }
 
+  // Redirect /preview?token=X to /preview/?token=X so relative paths resolve correctly
+  if (uri === "/preview") {
+    var qsParts = [];
+    for (var k in qs) {
+      if (qs[k] && qs[k].value !== undefined) {
+        qsParts.push(k + "=" + encodeURIComponent(qs[k].value));
+      }
+    }
+    return {
+      statusCode: 301,
+      statusDescription: "Moved Permanently",
+      headers: { location: { value: "/preview/" + (qsParts.length ? "?" + qsParts.join("&") : "") } },
+    };
+  }
+
   var token = qs.token && qs.token.value;
   if (!token) {
     return { statusCode: 403, statusDescription: "Forbidden", body: "Missing token" };
@@ -26,9 +41,15 @@ function handler(event) {
   }
   var payloadB64 = parts[1];
 
+  // CF Functions cloudfront-js-2.0 runtime does not have Buffer.
+  // Decode base64url manually: replace URL-safe chars, pad, then atob().
   var payloadJson;
   try {
-    payloadJson = Buffer.from(payloadB64, "base64url").toString("utf-8");
+    var b64 = payloadB64.replace(/-/g, "+").replace(/_/g, "/");
+    var pad = b64.length % 4;
+    if (pad === 2) b64 += "==";
+    else if (pad === 3) b64 += "=";
+    payloadJson = atob(b64);
   } catch (e) {
     return { statusCode: 403, statusDescription: "Forbidden", body: "Invalid token" };
   }
@@ -62,6 +83,9 @@ function handler(event) {
   }
   if (!rest || rest.endsWith("/")) {
     rest = (rest || "") + "index.html";
+  } else if (rest.indexOf(".") === -1) {
+    // Extensionless path (e.g. "about") → "about/index.html"
+    rest = rest + "/index.html";
   }
 
   request.uri = "/" + tenant + "/" + siteId + "/draft/" + rest;

@@ -86,6 +86,48 @@ def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = 
     return "\n      ".join(links) if links else ""
 
 
+def rich_text_content_css() -> str:
+    """Shared CSS for rich text (TipTap) HTML output in .content blocks (Task 3.5)."""
+    return """
+/* Rich text content styles (Task 3.5) */
+.content h1 { font-size: 1.75rem; font-weight: 700; margin: 1.5rem 0 0.75rem; }
+.content h2 { font-size: 1.4rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.content h3 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+.content ul { list-style: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+.content ol { list-style: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+.content li { margin-bottom: 0.25rem; }
+.content blockquote {
+  border-left: 3px solid var(--brand-primary, var(--template-primary, #6b7280));
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: var(--template-muted, #6b7280);
+  font-style: italic;
+}
+.content pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.content code {
+  background: rgba(0,0,0,0.06);
+  border-radius: 3px;
+  padding: 0.125rem 0.375rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875em;
+}
+.content pre code { background: none; padding: 0; border-radius: 0; }
+.content a { color: var(--brand-primary, var(--template-primary, #2563eb)); text-decoration: underline; }
+.content a:hover { opacity: 0.8; }
+.content u { text-decoration: underline; }
+"""
+
+
 class TemplateRenderer(ABC):
     """
     Base class for template-specific HTML/CSS rendering.
@@ -132,10 +174,25 @@ class TemplateRenderer(ABC):
         if branding and isinstance(branding, dict) and branding.get("logo_s3_key"):
             logo_url = media_url(branding["logo_s3_key"], media_base)
             logo_html = f'<img src="{escape_html(logo_url)}" alt="" class="site-logo"> '
-        return f"""  <header class="site-header">
+        return f"""<div class="site-wrapper">
+  <header class="site-header">
     {logo_html}<h1 class="site-title">{escape_html(site_name)}</h1>
     <nav class="site-nav"><ul>{nav_links_html}</ul></nav>
   </header>"""
+
+    def html_footer(self, site_name: str) -> str:
+        """Generate shared footer."""
+        from datetime import datetime, timezone
+        year = datetime.now(timezone.utc).year
+        return f"""  <footer class="site-footer">&copy; {year} {escape_html(site_name)}</footer>
+</div>"""
+
+    def html_hero(self, site_name: str) -> str:
+        """Generate hero section for index page."""
+        return f"""  <section class="hero">
+    <h2 class="hero-title">{escape_html(site_name)}</h2>
+    <p class="hero-subtitle">Welcome to {escape_html(site_name)}</p>
+  </section>"""
 
     @abstractmethod
     def render_css(self) -> str:
@@ -174,6 +231,8 @@ class TemplateRenderer(ABC):
             meta_description=meta_description, meta_image=meta_image,
         )
         header = self.html_header(site_name, branding, media_base, nav)
+        hero = self.html_hero(site_name)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -181,12 +240,13 @@ class TemplateRenderer(ABC):
 </head>
 <body>
 {header}
+{hero}
   <main class="main-content">
-    <h2 class="page-title">Welcome</h2>
     <nav class="page-nav"><ul>
 {links or "    <li>No pages yet.</li>\n"}
     </ul></nav>
   </main>
+{footer}
 </body>
 </html>"""
 
@@ -216,6 +276,7 @@ class TemplateRenderer(ABC):
             meta_description=meta_description, meta_image=meta_image,
         )
         header = self.html_header(site_name, branding, media_base, nav)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -227,6 +288,7 @@ class TemplateRenderer(ABC):
     <h2 class="page-title">{escape_html(title or path)}</h2>
     <div class="content">{body_rewritten}</div>
   </main>
+{footer}
 </body>
 </html>"""
 
@@ -248,6 +310,7 @@ class TemplateRenderer(ABC):
         )
         head = self.html_head("Blog", site_name, branding, media_base, base_path)
         header = self.html_header(site_name, branding, media_base, nav)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -261,6 +324,7 @@ class TemplateRenderer(ABC):
 {items or "    <li>No posts yet.</li>\n"}
     </ul>
   </main>
+{footer}
 </body>
 </html>"""
 
@@ -289,6 +353,7 @@ class TemplateRenderer(ABC):
             meta_description=meta_desc, meta_image=meta_img,
         )
         header = self.html_header(site_name, branding, media_base, nav)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -300,6 +365,7 @@ class TemplateRenderer(ABC):
     <h2 class="page-title">{escape_html(post.get("title", ""))}</h2>
     <div class="content post-body">{body_rewritten}</div>
   </main>
+{footer}
 </body>
 </html>"""
 
@@ -321,6 +387,7 @@ class TemplateRenderer(ABC):
         )
         head = self.html_head("Events", site_name, branding, media_base, base_path)
         header = self.html_header(site_name, branding, media_base, nav)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -334,6 +401,7 @@ class TemplateRenderer(ABC):
 {items or "    <li>No events yet.</li>\n"}
     </ul>
   </main>
+{footer}
 </body>
 </html>"""
 
@@ -353,6 +421,7 @@ class TemplateRenderer(ABC):
         )
         head = self.html_head("Gallery", site_name, branding, media_base, base_path)
         header = self.html_header(site_name, branding, media_base, nav)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -366,6 +435,7 @@ class TemplateRenderer(ABC):
 {items or "    <p>No media yet.</p>\n"}
     </div>
   </main>
+{footer}
 </body>
 </html>"""
 
@@ -382,6 +452,7 @@ class TemplateRenderer(ABC):
         sb = site_base.rstrip("/")
         head = self.html_head("Page not found", site_name, branding, media_base, base_path)
         header = self.html_header(site_name, branding, media_base, nav)
+        footer = self.html_footer(site_name)
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -394,5 +465,6 @@ class TemplateRenderer(ABC):
     <p>The page you requested could not be found.</p>
     <p><a href="{sb}/">Return to home</a></p>
   </main>
+{footer}
 </body>
 </html>"""

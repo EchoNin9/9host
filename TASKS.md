@@ -131,6 +131,34 @@
 | 1.107a | **FIX: site-slug resolution** — Ensure default-site returns `{site_id, tenant_slug}` for site-slug subdomains when site is published. Debug bySiteSlug GSI, current.json, API response | DONE | Always return {site_id, tenant_slug, published} when GSI resolves. No more falling through to tenant path. |
 | 1.108a | **FIX: published site links** — Use `/site/{tenant}/{site_id}/` as base path for all internal links (nav, pages, blog, events, gallery). Root-relative links hit SPA | DONE | site_base param in nav_links, render_index, render_blog_index, render_404. publish_handler passes site_base. |
 | 1.115a | **FIX: templates not applied** — Verify publish uses template renderer; ensure template_id on site; re-publish existing sites to apply templates | DONE | Fallback to business-generic renderer when template slug not found. |
+| | **Site Hosting Plan — Phase 1: Fix Tenant Site Hosting Display** | | |
+| 1.129 | **FIX: CF Function trailing slash** — `.filter(Boolean)` stripped trailing slash → sub-pages 404. SPA routing separation (custom_error_response only on default behavior) | DONE | cf-site-content.js, cloudfront.tf. Commit `2b61d65`. |
+| 1.130 | Deduplicate `_collect_published_content()` / `_collect_draft_content()` into `_collect_content()` | DONE | publish_handler.py. Commit `2b61d65`. |
+| | **Site Hosting Plan — Task Group 1: Template Rendering Quality** | | |
+| 1.131 | Improve `base_layout.py` — footer, responsive meta viewport, semantic HTML | DONE | Commit `d780df8`. |
+| 1.132 | Redesign `musician-band` CSS — dark theme, hero banner, tour dates grid | DONE | Commit `d780df8`. |
+| 1.133 | Redesign `business-generic` CSS — professional light theme, hero CTA, service cards | DONE | Commit `d780df8`. |
+| 1.134 | Redesign `personal-tech` CSS — clean minimal theme, terminal-style hero, project grid | DONE | Commit `94f5ba5`. |
+| 1.135 | Redesign `personal-resume` CSS — sidebar layout, timeline, skills grid | DONE | Commit `94f5ba5`. |
+| 1.136 | Redesign `professional-services` CSS — corporate theme, service cards, CTA | DONE | Commit `94f5ba5`. |
+| 1.137 | Re-publish script (`scripts/republish_all_sites.py`) — re-publish all sites after template updates | DONE | Commit `686786c`. |
+| | **Site Hosting Plan — Task Group 2: Draft Preview Fix** | | |
+| 1.138 | **FIX: cf-preview-content.js** — Replace `Buffer.from` with CF-compatible `atob()` base64url decoding | DONE | Commit `612131e`. |
+| 1.139 | Add extensionless URL path resolution in both preview and site content CF Functions | DONE | Commit `612131e`. |
+| 1.140 | Verify draft preview end-to-end — CSS inline, nav links carry token, sub-pages work, gallery included | DONE | Commits `57f9e51`, `b91d44e`, `794eb99`, `22b59c3`. |
+| | **Site Hosting Plan — Task Group 3: Rich Text Editor (backend)** | | |
+| 1.141 | Add `rich_text_content_css()` to `base_layout.py`; all 5 template CSS files style rich text content | DONE | Commit `df45e70`. |
+| | **Site Hosting Plan — Task Group 5: Publish Feedback (backend)** | | |
+| 1.142 | Expose `published_at` / `published_version` in site API response | DONE | Commit `3643b7e`. |
+| | **Site Hosting Plan — Task Group 6: Backend Refactoring** | | |
+| 1.143 | Route registry pattern for handler.py — replace if/elif chain with declarative route table | DONE | `api/handler.py`. Exact routes in O(1) dict lookup, prefix routes in ordered list. |
+| 1.144 | Unify `site_base` path construction — extract to shared utility for publish and draft-publish flows | DONE | `api/path_utils.py`. `site_base_path()` + `media_base_url()`. |
+| 1.145 | Add input validation middleware — centralize request body validation for content CRUD endpoints | DONE | `api/middleware.py`: `parse_json_body`, `validate_content_status`, `validate_slug_format`. `api/content_handler.py`: `_apply_content_fields` helper. |
+| | **Site Hosting Plan — Task Group 7: Custom Domain SSL** | | |
+| 1.146 | ACM certificate request automation — Lambda to request + validate ACM certs for custom domains via DNS | TODO | `api/custom_domain_handler.py`, `infra/lambda.tf` |
+| 1.147 | CloudFront alternate domain attachment — add/remove custom domains on sites distribution | TODO | `api/custom_domain_handler.py`, `infra/cloudfront.tf` |
+| | **Site Hosting Plan — Task Group 8: Site Content Editor Fix** | | |
+| 1.148 | **FIX: media/content loading failure** — pages API response unwrapping, /media/* staging CloudFront, impersonation race condition, Decimal serialization | DONE | Commits `5587093`, `28567af`. |
 
 ### Agent 2 — Frontend / UI
 
@@ -241,6 +269,29 @@
 | 2.102 | Tenant template settings page: edit name, default branding, pages, custom CSS | DONE | Batch 27 (MVP lite: ForkTemplateSheet) |
 | 2.103 | Template picker: show tenant templates with "Custom" badge alongside platform templates | DONE | Batch 27 |
 | 2.98a | **FIX: RootRoute fallback** — When fetchDefaultSite fails, show "Site not found" instead of redirecting to tenant admin | DONE | SiteNotFound component. Use published flag from API. |
+| | **Site Hosting Plan — Phase 1: Fix Tenant Site Hosting Display** | | |
+| 2.104 | Publish button + `publishSite()` API function in content editor | DONE | Commit `932c40a`. |
+| 2.105 | Pages editor CRUD, template selector tab, branding logo display fix | DONE | Commit `e9ed4d3`. |
+| | **Site Hosting Plan — Task Group 1: Template Rendering Quality** | | |
+| 2.106 | SVG template thumbnails + card-based template picker in site creation UI | DONE | Commit `686786c`. |
+| | **Site Hosting Plan — Task Group 3: Rich Text Editor** | | |
+| 2.107 | Add TipTap dependency (`@tiptap/react`, `starter-kit`, `link`, `image`, `underline`) | DONE | Commit `df45e70`. |
+| 2.108 | Create `<RichTextEditor>` component with toolbar (bold, italic, underline, headings, links, lists, images, blockquote, code, undo/redo) | DONE | Commit `df45e70`. |
+| 2.109 | Replace `<Textarea>` in `pages-editor.tsx` body field with `<RichTextEditor>` | DONE | Commit `df45e70`. |
+| 2.110 | Replace `<Textarea>` in `posts-editor.tsx` body field with `<RichTextEditor>` | DONE | Commit `df45e70`. |
+| | **Site Hosting Plan — Task Group 4: Media Integration in Content** | | |
+| 2.111 | Media picker dialog — browse/select from uploaded media with thumbnail grid + inline upload | DONE | Commit `0f3c5bb`. |
+| 2.112 | Integrated media picker into `<RichTextEditor>` — "Insert image" opens picker when `siteId` provided | DONE | Commit `0f3c5bb`. |
+| 2.113 | Drag-and-drop + paste image upload in RichTextEditor with upload overlay UI | DONE | Commit `0f3c5bb`. |
+| | **Site Hosting Plan — Task Group 5: Publish Feedback & UX** | | |
+| 2.114 | Show live site link (`<slug>.echo9.net`) in publish success message | DONE | Commit `3643b7e`. |
+| 2.115 | Last published timestamp + version banner in content editor | DONE | Commit `3643b7e`. |
+| 2.116 | Unsaved changes indicator (amber badge + beforeunload + confirm on close) in pages-editor and posts-editor | DONE | Commit `3643b7e`. |
+| | **Site Hosting Plan — Task Group 7: Custom Domain SSL** | | |
+| 2.117 | DNS validation instructions UI — show required CNAME records for domain verification | TODO | `frontend/src/components/content-editors/custom-domain-editor.tsx` |
+| 2.118 | Domain status polling — check ACM cert status and show progress in UI | TODO | `frontend/src/components/content-editors/custom-domain-editor.tsx` |
+| | **Site Hosting Plan — Task Group 9: Dark Mode Toggle** | | |
+| 2.119 | Add dark mode toggle to superadmin and tenant admin interfaces | TODO | `frontend/src/components/`, `frontend/src/index.css` |
 
 ### Agent 4 — Self-Serve (Future)
 

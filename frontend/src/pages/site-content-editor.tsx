@@ -1,6 +1,6 @@
 import { Link, useParams, Navigate } from "react-router-dom"
 import { useState } from "react"
-import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload, LayoutTemplate } from "lucide-react"
+import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload, LayoutTemplate, Globe } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
 import { useSites } from "@/hooks/use-sites"
 import { getToken, fetchDraftPublish, fetchDraftToken, publishSite } from "@/lib/api"
@@ -29,6 +29,7 @@ function SiteContentEditor() {
   const [publishLoading, setPublishLoading] = useState(false)
   const [publishMessage, setPublishMessage] = useState<string | null>(null)
   const [publishError, setPublishError] = useState<string | null>(null)
+  const [publishLiveUrl, setPublishLiveUrl] = useState<string | null>(null)
 
   const site = siteId ? sites.find((s) => s.id === siteId) : null
 
@@ -69,9 +70,14 @@ function SiteContentEditor() {
       }
       const result = await publishSite(tenantSlug, token, siteId)
       if (result) {
+        const siteSlug = site?.slug
+        const liveUrl = siteSlug ? `https://${siteSlug}.echo9.net` : null
         setPublishMessage(
-          `Published v${result.version} (${result.files_count} files). Changes may take a few minutes to appear globally.`
+          liveUrl
+            ? `Published v${result.version} (${result.files_count} files).`
+            : `Published v${result.version} (${result.files_count} files). Changes may take a few minutes to appear globally.`
         )
+        if (liveUrl) setPublishLiveUrl(liveUrl)
         void refetch()
       } else {
         setPublishError("Publish returned no result")
@@ -145,10 +151,50 @@ function SiteContentEditor() {
             <span className="text-sm text-destructive">{publishError}</span>
           )}
           {publishMessage && (
-            <span className="text-sm text-green-600 dark:text-green-400">{publishMessage}</span>
+            <span className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+              {publishMessage}
+              {publishLiveUrl && (
+                <a
+                  href={publishLiveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 underline underline-offset-2"
+                >
+                  <Globe className="size-3" />
+                  View live site
+                </a>
+              )}
+            </span>
           )}
         </div>
       </div>
+
+      {/* Last published info (Task 5.2) */}
+      {site.published_at && (
+        <div className="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm dark:border-green-900/40 dark:bg-green-900/10">
+          <Globe className="size-4 text-green-600 dark:text-green-400" />
+          <span className="text-muted-foreground">
+            Last published:{" "}
+            <span className="font-medium text-foreground">
+              {new Date(site.published_at).toLocaleString()}
+            </span>
+            {site.published_version != null && (
+              <> &middot; v{site.published_version}</>
+            )}
+          </span>
+          {site.slug && (
+            <a
+              href={`https://${site.slug}.echo9.net`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto inline-flex items-center gap-1 text-green-600 underline underline-offset-2 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+            >
+              <ExternalLink className="size-3" />
+              {site.slug}.echo9.net
+            </a>
+          )}
+        </div>
+      )}
 
       <Tabs defaultValue="pages" orientation="vertical" className="flex flex-1 gap-6">
         <TabsList variant="line" className="h-fit w-48 shrink-0 flex-col items-stretch border-r border-border pr-4 bg-transparent p-0">

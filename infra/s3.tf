@@ -206,6 +206,20 @@ resource "aws_s3_bucket_policy" "media" {
             "AWS:SourceArn" = aws_cloudfront_distribution.sites.arn
           }
         }
+      },
+      {
+        Sid    = "AllowCloudFrontStaging"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.media.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.staging.arn
+          }
+        }
       }
     ]
   })

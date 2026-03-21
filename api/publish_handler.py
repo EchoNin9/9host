@@ -28,6 +28,7 @@ from dynamodb_helpers import (
     pk_tenant,
 )
 from middleware import with_tenant
+from path_utils import site_base_path
 from templates import get_renderer
 from templates.base_layout import escape_html, media_url
 from tier_config import CONTENT_MODULE_KEYS, FEATURE_KEYS, tier_has_feature, tier_has_module
@@ -68,7 +69,8 @@ def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool
         }
         resp = table.query(**params)
         for item in resp.get("Items", []):
-            if published_only and (item.get("status") or "").upper() != "PUBLISHED":
+            # Media items are uploaded assets — no draft/published lifecycle
+            if published_only and entity != "MEDIA" and (item.get("status") or "").upper() != "PUBLISHED":
                 continue
             if entity == "PAGE":
                 pages.append({
@@ -228,7 +230,6 @@ def _publish_site(
     features = resolved_features or {}
     has_blog = features.get("updates_blog", True)
     has_events = features.get("events_shows", True)
-    has_media = features.get("media_gallery", True)
     has_branding = features.get("branding", True)
 
     site_name = site_item.get("name", "Site")
@@ -239,12 +240,13 @@ def _publish_site(
     pages = content["pages"]
     posts = content["posts"] if has_blog else []
     events = content["events"] if has_events else []
-    media = content["media"] if has_media else []
+    # Media: always publish if items exist (tier gating is enforced in admin UI upload, not at publish)
+    media = content["media"]
 
     from templates.base_layout import nav_links
 
     # Task 1.108a: site_base prefix for all internal links so they work under /site/{tenant}/{site_id}/
-    site_base = f"/site/{tenant_slug}/{site_id}"
+    site_base = site_base_path(tenant_slug, site_id)
     nav = nav_links(pages, bool(posts), bool(events), bool(media), site_base=site_base)
 
     # Build files to publish (Task 1.115: template renderer + style.css)
@@ -427,7 +429,6 @@ def _draft_publish_site(
     features = resolved_features or {}
     has_blog = features.get("updates_blog", True)
     has_events = features.get("events_shows", True)
-    has_media = features.get("media_gallery", True)
     has_branding = features.get("branding", True)
 
     site_name = site_item.get("name", "Site")
@@ -438,17 +439,38 @@ def _draft_publish_site(
     pages = content["pages"]
     posts = content["posts"] if has_blog else []
     events = content["events"] if has_events else []
-    media = content["media"] if has_media else []
+    # Media: always include if items exist (tier gating is enforced in admin UI upload, not at publish)
+    media = content["media"]
 
     from templates.base_layout import nav_links
 
-    nav = nav_links(pages, bool(posts), bool(events), bool(media))
+    site_base = "/preview"
+    nav = nav_links(pages, bool(posts), bool(events), bool(media), site_base=site_base)
+
+    # Script to propagate ?token= to all nav links so sub-page navigation works
+    _TOKEN_SCRIPT = """<script>
+(function(){var t=new URLSearchParams(location.search).get("token");if(t){document.querySelectorAll("a[href]").forEach(function(a){try{var u=new URL(a.href,location.origin);if(u.origin===location.origin&&u.pathname.startsWith("/preview")){u.searchParams.set("token",t);a.href=u.pathname+u.search}}catch(e){}})}})();
+</script>"""
+
+    # Inline CSS for draft: replace <link stylesheet> with <style> block
+    # because /preview/style.css can't be loaded without a token in the URL.
+    css_content = renderer.render_css()
+    import re
+    def _inline_css(html: str) -> str:
+        return re.sub(
+            r'<link\s+rel="stylesheet"\s+href="[^"]*style\.css">',
+            f"<style>\n{css_content}\n</style>",
+            html,
+        )
+
+    def _draft_html(html: str) -> str:
+        return _inline_css(html) + _TOKEN_SCRIPT
 
     files = {}
-    files["style.css"] = renderer.render_css()
-    files["index.html"] = renderer.render_index(
-        site_name, pages, posts, events, branding, media_base, bool(media), base_path=""
-    )
+    files["index.html"] = _draft_html(renderer.render_index(
+        site_name, pages, posts, events, branding, media_base, bool(media), base_path="",
+        site_base=site_base,
+    ))
 
     for p in pages:
         path = p.get("path", "").strip()
@@ -458,30 +480,32 @@ def _draft_publish_site(
             p["path"], p["title"], p["body"], site_name, branding, media_base, nav,
             tenant_slug, site_id, base_path="../",
         )
-        files[f"{path}/index.html"] = html
+        files[f"{path}/index.html"] = _draft_html(html)
 
     if posts:
-        files["blog/index.html"] = renderer.render_blog_index(
-            site_name, posts, branding, media_base, nav, base_path="../"
-        )
+        files["blog/index.html"] = _draft_html(renderer.render_blog_index(
+            site_name, posts, branding, media_base, nav, base_path="../",
+            site_base=site_base,
+        ))
     for post in posts:
         slug = (post.get("slug") or "").strip()
         if slug:
-            files[f"posts/{slug}/index.html"] = renderer.render_post_detail(
+            files[f"posts/{slug}/index.html"] = _draft_html(renderer.render_post_detail(
                 post, site_name, branding, media_base, nav,
                 tenant_slug, site_id, base_path="../../"
-            )
+            ))
 
     if events:
-        files["events/index.html"] = renderer.render_events(
+        files["events/index.html"] = _draft_html(renderer.render_events(
             site_name, events, branding, media_base, nav, base_path="../"
-        )
+        ))
     if media:
-        files["gallery/index.html"] = renderer.render_gallery(
+        files["gallery/index.html"] = _draft_html(renderer.render_gallery(
             site_name, media, branding, media_base, nav, base_path="../"
-        )
+        ))
 
-    files["404.html"] = renderer.render_404(site_name, branding, media_base, nav, base_path="")
+    files["404.html"] = _draft_html(renderer.render_404(site_name, branding, media_base, nav, base_path="",
+                                                         site_base=site_base))
 
     draft_prefix = f"{tenant_slug}/{site_id}/draft/"
     for path, content in files.items():
