@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react"
+import { useCallback, useSyncExternalStore } from "react"
 
 type Theme = "light" | "dark" | "system"
 
