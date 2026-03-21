@@ -2065,7 +2065,8 @@ export async function createContentPage(
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
-    return (await res.json()) as ContentPage
+    const data = (await res.json()) as { page: ContentPage }
+    return data.page ?? null
   } catch {
     return null
   }
@@ -2087,7 +2088,8 @@ export async function updateContentPage(
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
-    return (await res.json()) as ContentPage
+    const data = (await res.json()) as { page: ContentPage }
+    return data.page ?? null
   } catch {
     return null
   }
