@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { MoreHorizontal, Trash2, Settings2 } from "lucide-react"
+import { MoreHorizontal, Trash2, Settings2, ShieldCheck, Loader2 } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -106,20 +106,53 @@ function DomainForm({
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Adding…" : "Add domain"}
+          {saving ? "Adding..." : "Add domain"}
         </Button>
       </SheetFooter>
     </form>
   )
 }
 
+function StatusBadge({ status }: { status: string }) {
+  const s = status?.toUpperCase() ?? "PENDING"
+  if (s === "ACTIVE") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
+        Active
+      </span>
+    )
+  }
+  if (s === "PENDING_VALIDATION") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+        <Loader2 className="size-3 animate-spin" />
+        Validating SSL
+      </span>
+    )
+  }
+  if (s === "VERIFIED") {
+    return (
+      <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+        Verified
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+      {status || "Pending"}
+    </span>
+  )
+}
+
 function DomainsContent() {
   const { tenantSlug } = useTenant()
   const { canEdit } = useTenantRole()
-  const { domains, loading, error, add, remove } = useDomains(tenantSlug)
+  const { domains, loading, error, add, remove, activate, polling } = useDomains(tenantSlug)
   const { sites } = useSites(tenantSlug)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [setupDomain, setSetupDomain] = useState<Domain | null>(null)
+  const [activating, setActivating] = useState<string | null>(null)
+  const [activateError, setActivateError] = useState<string | null>(null)
 
   const handleSubmit = async (body: { domain: string; site_id: string }) => {
     const result = await add(body)
@@ -135,6 +168,24 @@ function DomainsContent() {
     await remove(d.domain)
   }
 
+  const handleActivate = async (d: Domain) => {
+    setActivating(d.domain)
+    setActivateError(null)
+    try {
+      const result = await activate(d.domain)
+      if (result) {
+        // Show setup guide with ACM validation records
+        setSetupDomain(result.domain)
+      }
+    } catch (e) {
+      setActivateError(
+        e instanceof Error ? e.message : "Activation failed. Check DNS records and try again."
+      )
+    } finally {
+      setActivating(null)
+    }
+  }
+
   const handleSheetClose = () => {
     setSheetOpen(false)
   }
@@ -143,7 +194,7 @@ function DomainsContent() {
     return (
       <Card>
         <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground">Loading domains…</p>
+          <p className="text-sm text-muted-foreground">Loading domains...</p>
         </CardContent>
       </Card>
     )
@@ -159,6 +210,11 @@ function DomainsContent() {
     )
   }
 
+  const canActivate = (d: Domain) => {
+    const s = d.status?.toUpperCase() ?? ""
+    return s === "PENDING" || s === "VERIFIED" || s === ""
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -168,16 +224,32 @@ function DomainsContent() {
             Add custom domains to your sites. Requires Pro or Business tier.
           </p>
         </div>
-        {canEdit && (
-          <Button
-            onClick={() => setSheetOpen(true)}
-            disabled={sites.length === 0}
-            title={sites.length === 0 ? "Create a site first" : undefined}
-          >
-            Add domain
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {polling && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Checking status...
+            </span>
+          )}
+          {canEdit && (
+            <Button
+              onClick={() => setSheetOpen(true)}
+              disabled={sites.length === 0}
+              title={sites.length === 0 ? "Create a site first" : undefined}
+            >
+              Add domain
+            </Button>
+          )}
+        </div>
       </div>
+
+      {activateError && (
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-sm text-destructive">{activateError}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {setupDomain && (
         <DomainSetupGuideDialog
@@ -237,6 +309,15 @@ function DomainsContent() {
                         <Settings2 className="mr-2 size-4" />
                         DNS setup
                       </DropdownMenuItem>
+                      {canActivate(d) && (
+                        <DropdownMenuItem
+                          onClick={() => handleActivate(d)}
+                          disabled={activating === d.domain}
+                        >
+                          <ShieldCheck className="mr-2 size-4" />
+                          {activating === d.domain ? "Activating..." : "Activate SSL"}
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         variant="destructive"
                         onClick={() => handleDelete(d)}
@@ -249,25 +330,40 @@ function DomainsContent() {
                 )}
               </CardHeader>
               <CardContent className="pt-0 flex items-center justify-between">
-                <span
-                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                    d.status === "verified"
-                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {d.status}
-                </span>
-                {(d.verification_cname_target || d.verification_txt_record) && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                    onClick={() => setSetupDomain(d)}
-                  >
-                    DNS setup
-                  </Button>
-                )}
+                <StatusBadge status={d.status} />
+                <div className="flex items-center gap-2">
+                  {canEdit && canActivate(d) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => handleActivate(d)}
+                      disabled={activating === d.domain}
+                    >
+                      {activating === d.domain ? (
+                        <>
+                          <Loader2 className="mr-1 size-3 animate-spin" />
+                          Activating...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="mr-1 size-3" />
+                          Activate SSL
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  {(d.verification_cname_target || d.verification_txt_record || (d.acm_validation_records?.length ?? 0) > 0) && (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => setSetupDomain(d)}
+                    >
+                      DNS setup
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}

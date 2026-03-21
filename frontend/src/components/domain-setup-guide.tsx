@@ -1,10 +1,10 @@
 /**
- * Domain Setup Guide (DNS Wizard) — Task 2.81
+ * Domain Setup Guide (DNS Wizard) — Task 2.81, 2.117
  * Two paths: Our DNS (CloudNS) vs Own DNS (CNAME + TXT).
- * Shows CNAME target and TXT from API.
+ * Shows CNAME target, TXT, and ACM validation CNAME records from API.
  */
 
-import { Copy, Check, Globe, Server } from "lucide-react"
+import { Copy, Check, Globe, Server, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 import {
   Sheet,
@@ -43,6 +43,9 @@ export function DomainSetupGuideDialog({
 }: DomainSetupGuideProps) {
   const cname = domain.verification_cname_target
   const txt = domain.verification_txt_record
+  const acmRecords = domain.acm_validation_records ?? []
+  const isPending = domain.status?.toUpperCase() === "PENDING_VALIDATION"
+  const isActive = domain.status?.toUpperCase() === "ACTIVE"
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -55,10 +58,11 @@ export function DomainSetupGuideDialog({
         </p>
 
         <div className="space-y-6">
+          {/* Step 1: Domain ownership verification */}
           <div>
             <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
               <Globe className="size-4" />
-              Own DNS (CNAME + TXT)
+              Step 1: Domain Ownership (CNAME + TXT)
             </h3>
             <p className="text-xs text-muted-foreground mb-3">
               Add these records at your DNS provider (e.g. Cloudflare, GoDaddy, Namecheap).
@@ -90,7 +94,7 @@ export function DomainSetupGuideDialog({
                   <CopyButton value={txt} label="Copy TXT" />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Host: <code className="bg-muted px-1">_9host-verify.{domain.domain}</code> or @
+                  Host: <code className="bg-muted px-1">_9host-verify.{domain.domain}</code>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Value: <code className="bg-muted px-1">{txt}</code>
@@ -104,6 +108,49 @@ export function DomainSetupGuideDialog({
             )}
           </div>
 
+          {/* Step 2: ACM certificate validation (Task 2.117) */}
+          {acmRecords.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
+                <ShieldCheck className="size-4" />
+                Step 2: SSL Certificate Validation
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Add these CNAME records to validate your SSL certificate.
+                {isPending && " Certificate is pending validation."}
+                {isActive && " Certificate is active."}
+              </p>
+              {acmRecords.map((rec, i) => (
+                <div key={i} className="rounded-lg border p-3 space-y-1 mt-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {rec.type} record (SSL validation)
+                  </p>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Name:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs font-mono">
+                          {rec.name}
+                        </code>
+                        <CopyButton value={rec.name} label="Copy name" />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Value:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs font-mono">
+                          {rec.value}
+                        </code>
+                        <CopyButton value={rec.value} label="Copy value" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* CloudNS option */}
           <div>
             <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
               <Server className="size-4" />

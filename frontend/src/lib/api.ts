@@ -1255,6 +1255,12 @@ export async function deleteSite(
 // Domains (Pro+ tier, tenant-scoped)
 // -----------------------------------------------------------------------------
 
+export interface AcmValidationRecord {
+  type: string
+  name: string
+  value: string
+}
+
 export interface Domain {
   domain: string
   site_id: string
@@ -1265,6 +1271,10 @@ export interface Domain {
   verification_cname_target?: string
   /** Task 1.81: TXT record for ownership verification */
   verification_txt_record?: string
+  /** Task 1.146: ACM certificate ARN */
+  acm_certificate_arn?: string
+  /** Task 1.146: ACM validation CNAME records (persisted in DB) */
+  acm_validation_records?: AcmValidationRecord[]
 }
 
 export interface DomainsResponse {
@@ -1354,6 +1364,65 @@ export async function deleteDomain(
     return res.status === 204
   } catch {
     return false
+  }
+}
+
+export interface ActivateDomainResponse {
+  domain: Domain
+  acm_validation_records: AcmValidationRecord[]
+  message: string
+}
+
+/**
+ * Activate a custom domain — verify DNS and request ACM cert (Task 1.146).
+ */
+export async function activateDomain(
+  tenantSlug: string,
+  accessToken: string | null,
+  domain: string
+): Promise<ActivateDomainResponse | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !domain) return null
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/domains/${encodeURIComponent(domain)}/activate`,
+      {
+        method: "POST",
+        headers: domainsHeaders(tenantSlug, accessToken),
+      }
+    )
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || `Activation failed (${res.status})`)
+    }
+    return (await res.json()) as ActivateDomainResponse
+  } catch (e) {
+    throw e
+  }
+}
+
+/**
+ * Fetch a single domain (for status polling) — Task 2.118.
+ */
+export async function fetchDomain(
+  tenantSlug: string,
+  accessToken: string | null,
+  domain: string
+): Promise<Domain | null> {
+  const base = getApiUrl()
+  if (!base || !accessToken || !tenantSlug || !domain) return null
+
+  try {
+    const res = await fetch(
+      `${base}/api/tenant/domains/${encodeURIComponent(domain)}`,
+      { headers: domainsHeaders(tenantSlug, accessToken) }
+    )
+    if (!res.ok) return null
+    const data = (await res.json()) as DomainResponse
+    return data.domain ?? null
+  } catch {
+    return null
   }
 }
 

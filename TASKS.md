@@ -155,8 +155,8 @@
 | 1.144 | Unify `site_base` path construction — extract to shared utility for publish and draft-publish flows | DONE | `api/path_utils.py`. `site_base_path()` + `media_base_url()`. |
 | 1.145 | Add input validation middleware — centralize request body validation for content CRUD endpoints | DONE | `api/middleware.py`: `parse_json_body`, `validate_content_status`, `validate_slug_format`. `api/content_handler.py`: `_apply_content_fields` helper. |
 | | **Site Hosting Plan — Task Group 7: Custom Domain SSL** | | |
-| 1.146 | ACM certificate request automation — Lambda to request + validate ACM certs for custom domains via DNS | TODO | `api/custom_domain_handler.py`, `infra/lambda.tf` |
-| 1.147 | CloudFront alternate domain attachment — add/remove custom domains on sites distribution | TODO | `api/custom_domain_handler.py`, `infra/cloudfront.tf` |
+| 1.146 | ACM certificate request automation — Lambda to request + validate ACM certs for custom domains via DNS | DONE | `api/custom_domain_handler.py`: `request_acm_certificate()`, `add_cloudfront_alias()`, `remove_cloudfront_alias()`, `delete_acm_certificate()`. ACM validation records persisted in DynamoDB. |
+| 1.147 | CloudFront alternate domain attachment — add/remove custom domains on sites distribution | DONE | Domain delete removes CloudFront alias + deletes ACM cert. `custom_domain_handler.py` shared by `domains_handler.py` and `lambda_acm_handler`. |
 | | **Site Hosting Plan — Task Group 8: Site Content Editor Fix** | | |
 | 1.148 | **FIX: media/content loading failure** — pages API response unwrapping, /media/* staging CloudFront, impersonation race condition, Decimal serialization | DONE | Commits `5587093`, `28567af`. |
 
@@ -288,8 +288,8 @@
 | 2.115 | Last published timestamp + version banner in content editor | DONE | Commit `3643b7e`. |
 | 2.116 | Unsaved changes indicator (amber badge + beforeunload + confirm on close) in pages-editor and posts-editor | DONE | Commit `3643b7e`. |
 | | **Site Hosting Plan — Task Group 7: Custom Domain SSL** | | |
-| 2.117 | DNS validation instructions UI — show required CNAME records for domain verification | TODO | `frontend/src/components/content-editors/custom-domain-editor.tsx` |
-| 2.118 | Domain status polling — check ACM cert status and show progress in UI | TODO | `frontend/src/components/content-editors/custom-domain-editor.tsx` |
+| 2.117 | DNS validation instructions UI — show required CNAME records for domain verification | DONE | `domain-setup-guide.tsx`: Step 1 (CNAME+TXT) + Step 2 (ACM validation CNAME records with copy buttons). |
+| 2.118 | Domain status polling — check ACM cert status and show progress in UI | DONE | `use-domains.ts`: auto-poll every 10s when PENDING_VALIDATION (30min timeout). `tenant-domains.tsx`: Activate SSL button, status badges, polling indicator. |
 | | **Site Hosting Plan — Task Group 9: Dark Mode Toggle** | | |
 | 2.119 | Add dark mode toggle to superadmin and tenant admin interfaces | TODO | `frontend/src/components/`, `frontend/src/index.css` |
 

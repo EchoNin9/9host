@@ -9,13 +9,17 @@ import json
 import os
 import re
 import secrets
-import time
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
 import boto3
 
 from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
+from custom_domain_handler import (
+    delete_acm_certificate,
+    remove_cloudfront_alias,
+    request_acm_certificate,
+)
 from dynamodb_helpers import (
     get_domain_item,
     get_site_item,
@@ -85,9 +89,13 @@ def _domain_to_response(item: dict) -> dict:
         out["verification_cname_target"] = item["verification_cname_target"]
     if item.get("verification_txt_record"):
         out["verification_txt_record"] = item["verification_txt_record"]
-    # Task 1.99.1.100: ACM cert ARN when requested
+    # Task 1.99/1.100: ACM cert ARN when requested
     if item.get("acm_certificate_arn"):
         out["acm_certificate_arn"] = item["acm_certificate_arn"]
+    # Task 1.146: ACM validation records (persisted for frontend display)
+    if item.get("acm_validation_records"):
+        raw = item["acm_validation_records"]
+        out["acm_validation_records"] = json.loads(raw) if isinstance(raw, str) else raw
     return out
 
 
@@ -169,11 +177,22 @@ def _create_domain(table, tenant_slug: str, body: dict) -> dict:
 
 
 def _delete_domain(table, tenant_slug: str, domain: str) -> dict:
-    """Delete domain."""
+    """Delete domain. Cleans up CloudFront alias and ACM cert (Task 1.147)."""
     key = get_domain_item(tenant_slug, domain)
     resp = table.get_item(Key=key)
-    if not resp.get("Item"):
+    item = resp.get("Item")
+    if not item:
         return _json_response(404, {"error": "Domain not found."})
+
+    # Task 1.147: Remove CloudFront alias before deleting domain record
+    status = (item.get("status") or "").upper()
+    if status == "ACTIVE":
+        remove_cloudfront_alias(domain)
+
+    # Task 1.147: Delete ACM certificate (best-effort; may fail if still in use)
+    cert_arn = (item.get("acm_certificate_arn") or "").strip()
+    if cert_arn:
+        delete_acm_certificate(cert_arn)
 
     table.delete_item(Key=key)
     return _json_response(204, {}, empty_body=True)
@@ -244,49 +263,22 @@ def _activate_domain(event: dict, table, tenant_slug: str, domain: str) -> dict:
             },
         )
 
-    # Request ACM cert (us-east-1 required for CloudFront)
-    acm = boto3.client("acm", region_name="us-east-1")
+    # Task 1.146: Use centralized cert request from custom_domain_handler
     try:
-        cert_resp = acm.request_certificate(
-            DomainName=domain,
-            ValidationMethod="DNS",
-        )
-        cert_arn = cert_resp.get("CertificateArn", "")
-    except Exception as e:
-        return _json_response(500, {"error": "Failed to request certificate.", "detail": str(e)})
+        cert_arn, validation_records = request_acm_certificate(domain)
+    except RuntimeError as e:
+        return _json_response(500, {"error": str(e)})
 
-    if not cert_arn:
-        return _json_response(500, {"error": "ACM did not return certificate ARN."})
-
-    # Fetch validation records (ACM may delay a few seconds)
-    validation_records = []
-    for _ in range(5):
-        try:
-            desc = acm.describe_certificate(CertificateArn=cert_arn)
-            opts = desc.get("Certificate", {}).get("DomainValidationOptions", [])
-            for opt in opts:
-                for rec in opt.get("ResourceRecord", []) or []:
-                    validation_records.append(
-                        {
-                            "type": rec.get("Type"),
-                            "name": rec.get("Name"),
-                            "value": rec.get("Value"),
-                        }
-                    )
-            if validation_records:
-                break
-        except Exception:
-            pass
-        time.sleep(2)
-
+    # Persist validation records in DynamoDB so frontend can display them (Task 1.146)
     now = datetime.now(timezone.utc).isoformat()
     table.update_item(
         Key=key,
-        UpdateExpression="SET #status = :status, acm_certificate_arn = :arn, updated_at = :now",
+        UpdateExpression="SET #status = :status, acm_certificate_arn = :arn, acm_validation_records = :recs, updated_at = :now",
         ExpressionAttributeNames={"#status": "status"},
         ExpressionAttributeValues={
             ":status": "PENDING_VALIDATION",
             ":arn": cert_arn,
+            ":recs": json.dumps(validation_records),
             ":now": now,
         },
     )
@@ -294,6 +286,7 @@ def _activate_domain(event: dict, table, tenant_slug: str, domain: str) -> dict:
     updated = dict(item)
     updated["status"] = "PENDING_VALIDATION"
     updated["acm_certificate_arn"] = cert_arn
+    updated["acm_validation_records"] = validation_records
     updated["updated_at"] = now
 
     return _json_response(
