@@ -16,6 +16,7 @@ import boto3
 
 from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
 from custom_domain_handler import (
+    add_cloudfront_alias,
     delete_acm_certificate,
     remove_cloudfront_alias,
     request_acm_certificate,
@@ -99,21 +100,58 @@ def _domain_to_response(item: dict) -> dict:
     return out
 
 
+def _check_pending_certs(table, items: list[dict]) -> list[dict]:
+    """Check ACM status for PENDING_VALIDATION domains; promote to ACTIVE if cert is ISSUED."""
+    pending = [i for i in items if (i.get("status") or "").upper() == "PENDING_VALIDATION" and i.get("acm_certificate_arn")]
+    if not pending:
+        return items
+
+    acm = boto3.client("acm", region_name="us-east-1")
+    for item in pending:
+        cert_arn = item["acm_certificate_arn"]
+        try:
+            desc = acm.describe_certificate(CertificateArn=cert_arn)
+            cert_status = desc.get("Certificate", {}).get("Status", "")
+        except Exception:
+            continue
+
+        if cert_status == "ISSUED":
+            sk = item.get("sk", "")
+            domain = sk.replace("DOMAIN#", "") if sk.startswith("DOMAIN#") else ""
+            add_cloudfront_alias(domain)
+
+            now = datetime.now(timezone.utc).isoformat()
+            key = {"pk": item["pk"], "sk": item["sk"]}
+            table.update_item(
+                Key=key,
+                UpdateExpression="SET #status = :status, updated_at = :now",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={":status": "ACTIVE", ":now": now},
+            )
+            item["status"] = "ACTIVE"
+            item["updated_at"] = now
+
+    return items
+
+
 def _list_domains(table, tenant_slug: str) -> dict:
-    """List domains in tenant."""
+    """List domains in tenant. Checks ACM for any PENDING_VALIDATION certs."""
     params = query_domains_in_tenant(tenant_slug)
     resp = table.query(**params)
-    domains = [_domain_to_response(item) for item in resp.get("Items", [])]
+    items = resp.get("Items", [])
+    items = _check_pending_certs(table, items)
+    domains = [_domain_to_response(item) for item in items]
     return _json_response(200, {"domains": domains})
 
 
 def _get_domain(table, tenant_slug: str, domain: str) -> dict:
-    """Get single domain."""
+    """Get single domain. Checks ACM if PENDING_VALIDATION."""
     key = get_domain_item(tenant_slug, domain)
     resp = table.get_item(Key=key)
     item = resp.get("Item")
     if not item:
         return _json_response(404, {"error": "Domain not found."})
+    _check_pending_certs(table, [item])
     return _json_response(200, {"domain": _domain_to_response(item)})
 
 
@@ -241,11 +279,12 @@ def _activate_domain(event: dict, table, tenant_slug: str, domain: str) -> dict:
         return _json_response(404, {"error": "Domain not found."})
 
     status = (item.get("status") or "pending").upper()
-    if status in ("PENDING_VALIDATION", "ACTIVE"):
-        return _json_response(
-            400,
-            {"error": f"Domain already {status}. No activation needed."},
-        )
+    if status == "ACTIVE":
+        return _json_response(400, {"error": "Domain already ACTIVE. No activation needed."})
+    if status == "PENDING_VALIDATION":
+        # Check if cert was issued while waiting — promote to ACTIVE
+        _check_pending_certs(table, [item])
+        return _json_response(200, {"domain": _domain_to_response(item)})
 
     cname_target = (item.get("verification_cname_target") or "").strip()
     txt_record = (item.get("verification_txt_record") or "").strip()
