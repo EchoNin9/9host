@@ -11,6 +11,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from botocore.exceptions import ClientError as S3ClientError
@@ -63,11 +64,19 @@ PAGE_PATH_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 POST_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 
 
+class _DecimalEncoder(json.JSONEncoder):
+    """Encode DynamoDB Decimal values as int or float for JSON serialization."""
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return int(o) if o == int(o) else float(o)
+        return super().default(o)
+
+
 def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
     return {
         "statusCode": status,
         "headers": {"Content-Type": "application/json"},
-        "body": "" if empty_body else json.dumps(body),
+        "body": "" if empty_body else json.dumps(body, cls=_DecimalEncoder),
     }
 
 

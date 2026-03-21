@@ -6,7 +6,15 @@
  * tenant-scoped requests include X-Impersonate-Tenant header for superadmin.
  */
 
-let _impersonateTenant: string | null = null
+// Initialize from localStorage eagerly so the first API calls (before
+// ImpersonationProvider's useEffect fires) already carry the header.
+let _impersonateTenant: string | null = (() => {
+  try {
+    return localStorage.getItem("9host-impersonate")
+  } catch {
+    return null
+  }
+})()
 
 /** Set impersonation target (superadmin only). Call with null to clear. */
 export function setImpersonateTenant(slug: string | null): void {
