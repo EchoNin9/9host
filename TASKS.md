@@ -159,6 +159,7 @@
 | 1.147 | CloudFront alternate domain attachment — add/remove custom domains on sites distribution | DONE | Domain delete removes CloudFront alias + deletes ACM cert. `custom_domain_handler.py` shared by `domains_handler.py` and `lambda_acm_handler`. |
 | | **Site Hosting Plan — Task Group 8: Site Content Editor Fix** | | |
 | 1.148 | **FIX: media/content loading failure** — pages API response unwrapping, /media/* staging CloudFront, impersonation race condition, Decimal serialization | DONE | Commits `5587093`, `28567af`. |
+| 1.149 | **FIX: domain cert status never updates** — check ACM cert status on domain list/get, promote PENDING_VALIDATION → ACTIVE when cert is ISSUED, auto-add CloudFront alias | DONE | `api/domains_handler.py`: `_check_pending_certs()`. List, get, and activate endpoints now call `acm.describe_certificate()` for pending domains. |
 
 ### Agent 2 — Frontend / UI
 
