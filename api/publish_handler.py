@@ -28,6 +28,7 @@ from dynamodb_helpers import (
     pk_tenant,
 )
 from middleware import with_tenant
+from path_utils import site_base_path
 from templates import get_renderer
 from templates.base_layout import escape_html, media_url
 from tier_config import CONTENT_MODULE_KEYS, FEATURE_KEYS, tier_has_feature, tier_has_module
@@ -245,7 +246,7 @@ def _publish_site(
     from templates.base_layout import nav_links
 
     # Task 1.108a: site_base prefix for all internal links so they work under /site/{tenant}/{site_id}/
-    site_base = f"/site/{tenant_slug}/{site_id}"
+    site_base = site_base_path(tenant_slug, site_id)
     nav = nav_links(pages, bool(posts), bool(events), bool(media), site_base=site_base)
 
     # Build files to publish (Task 1.115: template renderer + style.css)

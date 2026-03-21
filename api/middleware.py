@@ -10,6 +10,7 @@ Sources (in order of precedence):
 Use with: event["tenant_slug"] in handlers. All DynamoDB queries MUST use TENANT#{tenant_slug}.
 """
 
+import json
 import os
 import re
 from typing import Any, Callable
@@ -114,6 +115,60 @@ def _get_header(event: dict, name: str) -> str:
         if k == key_lower:
             return (h.get("value") or h.get("Value") or "").strip()
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Input validation utilities (Task 1.145)
+# ---------------------------------------------------------------------------
+
+# Valid statuses for content entities
+VALID_CONTENT_STATUSES = frozenset({"DRAFT", "PUBLISHED"})
+
+
+def parse_json_body(event: dict) -> dict | None:
+    """Parse JSON body from Lambda event. Returns None on missing/invalid body."""
+    body = event.get("body")
+    if not body:
+        return None
+    if isinstance(body, str):
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return None
+    return body
+
+
+def validate_required_fields(body: dict, fields: list[str]) -> str | None:
+    """Check that all required fields are present and non-empty strings.
+
+    Returns an error message string if validation fails, None if OK.
+    """
+    for field in fields:
+        val = body.get(field)
+        if val is None or (isinstance(val, str) and not val.strip()):
+            return f"{field} is required."
+    return None
+
+
+def validate_slug_format(value: str, field_name: str = "slug") -> str | None:
+    """Validate a slug/path value matches the slug pattern.
+
+    Returns error message or None.
+    """
+    if not value or not isinstance(value, str):
+        return f"{field_name} is required."
+    s = value.strip().lower()
+    if not SLUG_PATTERN.match(s):
+        return f"{field_name} must be lowercase alphanumeric + hyphen."
+    return None
+
+
+def validate_content_status(status: str | None) -> str:
+    """Normalize and validate a content status value. Returns valid status or 'DRAFT'."""
+    if not status:
+        return "DRAFT"
+    s = str(status).upper()
+    return s if s in VALID_CONTENT_STATUSES else "DRAFT"
 
 
 def with_tenant(

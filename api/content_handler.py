@@ -27,7 +27,7 @@ from dynamodb_helpers import (
     sk_site_page,
     sk_site_post,
 )
-from middleware import with_tenant
+from middleware import parse_json_body, validate_content_status, validate_slug_format, with_tenant
 
 S3_MEDIA_BUCKET = "9host-media"
 
@@ -81,15 +81,8 @@ def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
 
 
 def _parse_body(event: dict) -> dict | None:
-    body = event.get("body")
-    if not body:
-        return None
-    if isinstance(body, str):
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return None
-    return body
+    """Delegate to centralized parse_json_body (Task 1.145)."""
+    return parse_json_body(event)
 
 
 def _extract_content_path(path: str, prefix: str) -> tuple[str | None, str | None, str | None]:
@@ -193,6 +186,25 @@ def _decrement_storage(table, tenant_slug: str, size_bytes: int) -> None:
     )
 
 
+def _apply_content_fields(item: dict, body: dict, fields: tuple[str, ...]) -> None:
+    """Apply body fields to a content item, with status normalization (Task 1.145)."""
+    for field in fields:
+        if field not in body:
+            continue
+        if field == "status":
+            s = validate_content_status(body[field])
+            item["status"] = s
+            if s == "PUBLISHED" and not item.get("published_at"):
+                item["published_at"] = datetime.now(timezone.utc).isoformat()
+        elif field == "sort_order":
+            try:
+                item["sort_order"] = int(body[field]) if body[field] is not None else None
+            except (TypeError, ValueError):
+                pass
+        else:
+            item[field] = body[field] if isinstance(body[field], str) else str(body[field])
+
+
 # --- Pages ---
 
 
@@ -214,10 +226,9 @@ def _get_page(table, tenant_slug: str, site_id: str, path: str) -> dict:
 
 def _create_page(table, tenant_slug: str, site_id: str, body: dict) -> dict:
     path = (body.get("path") or "").strip().lower()
-    if not path:
-        return _json_response(400, {"error": "path is required."})
-    if not PAGE_PATH_PATTERN.match(path):
-        return _json_response(400, {"error": "path must be lowercase alphanumeric + hyphen."})
+    err = validate_slug_format(path, "path")
+    if err:
+        return _json_response(400, {"error": err})
     if path in RESERVED_PAGE_PATHS:
         return _json_response(400, {"error": f"Reserved path: {path}"})
 
@@ -226,9 +237,7 @@ def _create_page(table, tenant_slug: str, site_id: str, body: dict) -> dict:
         return _json_response(409, {"error": "Page path already exists."})
 
     now = datetime.now(timezone.utc).isoformat()
-    status = (body.get("status") or "DRAFT").upper()
-    if status not in ("DRAFT", "PUBLISHED"):
-        status = "DRAFT"
+    status = validate_content_status(body.get("status"))
 
     item = {
         "pk": pk_tenant(tenant_slug),
@@ -254,16 +263,7 @@ def _update_page(table, tenant_slug: str, site_id: str, path: str, body: dict) -
     if not item:
         return _json_response(404, {"error": "Page not found."})
 
-    for field in ("title", "body", "status"):
-        if field in body:
-            if field == "status":
-                s = (body[field] or "").upper()
-                if s in ("DRAFT", "PUBLISHED"):
-                    item["status"] = s
-                    if s == "PUBLISHED" and not item.get("published_at"):
-                        item["published_at"] = datetime.now(timezone.utc).isoformat()
-            else:
-                item[field] = body[field] if isinstance(body[field], str) else str(body[field])
+    _apply_content_fields(item, body, ("title", "body", "status"))
 
     item["updated_at"] = datetime.now(timezone.utc).isoformat()
     table.put_item(Item=item)
@@ -301,16 +301,15 @@ def _create_post(table, tenant_slug: str, site_id: str, body: dict) -> dict:
     slug = (body.get("slug") or "").strip().lower()
     if not slug:
         slug = str(uuid.uuid4())[:8]
-    if not POST_SLUG_PATTERN.match(slug):
-        return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+    err = validate_slug_format(slug, "slug")
+    if err:
+        return _json_response(400, {"error": err})
     if slug in RESERVED_POST_SLUGS:
         return _json_response(400, {"error": f"Reserved slug: {slug}"})
 
     post_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-    status = (body.get("status") or "DRAFT").upper()
-    if status not in ("DRAFT", "PUBLISHED"):
-        status = "DRAFT"
+    status = validate_content_status(body.get("status"))
 
     item = {
         "pk": pk_tenant(tenant_slug),
@@ -339,21 +338,13 @@ def _update_post(table, tenant_slug: str, site_id: str, post_id: str, body: dict
 
     if "slug" in body:
         s = (body["slug"] or "").strip().lower()
-        if not POST_SLUG_PATTERN.match(s):
-            return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+        err = validate_slug_format(s, "slug")
+        if err:
+            return _json_response(400, {"error": err})
         if s in RESERVED_POST_SLUGS:
             return _json_response(400, {"error": f"Reserved slug: {s}"})
         item["slug"] = s
-    for field in ("title", "body", "status"):
-        if field in body:
-            if field == "status":
-                s = (body[field] or "").upper()
-                if s in ("DRAFT", "PUBLISHED"):
-                    item["status"] = s
-                    if s == "PUBLISHED" and not item.get("published_at"):
-                        item["published_at"] = datetime.now(timezone.utc).isoformat()
-            else:
-                item[field] = body[field] if isinstance(body[field], str) else str(body[field])
+    _apply_content_fields(item, body, ("title", "body", "status"))
 
     item["updated_at"] = datetime.now(timezone.utc).isoformat()
     table.put_item(Item=item)
@@ -390,9 +381,7 @@ def _get_event(table, tenant_slug: str, site_id: str, event_id: str) -> dict:
 def _create_event(table, tenant_slug: str, site_id: str, body: dict) -> dict:
     event_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-    status = (body.get("status") or "DRAFT").upper()
-    if status not in ("DRAFT", "PUBLISHED"):
-        status = "DRAFT"
+    status = validate_content_status(body.get("status"))
 
     item = {
         "pk": pk_tenant(tenant_slug),
@@ -420,16 +409,7 @@ def _update_event(table, tenant_slug: str, site_id: str, event_id: str, body: di
     if not item:
         return _json_response(404, {"error": "Event not found."})
 
-    for field in ("title", "event_date", "venue", "location", "status"):
-        if field in body:
-            if field == "status":
-                s = (body[field] or "").upper()
-                if s in ("DRAFT", "PUBLISHED"):
-                    item["status"] = s
-                    if s == "PUBLISHED" and not item.get("published_at"):
-                        item["published_at"] = datetime.now(timezone.utc).isoformat()
-            else:
-                item[field] = body[field] if isinstance(body[field], str) else str(body[field])
+    _apply_content_fields(item, body, ("title", "event_date", "venue", "location", "status"))
 
     item["updated_at"] = datetime.now(timezone.utc).isoformat()
     table.put_item(Item=item)
@@ -482,9 +462,7 @@ def _create_media(table, tenant_slug: str, site_id: str, body: dict, s3_client, 
 
     media_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-    status = (body.get("status") or "DRAFT").upper()
-    if status not in ("DRAFT", "PUBLISHED"):
-        status = "DRAFT"
+    status = validate_content_status(body.get("status"))
 
     sort_order = body.get("sort_order")
     if sort_order is not None:
@@ -521,21 +499,7 @@ def _update_media(table, tenant_slug: str, site_id: str, media_id: str, body: di
     if not item:
         return _json_response(404, {"error": "Media not found."})
 
-    for field in ("caption", "sort_order", "status"):
-        if field in body:
-            if field == "status":
-                s = (body[field] or "").upper()
-                if s in ("DRAFT", "PUBLISHED"):
-                    item["status"] = s
-                    if s == "PUBLISHED" and not item.get("published_at"):
-                        item["published_at"] = datetime.now(timezone.utc).isoformat()
-            elif field == "sort_order":
-                try:
-                    item["sort_order"] = int(body[field]) if body[field] is not None else None
-                except (TypeError, ValueError):
-                    pass
-            else:
-                item[field] = body[field] if isinstance(body[field], str) else str(body[field])
+    _apply_content_fields(item, body, ("caption", "sort_order", "status"))
 
     item["updated_at"] = datetime.now(timezone.utc).isoformat()
     table.put_item(Item=item)
