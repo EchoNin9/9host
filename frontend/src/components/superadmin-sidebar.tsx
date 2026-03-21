@@ -11,6 +11,7 @@ import {
   LogOut,
   type LucideIcon,
 } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 import {
   Sidebar,
@@ -103,6 +104,7 @@ function SuperadminSidebar() {
               {userDisplay}
             </p>
           )}
+          <ThemeToggle />
           <button
             onClick={handleSignOut}
             className="flex items-center gap-2 mt-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground text-left"

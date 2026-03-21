@@ -291,7 +291,7 @@
 | 2.117 | DNS validation instructions UI — show required CNAME records for domain verification | DONE | `domain-setup-guide.tsx`: Step 1 (CNAME+TXT) + Step 2 (ACM validation CNAME records with copy buttons). |
 | 2.118 | Domain status polling — check ACM cert status and show progress in UI | DONE | `use-domains.ts`: auto-poll every 10s when PENDING_VALIDATION (30min timeout). `tenant-domains.tsx`: Activate SSL button, status badges, polling indicator. |
 | | **Site Hosting Plan — Task Group 9: Dark Mode Toggle** | | |
-| 2.119 | Add dark mode toggle to superadmin and tenant admin interfaces | TODO | `frontend/src/components/`, `frontend/src/index.css` |
+| 2.119 | Add dark mode toggle to superadmin and tenant admin interfaces | DONE | `hooks/use-theme.ts` (localStorage-persisted, system preference support), `components/theme-toggle.tsx`, added to both sidebar footers. |
 
 ### Agent 4 — Self-Serve (Future)
 
