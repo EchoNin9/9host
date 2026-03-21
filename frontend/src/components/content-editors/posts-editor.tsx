@@ -319,6 +319,7 @@ function PostFormSheet({
               value={body}
               onChange={setBody}
               placeholder="Post content…"
+              siteId={siteId}
             />
           </div>
           <div>

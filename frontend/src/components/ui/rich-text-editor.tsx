@@ -1,7 +1,8 @@
 /**
- * RichTextEditor — TipTap WYSIWYG wrapper (Task 3.2).
+ * RichTextEditor — TipTap WYSIWYG wrapper (Task 3.2, 4.2, 4.3).
  *
  * Toolbar: bold, italic, underline, headings, link, image, lists, blockquote, code.
+ * When siteId is provided: "Insert image" opens MediaPicker (4.2), drag-and-drop uploads (4.3).
  * Outputs HTML string via onChange callback.
  */
 import { useEditor, EditorContent } from "@tiptap/react"
@@ -9,7 +10,7 @@ import StarterKit from "@tiptap/starter-kit"
 import Link from "@tiptap/extension-link"
 import Image from "@tiptap/extension-image"
 import Underline from "@tiptap/extension-underline"
-import { useEffect, useCallback } from "react"
+import { useEffect, useCallback, useState } from "react"
 import {
   Bold,
   Italic,
@@ -26,15 +27,25 @@ import {
   Undo,
   Redo,
   RemoveFormatting,
+  Upload,
 } from "lucide-react"
+import { MediaPicker, uploadFileAndGetUrl } from "@/components/content-editors/media-picker"
+import { useTenant } from "@/hooks/use-tenant"
 
 interface RichTextEditorProps {
   value: string
   onChange: (html: string) => void
   placeholder?: string
+  /** When provided, enables media picker + drag-and-drop upload */
+  siteId?: string
 }
 
-export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTextEditorProps) {
+  const { tenantSlug } = useTenant()
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [dropActive, setDropActive] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -58,6 +69,30 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
       attributes: {
         class: "rte-content",
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
+      },
+      // Drag-and-drop image handling (Task 4.3)
+      handleDrop: (view, event) => {
+        if (!siteId || !tenantSlug) return false
+        const files = event.dataTransfer?.files
+        if (!files || files.length === 0) return false
+        const imageFile = Array.from(files).find((f) => f.type.startsWith("image/"))
+        if (!imageFile) return false
+        event.preventDefault()
+        void handleDropUpload(imageFile, view.state.selection.from)
+        return true
+      },
+      // Paste image handling (also Task 4.3)
+      handlePaste: (view, event) => {
+        if (!siteId || !tenantSlug) return false
+        const items = event.clipboardData?.items
+        if (!items) return false
+        const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"))
+        if (!imageItem) return false
+        const file = imageItem.getAsFile()
+        if (!file) return false
+        event.preventDefault()
+        void handleDropUpload(file, view.state.selection.from)
+        return true
       },
     },
   })
@@ -83,16 +118,73 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
 
   const addImage = useCallback(() => {
     if (!editor) return
-    const url = window.prompt("Image URL")
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run()
+    if (siteId) {
+      // Open media picker (Task 4.2)
+      setPickerOpen(true)
+    } else {
+      // Fallback: URL prompt
+      const url = window.prompt("Image URL")
+      if (url) {
+        editor.chain().focus().setImage({ src: url }).run()
+      }
     }
-  }, [editor])
+  }, [editor, siteId])
+
+  const handlePickerSelect = useCallback(
+    (url: string) => {
+      if (editor) {
+        editor.chain().focus().setImage({ src: url }).run()
+      }
+    },
+    [editor]
+  )
+
+  // Handle drag-and-drop / paste file upload (Task 4.3)
+  const handleDropUpload = useCallback(
+    async (file: File, _pos: number) => {
+      if (!tenantSlug || !siteId || !editor) return
+      setUploading(true)
+      try {
+        const url = await uploadFileAndGetUrl(tenantSlug, siteId, file)
+        if (url) {
+          editor.chain().focus().setImage({ src: url }).run()
+        }
+      } finally {
+        setUploading(false)
+      }
+    },
+    [tenantSlug, siteId, editor]
+  )
+
+  // Drag-over visual feedback
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!siteId) return
+      e.preventDefault()
+      setDropActive(true)
+    },
+    [siteId]
+  )
+
+  const handleDragLeave = useCallback(() => {
+    setDropActive(false)
+  }, [])
+
+  const handleDrop = useCallback(() => {
+    setDropActive(false)
+  }, [])
 
   if (!editor) return null
 
   return (
-    <div className="rte-wrapper rounded-md border border-input">
+    <div
+      className={`rte-wrapper rounded-md border border-input relative ${
+        dropActive ? "ring-2 ring-primary/50 border-primary" : ""
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="rte-toolbar flex flex-wrap gap-0.5 border-b border-input bg-muted/50 p-1">
         <ToolbarButton
           active={editor.isActive("bold")}
@@ -183,7 +275,7 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         <ToolbarButton
           active={false}
           onClick={addImage}
-          title="Insert image"
+          title={siteId ? "Insert image from media gallery" : "Insert image URL"}
         >
           <ImageIcon className="size-4" />
         </ToolbarButton>
@@ -216,6 +308,36 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
       </div>
 
       <EditorContent editor={editor} className="rte-editor" />
+
+      {/* Upload indicator overlay */}
+      {uploading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-background/80">
+          <div className="flex items-center gap-2 rounded-md bg-card px-4 py-2 shadow-md">
+            <Upload className="size-4 animate-bounce text-primary" />
+            <span className="text-sm font-medium">Uploading image…</span>
+          </div>
+        </div>
+      )}
+
+      {/* Drop zone overlay */}
+      {dropActive && !uploading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-md bg-primary/10 border-2 border-dashed border-primary">
+          <div className="flex items-center gap-2 rounded-md bg-card px-4 py-2 shadow-md">
+            <ImageIcon className="size-4 text-primary" />
+            <span className="text-sm font-medium">Drop image to upload</span>
+          </div>
+        </div>
+      )}
+
+      {/* Media picker dialog (Task 4.2) */}
+      {siteId && (
+        <MediaPicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          siteId={siteId}
+          onSelect={handlePickerSelect}
+        />
+      )}
 
       <style>{`
         .rte-editor .tiptap {

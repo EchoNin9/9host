@@ -328,6 +328,7 @@ function PageFormSheet({
               value={body}
               onChange={setBody}
               placeholder="Page content…"
+              siteId={siteId}
             />
           </div>
           <div>
