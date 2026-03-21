@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { getToken } from "@/lib/api"
 import {
   fetchDomains,
-  fetchDomain,
   createDomain,
   deleteDomain as deleteDomainApi,
   activateDomain as activateDomainApi,
