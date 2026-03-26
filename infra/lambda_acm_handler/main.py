@@ -1,5 +1,5 @@
 """
-EventBridge handler: ACM certificate issued → add alias to CloudFront, update domain (Task 1.99, 1.100b).
+EventBridge handler: ACM certificate issued → add alias to CloudFront, update domain (Task 1.99, 1.100b, 1.147).
 
 Triggered when an ACM certificate status changes to ISSUED (ACM Certificate Available event).
 Looks up domain by cert ARN, adds alias to sites distribution, updates domain status to ACTIVE.
@@ -8,6 +8,7 @@ Zero polling — event-driven.
 
 import json
 import os
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -16,10 +17,37 @@ CLOUDFRONT_DISTRIBUTION_ID = os.environ.get("CLOUDFRONT_SITES_DISTRIBUTION_ID", 
 DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "9host-main")
 
 
+def _add_cloudfront_alias(domain: str) -> bool:
+    """Add domain as alias to CloudFront sites distribution."""
+    if not CLOUDFRONT_DISTRIBUTION_ID:
+        return False
+
+    cf = boto3.client("cloudfront")
+    try:
+        config_resp = cf.get_distribution_config(Id=CLOUDFRONT_DISTRIBUTION_ID)
+        config = config_resp["DistributionConfig"]
+        etag = config_resp["ETag"]
+
+        aliases = config.get("Aliases", {})
+        items_list = list(aliases.get("Items") or [])
+        if domain in items_list:
+            return True  # already present
+
+        items_list.append(domain)
+        aliases["Items"] = items_list
+        aliases["Quantity"] = len(items_list)
+        config["Aliases"] = aliases
+
+        cf.update_distribution(Id=CLOUDFRONT_DISTRIBUTION_ID, DistributionConfig=config, IfMatch=etag)
+        return True
+    except ClientError as e:
+        print(f"[9host] CloudFront add alias failed for {domain}: {e}")
+        raise
+
+
 def lambda_handler(event: dict, context: dict) -> dict:
     """Handle EventBridge ACM Certificate Available event."""
     try:
-        # ACM Certificate Available: detail-type "ACM Certificate Available", cert ARN in resources[0]
         if event.get("detail-type") != "ACM Certificate Available":
             return {"statusCode": 200, "body": "Ignored event type"}
 
@@ -63,44 +91,10 @@ def lambda_handler(event: dict, context: dict) -> dict:
         pk = domain_item.get("pk", "")
         sk = domain_item.get("sk", "")
 
-        # Add alias to CloudFront distribution (Task 1.99)
-        # CloudFront requires each alias to be in a cert. The sites distribution
-        # uses wildcard cert for *.echo9.net. Custom domains need certs that cover
-        # them. Per plan: one cert per domain. CloudFront supports multiple certs
-        # per distribution; we add the alias and the domain's cert.
-        if CLOUDFRONT_DISTRIBUTION_ID:
-            cf = boto3.client("cloudfront")
-            config_resp = cf.get_distribution_config(Id=CLOUDFRONT_DISTRIBUTION_ID)
-            config = config_resp["DistributionConfig"]
-            etag = config_resp["ETag"]
-
-            aliases = config.get("Aliases", {})
-            items_list = list(aliases.get("Items") or [])
-            if domain_name not in items_list:
-                items_list.append(domain_name)
-                aliases["Items"] = items_list
-                aliases["Quantity"] = len(items_list)
-                config["Aliases"] = aliases
-
-                if "ETag" in config:
-                    del config["ETag"]
-
-                try:
-                    cf.update_distribution(
-                        Id=CLOUDFRONT_DISTRIBUTION_ID,
-                        DistributionConfig=config,
-                        IfMatch=etag,
-                    )
-                except ClientError as e:
-                    # Alias may require cert covering it; distribution has wildcard only.
-                    # Task 1.100 will request domain cert; Terraform may need to add
-                    # cert to distribution for multi-cert support.
-                    print(f"CloudFront update failed (alias may need cert): {e}")
-                    raise
+        # Add alias to CloudFront distribution (Task 1.99, 1.147)
+        _add_cloudfront_alias(domain_name)
 
         # Update domain status to ACTIVE
-        from datetime import datetime, timezone
-
         now = datetime.now(timezone.utc).isoformat()
         table.update_item(
             Key={"pk": pk, "sk": sk},
