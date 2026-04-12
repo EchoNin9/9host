@@ -18,8 +18,10 @@ from botocore.exceptions import ClientError
 
 # Env vars set by OpenTofu
 SITES_BUCKET_DOMAIN = os.environ.get("SITES_BUCKET_DOMAIN", "")
+MEDIA_BUCKET_DOMAIN = os.environ.get("MEDIA_BUCKET_DOMAIN", "")
 OAC_ID = os.environ.get("CLOUDFRONT_OAC_ID", "")
 CF_FUNCTION_ARN = os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN_FUNCTION_ARN", "")
+CF_MEDIA_FUNCTION_ARN = os.environ.get("CLOUDFRONT_MEDIA_FUNCTION_ARN", "")
 
 # Legacy — kept for backward compat during migration
 CLOUDFRONT_SITES_DISTRIBUTION_ID = os.environ.get("CLOUDFRONT_SITES_DISTRIBUTION_ID", "")
@@ -92,8 +94,10 @@ def create_custom_domain_distribution(
     Raises RuntimeError on failure.
     """
     sites_bucket = SITES_BUCKET_DOMAIN
+    media_bucket = MEDIA_BUCKET_DOMAIN
     oac_id = OAC_ID
     cf_func_arn = CF_FUNCTION_ARN
+    cf_media_func_arn = CF_MEDIA_FUNCTION_ARN
 
     if not sites_bucket or not oac_id or not cf_func_arn:
         raise RuntimeError(
@@ -108,6 +112,56 @@ def create_custom_domain_distribution(
 
     origin_path = f"/{tenant}/{site_id}/published/current"
 
+    # Origins: sites (default) + media (for /media/* images)
+    origins = [
+        {
+            "Id": "S3-9host-sites",
+            "DomainName": sites_bucket,
+            "OriginPath": origin_path,
+            "S3OriginConfig": {"OriginAccessIdentity": ""},
+            "OriginAccessControlId": oac_id,
+        }
+    ]
+    if media_bucket:
+        origins.append({
+            "Id": "S3-9host-media",
+            "DomainName": media_bucket,
+            "OriginPath": "",
+            "S3OriginConfig": {"OriginAccessIdentity": ""},
+            "OriginAccessControlId": oac_id,
+        })
+
+    # /media/* behavior — route to media bucket with CF function for path rewrite
+    cache_behaviors = []
+    if media_bucket and cf_media_func_arn:
+        cache_behaviors.append({
+            "PathPattern": "/media/*",
+            "TargetOriginId": "S3-9host-media",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": {
+                "Quantity": 3,
+                "Items": ["GET", "HEAD", "OPTIONS"],
+                "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]},
+            },
+            "Compress": True,
+            "ForwardedValues": {
+                "QueryString": False,
+                "Cookies": {"Forward": "none"},
+            },
+            "MinTTL": 0,
+            "DefaultTTL": 86400,
+            "MaxTTL": 31536000,
+            "FunctionAssociations": {
+                "Quantity": 1,
+                "Items": [
+                    {
+                        "EventType": "viewer-request",
+                        "FunctionARN": cf_media_func_arn,
+                    }
+                ],
+            },
+        })
+
     config = {
         "CallerReference": f"9host-{domain}-{int(time.time())}",
         "Comment": f"9host custom domain: {domain}",
@@ -117,17 +171,13 @@ def create_custom_domain_distribution(
         "HttpVersion": "http2and3",
         "Aliases": {"Quantity": len(aliases), "Items": aliases},
         "Origins": {
-            "Quantity": 1,
-            "Items": [
-                {
-                    "Id": "S3-9host-sites",
-                    "DomainName": sites_bucket,
-                    "OriginPath": origin_path,
-                    "S3OriginConfig": {"OriginAccessIdentity": ""},
-                    "OriginAccessControlId": oac_id,
-                }
-            ],
+            "Quantity": len(origins),
+            "Items": origins,
         },
+        "CacheBehaviors": {
+            "Quantity": len(cache_behaviors),
+            "Items": cache_behaviors,
+        } if cache_behaviors else {"Quantity": 0},
         "DefaultCacheBehavior": {
             "TargetOriginId": "S3-9host-sites",
             "ViewerProtocolPolicy": "redirect-to-https",

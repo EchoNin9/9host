@@ -161,8 +161,10 @@ resource "aws_lambda_function" "api" {
       CLOUDNS_ZONE                             = var.domains[0]
       CLOUDNS_CF_TARGET                        = aws_cloudfront_distribution.sites.domain_name
       SITES_BUCKET_DOMAIN                      = aws_s3_bucket.sites.bucket_regional_domain_name
+      MEDIA_BUCKET_DOMAIN                      = aws_s3_bucket.media.bucket_regional_domain_name
       CLOUDFRONT_OAC_ID                        = aws_cloudfront_origin_access_control.frontend.id
       CLOUDFRONT_CUSTOM_DOMAIN_FUNCTION_ARN    = aws_cloudfront_function.custom_domain.arn
+      CLOUDFRONT_MEDIA_FUNCTION_ARN            = aws_cloudfront_function.media_content.arn
       CLOUDFRONT_SITES_DISTRIBUTION_ID         = aws_cloudfront_distribution.sites.id
     }
   }
