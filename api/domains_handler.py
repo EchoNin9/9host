@@ -296,7 +296,7 @@ def _verify_dns_ownership(domain: str, cname_target: str, txt_record: str) -> bo
         try:
             answers = dns.resolver.resolve(verify_host, "TXT")
             for rdata in answers:
-                txt_val = "".join(rdata.strings).strip('"')
+                txt_val = "".join(s.decode("utf-8") if isinstance(s, bytes) else s for s in rdata.strings).strip('"')
                 if txt_record in txt_val or txt_val == txt_record:
                     return True
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
