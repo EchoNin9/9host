@@ -1,48 +1,102 @@
 """
-EventBridge handler: ACM certificate issued → add alias to CloudFront, update domain (Task 1.99, 1.100b, 1.147).
+EventBridge handler: ACM certificate issued → create per-domain CloudFront distribution,
+update domain status to ACTIVE (Task 1.99, 1.100b, 1.147, custom-domain-distro).
 
 Triggered when an ACM certificate status changes to ISSUED (ACM Certificate Available event).
-Looks up domain by cert ARN, adds alias to sites distribution, updates domain status to ACTIVE.
+Looks up domain by cert ARN, creates a dedicated CloudFront distribution for the domain,
+stores distribution info in DynamoDB, updates domain status to ACTIVE.
 Zero polling — event-driven.
 """
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
 
-CLOUDFRONT_DISTRIBUTION_ID = os.environ.get("CLOUDFRONT_SITES_DISTRIBUTION_ID", "")
 DYNAMODB_TABLE = os.environ.get("DYNAMODB_TABLE", "9host-main")
+SITES_BUCKET_DOMAIN = os.environ.get("SITES_BUCKET_DOMAIN", "")
+OAC_ID = os.environ.get("CLOUDFRONT_OAC_ID", "")
+CF_FUNCTION_ARN = os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN_FUNCTION_ARN", "")
 
 
-def _add_cloudfront_alias(domain: str) -> bool:
-    """Add domain as alias to CloudFront sites distribution."""
-    if not CLOUDFRONT_DISTRIBUTION_ID:
-        return False
+def _create_distribution(domain: str, cert_arn: str, tenant: str, site_id: str) -> dict:
+    """Create a CloudFront distribution for a custom domain.
+
+    Returns {'distribution_id': str, 'domain_name': str}.
+    """
+    www_domain = f"www.{domain}" if not domain.startswith("www.") else None
+    aliases = [domain]
+    if www_domain:
+        aliases.append(www_domain)
+
+    origin_path = f"/{tenant}/{site_id}/published/current"
+
+    config = {
+        "CallerReference": f"9host-{domain}-{int(time.time())}",
+        "Comment": f"9host custom domain: {domain}",
+        "Enabled": True,
+        "IsIPV6Enabled": True,
+        "PriceClass": "PriceClass_100",
+        "HttpVersion": "http2and3",
+        "Aliases": {"Quantity": len(aliases), "Items": aliases},
+        "Origins": {
+            "Quantity": 1,
+            "Items": [
+                {
+                    "Id": "S3-9host-sites",
+                    "DomainName": SITES_BUCKET_DOMAIN,
+                    "OriginPath": origin_path,
+                    "S3OriginConfig": {"OriginAccessIdentity": ""},
+                    "OriginAccessControlId": OAC_ID,
+                }
+            ],
+        },
+        "DefaultCacheBehavior": {
+            "TargetOriginId": "S3-9host-sites",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": {
+                "Quantity": 3,
+                "Items": ["GET", "HEAD", "OPTIONS"],
+                "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]},
+            },
+            "Compress": True,
+            "ForwardedValues": {
+                "QueryString": False,
+                "Cookies": {"Forward": "none"},
+            },
+            "MinTTL": 0,
+            "DefaultTTL": 60,
+            "MaxTTL": 300,
+            "FunctionAssociations": {
+                "Quantity": 1,
+                "Items": [
+                    {
+                        "EventType": "viewer-request",
+                        "FunctionARN": CF_FUNCTION_ARN,
+                    }
+                ],
+            },
+        },
+        "ViewerCertificate": {
+            "ACMCertificateArn": cert_arn,
+            "SSLSupportMethod": "sni-only",
+            "MinimumProtocolVersion": "TLSv1.2_2021",
+        },
+        "Restrictions": {
+            "GeoRestriction": {"RestrictionType": "none", "Quantity": 0}
+        },
+    }
 
     cf = boto3.client("cloudfront")
-    try:
-        config_resp = cf.get_distribution_config(Id=CLOUDFRONT_DISTRIBUTION_ID)
-        config = config_resp["DistributionConfig"]
-        etag = config_resp["ETag"]
-
-        aliases = config.get("Aliases", {})
-        items_list = list(aliases.get("Items") or [])
-        if domain in items_list:
-            return True  # already present
-
-        items_list.append(domain)
-        aliases["Items"] = items_list
-        aliases["Quantity"] = len(items_list)
-        config["Aliases"] = aliases
-
-        cf.update_distribution(Id=CLOUDFRONT_DISTRIBUTION_ID, DistributionConfig=config, IfMatch=etag)
-        return True
-    except ClientError as e:
-        print(f"[9host] CloudFront add alias failed for {domain}: {e}")
-        raise
+    resp = cf.create_distribution(DistributionConfig=config)
+    dist = resp.get("Distribution", {})
+    return {
+        "distribution_id": dist.get("Id", ""),
+        "domain_name": dist.get("DomainName", ""),
+    }
 
 
 def lambda_handler(event: dict, context: dict) -> dict:
@@ -90,20 +144,57 @@ def lambda_handler(event: dict, context: dict) -> dict:
         domain_item = items[0]
         pk = domain_item.get("pk", "")
         sk = domain_item.get("sk", "")
+        tenant_slug = pk.replace("TENANT#", "") if pk.startswith("TENANT#") else ""
+        site_id = domain_item.get("site_id", "")
 
-        # Add alias to CloudFront distribution (Task 1.99, 1.147)
-        _add_cloudfront_alias(domain_name)
+        # Skip if distribution already exists
+        if domain_item.get("cloudfront_distribution_id"):
+            return {"statusCode": 200, "body": "Distribution already exists"}
 
-        # Update domain status to ACTIVE
+        if not tenant_slug or not site_id:
+            return {"statusCode": 200, "body": "Missing tenant or site_id"}
+
+        if not SITES_BUCKET_DOMAIN or not OAC_ID or not CF_FUNCTION_ARN:
+            print(f"[9host] Missing env vars for distribution creation: "
+                  f"SITES_BUCKET_DOMAIN={SITES_BUCKET_DOMAIN}, OAC_ID={OAC_ID}, "
+                  f"CF_FUNCTION_ARN={CF_FUNCTION_ARN}")
+            return {"statusCode": 500, "body": "Missing configuration"}
+
+        # Create per-domain CloudFront distribution
+        dist_info = _create_distribution(
+            domain=domain_name,
+            cert_arn=cert_arn,
+            tenant=tenant_slug,
+            site_id=site_id,
+        )
+
+        # Update domain record: ACTIVE + distribution info
         now = datetime.now(timezone.utc).isoformat()
         table.update_item(
             Key={"pk": pk, "sk": sk},
-            UpdateExpression="SET #status = :status, updated_at = :now",
+            UpdateExpression=(
+                "SET #status = :status, updated_at = :now, "
+                "cloudfront_distribution_id = :dist_id, "
+                "cloudfront_domain_name = :dist_dn"
+            ),
             ExpressionAttributeNames={"#status": "status"},
-            ExpressionAttributeValues={":status": "ACTIVE", ":now": now},
+            ExpressionAttributeValues={
+                ":status": "ACTIVE",
+                ":now": now,
+                ":dist_id": dist_info["distribution_id"],
+                ":dist_dn": dist_info["domain_name"],
+            },
         )
 
-        return {"statusCode": 200, "body": json.dumps({"domain": domain_name, "status": "ACTIVE"})}
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "domain": domain_name,
+                "status": "ACTIVE",
+                "distribution_id": dist_info["distribution_id"],
+                "distribution_domain": dist_info["domain_name"],
+            }),
+        }
 
     except Exception as e:
         print(f"ACM handler error: {e}")

@@ -115,7 +115,20 @@ resource "aws_iam_role_policy" "api_lambda" {
         Effect = "Allow"
         Action = [
           "acm:RequestCertificate",
-          "acm:DescribeCertificate"
+          "acm:DescribeCertificate",
+          "acm:DeleteCertificate"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudFrontDistributions"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateDistribution",
+          "cloudfront:GetDistribution",
+          "cloudfront:GetDistributionConfig",
+          "cloudfront:UpdateDistribution",
+          "cloudfront:DeleteDistribution"
         ]
         Resource = "*"
       }
@@ -144,9 +157,13 @@ resource "aws_lambda_function" "api" {
       JWT_SECRET_ARN             = aws_secretsmanager_secret.jwt_signing.arn
       CLOUDFRONT_CUSTOM_DOMAIN   = aws_cloudfront_distribution.sites.domain_name
       CLOUDFRONT_SITES_DOMAIN    = aws_cloudfront_distribution.sites.domain_name
-      CLOUDNS_SECRET_ARN         = aws_secretsmanager_secret.cloudns.arn
-      CLOUDNS_ZONE               = var.domains[0]
-      CLOUDNS_CF_TARGET          = aws_cloudfront_distribution.sites.domain_name
+      CLOUDNS_SECRET_ARN                       = aws_secretsmanager_secret.cloudns.arn
+      CLOUDNS_ZONE                             = var.domains[0]
+      CLOUDNS_CF_TARGET                        = aws_cloudfront_distribution.sites.domain_name
+      SITES_BUCKET_DOMAIN                      = aws_s3_bucket.sites.bucket_regional_domain_name
+      CLOUDFRONT_OAC_ID                        = aws_cloudfront_origin_access_control.frontend.id
+      CLOUDFRONT_CUSTOM_DOMAIN_FUNCTION_ARN    = aws_cloudfront_function.custom_domain.arn
+      CLOUDFRONT_SITES_DISTRIBUTION_ID         = aws_cloudfront_distribution.sites.id
     }
   }
 

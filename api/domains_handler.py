@@ -17,7 +17,9 @@ import boto3
 from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
 from custom_domain_handler import (
     add_cloudfront_alias,
+    create_custom_domain_distribution,
     delete_acm_certificate,
+    disable_custom_domain_distribution,
     remove_cloudfront_alias,
     request_acm_certificate,
 )
@@ -97,6 +99,11 @@ def _domain_to_response(item: dict) -> dict:
     if item.get("acm_validation_records"):
         raw = item["acm_validation_records"]
         out["acm_validation_records"] = json.loads(raw) if isinstance(raw, str) else raw
+    # Per-domain CloudFront distribution (custom-domain-distro)
+    if item.get("cloudfront_distribution_id"):
+        out["cloudfront_distribution_id"] = item["cloudfront_distribution_id"]
+    if item.get("cloudfront_domain_name"):
+        out["cloudfront_domain_name"] = item["cloudfront_domain_name"]
     return out
 
 
@@ -118,18 +125,41 @@ def _check_pending_certs(table, items: list[dict]) -> list[dict]:
         if cert_status == "ISSUED":
             sk = item.get("sk", "")
             domain = sk.replace("DOMAIN#", "") if sk.startswith("DOMAIN#") else ""
-            add_cloudfront_alias(domain)
+            pk = item.get("pk", "")
+            tenant_slug = pk.replace("TENANT#", "") if pk.startswith("TENANT#") else ""
+            site_id = item.get("site_id", "")
 
-            now = datetime.now(timezone.utc).isoformat()
+            # Create per-domain CloudFront distribution (if not already created)
+            update_expr = "SET #status = :status, updated_at = :now"
+            expr_vals: dict = {":status": "ACTIVE", ":now": datetime.now(timezone.utc).isoformat()}
+            expr_names: dict = {"#status": "status"}
+
+            if not item.get("cloudfront_distribution_id") and tenant_slug and site_id:
+                try:
+                    dist_info = create_custom_domain_distribution(
+                        domain=domain,
+                        cert_arn=cert_arn,
+                        tenant=tenant_slug,
+                        site_id=site_id,
+                    )
+                    update_expr += ", cloudfront_distribution_id = :dist_id, cloudfront_domain_name = :dist_dn"
+                    expr_vals[":dist_id"] = dist_info["distribution_id"]
+                    expr_vals[":dist_dn"] = dist_info["domain_name"]
+                    item["cloudfront_distribution_id"] = dist_info["distribution_id"]
+                    item["cloudfront_domain_name"] = dist_info["domain_name"]
+                except RuntimeError as e:
+                    print(f"[9host] Distribution creation failed for {domain}: {e}")
+                    continue
+
             key = {"pk": item["pk"], "sk": item["sk"]}
             table.update_item(
                 Key=key,
-                UpdateExpression="SET #status = :status, updated_at = :now",
-                ExpressionAttributeNames={"#status": "status"},
-                ExpressionAttributeValues={":status": "ACTIVE", ":now": now},
+                UpdateExpression=update_expr,
+                ExpressionAttributeNames=expr_names,
+                ExpressionAttributeValues=expr_vals,
             )
             item["status"] = "ACTIVE"
-            item["updated_at"] = now
+            item["updated_at"] = expr_vals[":now"]
 
     return items
 
@@ -222,12 +252,17 @@ def _delete_domain(table, tenant_slug: str, domain: str) -> dict:
     if not item:
         return _json_response(404, {"error": "Domain not found."})
 
-    # Task 1.147: Remove CloudFront alias before deleting domain record
+    # Disable per-domain CloudFront distribution (aliases removed so domain is freed)
+    dist_id = (item.get("cloudfront_distribution_id") or "").strip()
+    if dist_id:
+        disable_custom_domain_distribution(dist_id)
+
+    # Legacy: remove alias from shared sites distribution (migration compat)
     status = (item.get("status") or "").upper()
-    if status == "ACTIVE":
+    if status == "ACTIVE" and not dist_id:
         remove_cloudfront_alias(domain)
 
-    # Task 1.147: Delete ACM certificate (best-effort; may fail if still in use)
+    # Delete ACM certificate (best-effort; may fail if still in use by distribution)
     cert_arn = (item.get("acm_certificate_arn") or "").strip()
     if cert_arn:
         delete_acm_certificate(cert_arn)
@@ -261,7 +296,7 @@ def _verify_dns_ownership(domain: str, cname_target: str, txt_record: str) -> bo
         try:
             answers = dns.resolver.resolve(verify_host, "TXT")
             for rdata in answers:
-                txt_val = "".join(rdata.strings).strip('"')
+                txt_val = "".join(s.decode("utf-8") if isinstance(s, bytes) else s for s in rdata.strings).strip('"')
                 if txt_record in txt_val or txt_val == txt_record:
                     return True
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):

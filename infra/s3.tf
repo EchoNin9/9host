@@ -109,6 +109,7 @@ resource "aws_s3_bucket_versioning" "sites" {
 }
 
 # Task 1.97: Allow CloudFront sites distribution to read from 9host-sites
+# Custom domain distributions (created dynamically) also need access.
 resource "aws_s3_bucket_policy" "sites" {
   bucket = aws_s3_bucket.sites.id
 
@@ -126,6 +127,20 @@ resource "aws_s3_bucket_policy" "sites" {
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.sites.arn
+          }
+        }
+      },
+      {
+        Sid    = "AllowCustomDomainDistributions"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.sites.arn}/*"
+        Condition = {
+          StringLike = {
+            "AWS:SourceArn" = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
           }
         }
       }

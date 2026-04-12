@@ -71,13 +71,15 @@ resource "aws_iam_role_policy" "acm_handler" {
         ]
       },
       {
-        Sid    = "CloudFront"
+        Sid    = "CloudFrontCreate"
         Effect = "Allow"
         Action = [
+          "cloudfront:CreateDistribution",
+          "cloudfront:GetDistribution",
           "cloudfront:GetDistributionConfig",
           "cloudfront:UpdateDistribution"
         ]
-        Resource = aws_cloudfront_distribution.sites.arn
+        Resource = "*"
       },
       {
         Sid    = "ACM"
@@ -107,8 +109,11 @@ resource "aws_lambda_function" "acm_handler" {
 
   environment {
     variables = {
-      CLOUDFRONT_SITES_DISTRIBUTION_ID = aws_cloudfront_distribution.sites.id
-      DYNAMODB_TABLE                   = aws_dynamodb_table.main.name
+      CLOUDFRONT_SITES_DISTRIBUTION_ID         = aws_cloudfront_distribution.sites.id
+      DYNAMODB_TABLE                           = aws_dynamodb_table.main.name
+      SITES_BUCKET_DOMAIN                      = aws_s3_bucket.sites.bucket_regional_domain_name
+      CLOUDFRONT_OAC_ID                        = aws_cloudfront_origin_access_control.frontend.id
+      CLOUDFRONT_CUSTOM_DOMAIN_FUNCTION_ARN    = aws_cloudfront_function.custom_domain.arn
     }
   }
 
