@@ -4,7 +4,7 @@
  * Shows CNAME target, TXT, and ACM validation CNAME records from API.
  */
 
-import { Copy, Check, Globe, Server, ShieldCheck } from "lucide-react"
+import { Copy, Check, Globe, Link, Server, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 import {
   Sheet,
@@ -147,6 +147,60 @@ export function DomainSetupGuideDialog({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Step 3: Final DNS — point domain to per-domain CloudFront distribution */}
+          {domain.cloudfront_domain_name && (
+            <div>
+              <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
+                <Link className="size-4" />
+                Step 3: Point Your Domain
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                {isActive
+                  ? "Your SSL certificate is active. Point your domain to your dedicated distribution."
+                  : "Once your certificate is validated, point your domain to this address."}
+              </p>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">CNAME record</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-sm">
+                    {domain.domain} → {domain.cloudfront_domain_name}
+                  </code>
+                  <CopyButton
+                    value={domain.cloudfront_domain_name}
+                    label="Copy distribution domain"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Host: <code className="bg-muted px-1">{domain.domain}</code> or @
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Target: <code className="bg-muted px-1">{domain.cloudfront_domain_name}</code>
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1 mt-2">
+                <p className="text-xs font-medium text-muted-foreground">www redirect (CNAME)</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-sm">
+                    www.{domain.domain} → {domain.cloudfront_domain_name}
+                  </code>
+                  <CopyButton
+                    value={domain.cloudfront_domain_name}
+                    label="Copy distribution domain for www"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Host: <code className="bg-muted px-1">www.{domain.domain}</code>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Target: <code className="bg-muted px-1">{domain.cloudfront_domain_name}</code>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Visitors to www.{domain.domain} will be automatically redirected to {domain.domain}.
+                </p>
+              </div>
             </div>
           )}
 

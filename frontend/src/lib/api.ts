@@ -1275,6 +1275,10 @@ export interface Domain {
   acm_certificate_arn?: string
   /** Task 1.146: ACM validation CNAME records (persisted in DB) */
   acm_validation_records?: AcmValidationRecord[]
+  /** Per-domain CloudFront distribution ID */
+  cloudfront_distribution_id?: string
+  /** Per-domain CloudFront distribution domain (e.g. d123.cloudfront.net) */
+  cloudfront_domain_name?: string
 }
 
 export interface DomainsResponse {
