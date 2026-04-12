@@ -235,6 +235,20 @@ resource "aws_s3_bucket_policy" "media" {
             "AWS:SourceArn" = aws_cloudfront_distribution.staging.arn
           }
         }
+      },
+      {
+        Sid    = "AllowCustomDomainDistributions"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudfront.amazonaws.com"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.media.arn}/*"
+        Condition = {
+          StringLike = {
+            "AWS:SourceArn" = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
+          }
+        }
       }
     ]
   })
