@@ -286,6 +286,13 @@ def admin_domains_handler(event: dict, context: dict, tenant_slug: str, path_suf
         table.delete_item(Key=key)
         return _json_response(204, {}, empty_body=True)
 
+    # POST /api/admin/tenants/{slug}/domains/{domain}/retry — retry stuck domain
+    sub_parts = path_suffix.strip("/").split("/")
+    if method == "POST" and len(sub_parts) >= 3 and sub_parts[2] == "retry":
+        admin_domain = unquote(sub_parts[1]).lower()
+        from domains_handler import _retry_domain
+        return _retry_domain(table, tenant_slug, admin_domain)
+
     return _json_response(405, {"error": "Method not allowed."})
 
 
