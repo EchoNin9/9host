@@ -373,6 +373,88 @@ def _activate_domain(event: dict, table, tenant_slug: str, domain: str) -> dict:
     )
 
 
+def _retry_domain(table, tenant_slug: str, domain: str) -> dict:
+    """Retry distribution creation for a stuck PENDING_VALIDATION domain.
+
+    If the ACM cert is issued but no CloudFront distribution was created
+    (e.g. EventBridge handler failed or old code was deployed), this creates
+    the per-domain distribution and promotes the domain to ACTIVE.
+    """
+    key = get_domain_item(tenant_slug, domain)
+    resp = table.get_item(Key=key)
+    item = resp.get("Item")
+    if not item:
+        return _json_response(404, {"error": "Domain not found."})
+
+    status = (item.get("status") or "").upper()
+    if status == "ACTIVE" and item.get("cloudfront_distribution_id"):
+        return _json_response(200, {
+            "domain": _domain_to_response(item),
+            "message": "Domain already ACTIVE with distribution.",
+        })
+
+    cert_arn = (item.get("acm_certificate_arn") or "").strip()
+    if not cert_arn:
+        return _json_response(400, {"error": "No ACM certificate ARN. Run /activate first."})
+
+    # Check cert status in ACM
+    acm = boto3.client("acm", region_name="us-east-1")
+    try:
+        desc = acm.describe_certificate(CertificateArn=cert_arn)
+        cert_status = desc.get("Certificate", {}).get("Status", "")
+    except Exception as e:
+        return _json_response(500, {"error": f"Failed to check cert: {e}"})
+
+    if cert_status != "ISSUED":
+        return _json_response(400, {
+            "error": f"Certificate not yet issued (status: {cert_status}). Wait for validation.",
+            "cert_status": cert_status,
+        })
+
+    site_id = item.get("site_id", "")
+    if not site_id:
+        return _json_response(400, {"error": "No site_id on domain record."})
+
+    # Create per-domain CloudFront distribution
+    try:
+        dist_info = create_custom_domain_distribution(
+            domain=domain,
+            cert_arn=cert_arn,
+            tenant=tenant_slug,
+            site_id=site_id,
+        )
+    except RuntimeError as e:
+        return _json_response(500, {"error": f"Distribution creation failed: {e}"})
+
+    # Update domain to ACTIVE with distribution info
+    now = datetime.now(timezone.utc).isoformat()
+    table.update_item(
+        Key=key,
+        UpdateExpression=(
+            "SET #status = :status, updated_at = :now, "
+            "cloudfront_distribution_id = :dist_id, "
+            "cloudfront_domain_name = :dist_dn"
+        ),
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={
+            ":status": "ACTIVE",
+            ":now": now,
+            ":dist_id": dist_info["distribution_id"],
+            ":dist_dn": dist_info["domain_name"],
+        },
+    )
+
+    item["status"] = "ACTIVE"
+    item["cloudfront_distribution_id"] = dist_info["distribution_id"]
+    item["cloudfront_domain_name"] = dist_info["domain_name"]
+    item["updated_at"] = now
+
+    return _json_response(200, {
+        "domain": _domain_to_response(item),
+        "message": f"Distribution created. Point {domain} CNAME to {dist_info['domain_name']}",
+    })
+
+
 @with_tenant
 def domains_handler(event: dict, context: dict) -> dict:
     """
@@ -452,5 +534,9 @@ def domains_handler(event: dict, context: dict) -> dict:
     # Task 1.100: POST /api/tenant/domains/{domain}/activate — DNS verify + request ACM cert
     if method == "POST" and domain and path_suffix == "activate":
         return _activate_domain(event, table, tenant_slug, domain)
+
+    # POST /api/tenant/domains/{domain}/retry — retry distribution creation for stuck domains
+    if method == "POST" and domain and path_suffix == "retry":
+        return _retry_domain(table, tenant_slug, domain)
 
     return _json_response(405, {"error": "Method not allowed."})
