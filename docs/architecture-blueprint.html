@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>9host · Confirmed Decisions &amp; Architecture Blueprint</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;
+      --color-paper-2: #ececec;
+      --color-ink: #2d3142;
+      --color-muted: #4f5d75;
+      --color-soft: #5a6580;
+      --color-rule: rgba(45,49,66,0.12);
+      --color-accent: #bf4520;
+      --color-accent-tint: rgba(191,69,32,0.08);
+      --color-link: #2e5aa8;
+      --color-ok: #1f6f50;
+      --color-ok-tint: rgba(31,111,80,0.10);
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      padding: 2.5rem 2rem 4rem;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--color-rule);
+    }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.65rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(2rem, 3vw + 1rem, 2.75rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.08;
+      margin-bottom: 0.65rem;
+    }
+    .subtitle {
+      font-size: 0.96rem;
+      line-height: 1.6;
+      color: var(--color-muted);
+      max-width: 76ch;
+    }
+    .nav-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1.25rem;
+    }
+    .nav-pills a {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-decoration: none;
+      color: var(--color-ink);
+      background: #ffffff;
+      border: 1px solid var(--color-rule);
+      padding: 0.4rem 0.75rem;
+      border-radius: 4px;
+    }
+    .nav-pills a:hover {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
+    .section-block {
+      margin-bottom: 3.25rem;
+    }
+    .section-head {
+      margin-bottom: 1.15rem;
+    }
+    .section-head h2 {
+      font-family: var(--font-serif);
+      font-size: 1.7rem;
+      font-weight: 400;
+      letter-spacing: -0.015em;
+      margin-bottom: 0.35rem;
+    }
+    .section-head p {
+      font-size: 0.88rem;
+      line-height: 1.55;
+      color: var(--color-muted);
+      max-width: 76ch;
+    }
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+    @media (max-width: 860px) {
+      .decision-grid { grid-template-columns: 1fr; }
+    }
+    .decision-card {
+      background: #ffffff;
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      padding: 1.15rem 1.25rem;
+    }
+    .decision-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.55rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 1px solid rgba(45,49,66,0.08);
+    }
+    .decision-id {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+    }
+    .badge-locked {
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-ok);
+      background: var(--color-ok-tint);
+      padding: 0.18rem 0.5rem;
+      border-radius: 3px;
+    }
+    .decision-card h3 {
+      font-size: 0.94rem;
+      font-weight: 600;
+      margin-bottom: 0.45rem;
+    }
+    .decision-card p, .decision-card ul {
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: var(--color-muted);
+      list-style: none;
+    }
+    .decision-card li {
+      margin-bottom: 0.28rem;
+      padding-left: 0.85rem;
+      position: relative;
+    }
+    .decision-card li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: rgba(45,49,66,0.3);
+    }
+    .diagram-container {
+      background: var(--color-paper-2);
+      border-radius: 8px;
+      border: 1px solid var(--color-rule);
+      padding: 1.25rem;
+      overflow-x: auto;
+    }
+    svg {
+      width: 100%;
+      min-width: 1040px;
+      display: block;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 1.15rem;
+    }
+    @media (max-width: 860px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 6px;
+      border: 1px solid var(--color-rule);
+      padding: 1.1rem;
+    }
+    .card-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.35rem;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin-bottom: 0.6rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 1px solid rgba(45,49,66,0.08);
+    }
+    .card-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .card-dot.coral { background: var(--color-accent); }
+    .card-dot.ink { background: var(--color-ink); }
+    .card-dot.link { background: var(--color-link); }
+    .card h3 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      letter-spacing: -0.005em;
+    }
+    .card p, .card ul {
+      color: var(--color-muted);
+      font-size: 0.8125rem;
+      line-height: 1.55;
+      list-style: none;
+    }
+    .card li {
+      margin-bottom: 0.28rem;
+      padding-left: 0.85rem;
+      position: relative;
+    }
+    .card li::before {
+      content: '—';
+      position: absolute;
+      left: 0;
+      color: rgba(45,49,66,0.3);
+      font-size: 0.75rem;
+    }
+    table.spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+      border: 1px solid var(--color-rule);
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 0.82rem;
+    }
+    table.spec-table th, table.spec-table td {
+      text-align: left;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid var(--color-rule);
+      vertical-align: top;
+    }
+    table.spec-table th {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--color-muted);
+      background: rgba(45,49,66,0.03);
+    }
+    table.spec-table td {
+      color: var(--color-muted);
+      line-height: 1.5;
+    }
+    table.spec-table td strong {
+      color: var(--color-ink);
+    }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      background: rgba(45,49,66,0.06);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      color: var(--color-ink);
+    }
+    .footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--color-rule);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.06em;
+      color: var(--color-soft);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <p class="eyebrow">9host · Master Decisions &amp; Architecture Blueprint</p>
+      <h1>Confirmed Architecture, Verified Cloudflare SaaS Setup &amp; Execution Plan</h1>
+      <p class="subtitle">Single source of truth consolidating all confirmed decisions (Q1–Q8), verified Cloudflare for SaaS pricing and Host-header mechanics, pure inline SVG schematics, the 9 critical bug fixes, and the unattended Opus 4.6 orchestration plan.</p>
+      <nav class="nav-pills" aria-label="Page sections">
+        <a href="#decisions">01 · Confirmed Decisions (Q1–Q8)</a>
+        <a href="#diagram-routing">02 · Edge Routing &amp; Cloudflare for SaaS</a>
+        <a href="#diagram-backend">03 · Backend Deepening &amp; Hybrid Auth</a>
+        <a href="#diagram-frontend">04 · Frontend Deepening &amp; Feature Flag</a>
+        <a href="#bug-ledger">05 · Critical Bug Ledger &amp; Execution Plan</a>
+      </nav>
+    </header>
+
+    <!-- =================================================================== -->
+    <!-- SECTION 1: CONFIRMED DECISIONS (Q1 - Q8)                            -->
+    <!-- =================================================================== -->
+    <section id="decisions" class="section-block">
+      <div class="section-head">
+        <p class="eyebrow">Section 01 · Locked Requirements</p>
+        <h2>All Confirmed Decisions (Q1–Q8)</h2>
+        <p>Every architectural choice below is locked and reflected in the repository specification (`GLOSSARY.md`, `docs/adr/`, `docs/SPEC.md`, `TASKS.md`, and `docs/UNATTENDED_ORCHESTRATION.md`).</p>
+      </div>
+
+      <div class="decision-grid">
+        <article class="decision-card">
+          <div class="decision-top">
+            <span class="decision-id">Q1 &amp; Q5 · Custom Domains</span>
+            <span class="badge-locked">LOCKED · OPTION B2</span>
+          </div>
+          <h3>Cloudflare for SaaS on echo9.net (100 Domains Free)</h3>
+          <ul>
+            <li><strong>Why Option B2 wins:</strong> End users at ClouDNS or any registrar simply add <code>CNAME -&gt; proxy.echo9.net</code>. Zero Cloudflare account or Worker setup required by end users.</li>
+            <li><strong>Verified Cloudflare Pricing:</strong> First <strong>100 Custom Hostnames are $0/mo</strong> on Cloudflare Free plan ($0.10/mo per additional hostname after 100).</li>
+            <li><strong>Verified Host-Header Solution ($0/mo):</strong> Because CloudFront rejects unknown <code>Host</code> headers and Cloudflare Host Header Override is Enterprise-only, <strong>one 12-line Cloudflare Worker</strong> on your <code>echo9.net</code> account (Free tier: <strong>100,000 req/day free</strong>) acts as the Fallback Origin on <code>proxy.echo9.net</code>, forwarding requests to CloudFront with <code>X-Forwarded-Host: &lt;custom-domain&gt;</code>.</li>
+            <li><strong>Bare Domain Landing Page:</strong> Replace the old <code>echo9.net -&gt; tools.e9.cx</code> redirect so <code>echo9.net</code> / <code>www.echo9.net</code> serves a clean 9host landing page while <code>proxy.echo9.net</code> handles custom domains.</li>
+            <li><strong>Delete AWS ACM Bloat:</strong> Delete <code>infra/lambda_acm.tf</code>, <code>infra/lambda_acm_handler/</code>, and CloudFront Alias mutations.</li>
+          </ul>
+        </article>
+
+        <article class="decision-card">
+          <div class="decision-top">
+            <span class="decision-id">Q2 · Edge Routing &amp; Visitor Landing</span>
+            <span class="badge-locked">LOCKED · SPLIT NOW</span>
+          </div>
+          <h3>Split Admin SPA (app/stage) from Public Sites (*.echo9.net)</h3>
+          <ul>
+            <li><strong>Admin Control Plane:</strong> <code>app.echo9.net</code> (prod) and <code>stage.echo9.net</code> (staging) serve the React Admin/Superadmin SPA exclusively.</li>
+            <li><strong>Public Sites Plane:</strong> <code>*.echo9.net</code> points its default behavior (<code>/*</code>) directly to <code>S3-9host-sites</code> with <code>cf-site-content.js</code> + <strong>CloudFront KeyValueStore (KVS)</strong>.</li>
+            <li><strong>Fixes Visitor Landing Bug:</strong> Visiting <code>https://&lt;slug&gt;.echo9.net/</code> or <code>https://myband.com/</code> resolves <code>host -&gt; {tenant}/{site_id}</code> at the CloudFront edge in &lt;1ms and serves static HTML at <code>/</code>.</li>
+            <li><strong>Deletes Redirect Hop:</strong> Removes <code>RootRoute</code> in <code>App.tsx</code> and deletes <code>api/default_site_handler.py</code> (zero Lambda or DynamoDB calls on public site visits).</li>
+          </ul>
+        </article>
+
+        <article class="decision-card">
+          <div class="decision-top">
+            <span class="decision-id">Q3 · Domain Onboarding Workflow</span>
+            <span class="badge-locked">LOCKED · ONE-BY-ONE</span>
+          </div>
+          <h3>Add &amp; Customize Sites Individually from ClouDNS / Any DNS</h3>
+          <ul>
+            <li><strong>No Bulk "Parked Banner" Tool:</strong> You will add your non-critical domains one by one from ClouDNS or other registrars and customize each into a real site using templates and the content editor.</li>
+            <li><strong>Root-Relative Template Links:</strong> Published sites render clean root-relative URLs (<code>/</code>, <code>/blog/</code>, <code>/events/</code>, <code>/media/...</code>) instead of <code>/site/{tenant}/{site_id}/</code>.</li>
+          </ul>
+        </article>
+
+        <article class="decision-card">
+          <div class="decision-top">
+            <span class="decision-id">Q4 &amp; Q6 · Billing &amp; Tiers in MVP</span>
+            <span class="badge-locked">LOCKED · OPTION A (FLAGGED)</span>
+          </div>
+          <h3>Feature-Flag Billing Hidden in MVP (`VITE_ENABLE_BILLING=false`)</h3>
+          <ul>
+            <li><strong>Clean MVP UI:</strong> Gate the Billing tab, pricing cards, and upgrade banners behind <code>VITE_ENABLE_BILLING=false</code> (frontend) and <code>BILLING_ENABLED=false</code> (backend) so billing UI is completely hidden during MVP.</li>
+            <li><strong>Fix Underlying Stripe Bugs Now:</strong> We still fix the <code>is_payable_tier("FREE")</code> checkout blocker in <code>api/billing_handler.py</code> and the <code>VIP</code> tier overwrite bug in <code>api/stripe_webhook_handler.py</code> so flipping the flag to <code>true</code> later requires zero code changes.</li>
+          </ul>
+        </article>
+
+        <article class="decision-card">
+          <div class="decision-top">
+            <span class="decision-id">Q7 · Hybrid Auth Architecture</span>
+            <span class="badge-locked">LOCKED · KEEP &amp; HARDEN</span>
+          </div>
+          <h3>Cognito for Tenant Admins + Self-Managed TUSER / Roles / Groups</h3>
+          <ul>
+            <li><strong>Assessment — Yes, This Is a Good Design:</strong> Tying Tenant Admins and Superadmins to <strong>AWS Cognito</strong> gives you MFA, Passkeys, and future 3rd-party OIDC/SAML IdP federation for account owners, while allowing Tenant Admins to manage lightweight site users (<code>TUSER</code>), custom <code>ROLE</code>s, and <code>GROUP</code>s in DynamoDB for $0 MAU cost and full flexibility.</li>
+            <li><strong>Full Cognito Footprint Preserved:</strong> Nothing in Cognito is reduced.</li>
+            <li><strong>What We Fix:</strong> Consolidate Cognito JWKS local verification + <code>TUSER</code> HMAC verification + Superadmin <code>X-Impersonate-Tenant</code> resolution inside <code>RequestContext</code>, and separate <code>access_token</code> from <code>site_token</code> in the frontend <code>ApiClient</code>.</li>
+          </ul>
+        </article>
+
+        <article class="decision-card">
+          <div class="decision-top">
+            <span class="decision-id">Q8 &amp; Model Strategy · Deepening &amp; Opus</span>
+            <span class="badge-locked">LOCKED · OPUS ORCHESTRATOR</span>
+          </div>
+          <h3>All 5 Deepening Modules + Clean Packaging + Opus Execution</h3>
+          <ul>
+            <li><strong>5 Deep Modules Approved:</strong> <code>EdgeHostRouter</code>, <code>RequestContext</code>, <code>TenantStore</code>, <code>SiteCompiler</code>, and <code>ApiClient</code> + shared tenant/admin views.</li>
+            <li><strong>Clean `api/` Tree:</strong> Move vendored third-party wheels (<code>stripe/</code>, <code>jwt/</code>, <code>bcrypt/</code>, <code>requests/</code>) out of git source into the build/packaging step and add <code>pytest</code> + <code>vitest</code> suites.</li>
+            <li><strong>Preserve Argon Quota:</strong> The unattended runbook is configured for <strong>Claude Opus 4.6</strong> (or Sonnet) as Commander/Subagents so you do not burn your weekly Argon limit.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- DIAGRAM 1: EDGE ROUTING & CLOUDFLARE FOR SAAS (OPTION B2)           -->
+    <!-- =================================================================== -->
+    <section id="diagram-routing" class="section-block">
+      <div class="section-head">
+        <p class="eyebrow">Section 02 · Candidate 01 · Edge Host Router &amp; Cloudflare for SaaS (Option B2)</p>
+        <h2>Site &amp; Custom Domain Routing: Broken Flow vs. Split Edge + Cloudflare for SaaS</h2>
+        <p>Left: Current single-distribution setup where visiting <code>&lt;slug&gt;.echo9.net/</code> boots the React SPA, invokes Lambda + DynamoDB, and redirects to <code>/site/{tenant}/{id}/</code>. Right: Confirmed split architecture with <code>app/stage.echo9.net</code> for Admin SPA, <code>(www.)echo9.net</code> for Landing Page, and <code>*.echo9.net</code> + <code>proxy.echo9.net</code> (Cloudflare for SaaS) resolving via CloudFront KVS in &lt;1ms.</p>
+      </div>
+
+      <div class="diagram-container">
+        <svg viewBox="0 0 1120 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="routing-delta-title routing-delta-desc">
+          <title id="routing-delta-title">Site and custom domain routing before and after with Cloudflare for SaaS</title>
+          <desc id="routing-delta-desc">Comparison of the current broken CloudFront single-distribution routing and per-domain ACM certificate flow on the left against the confirmed split Admin SPA distribution, CloudFront KeyValueStore edge router, and Cloudflare for SaaS proxy.echo9.net custom domain flow on the right.</desc>
+          <defs>
+            <pattern id="routing-dots" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="0.85" fill="rgba(45,49,66,0.10)"/>
+            </pattern>
+            <marker id="r-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+            <marker id="r-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#bf4520"/>
+            </marker>
+            <marker id="r-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/>
+            </marker>
+          </defs>
+
+          <!-- Canvas background -->
+          <rect width="1120" height="620" fill="#f5f5f5"/>
+          <rect width="1120" height="620" fill="url(#routing-dots)" opacity="0.55"/>
+
+          <!-- Center divider rule -->
+          <line x1="544" y1="24" x2="544" y2="540" stroke="rgba(45,49,66,0.16)" stroke-width="1" stroke-dasharray="4,4"/>
+
+          <!-- Panel headings -->
+          <text x="28" y="32" fill="#bf4520" font-size="13" font-family="'Geist', sans-serif" font-weight="600">BEFORE · Broken Single-Distribution &amp; Per-Domain ACM</text>
+          <text x="28" y="50" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace">React SPA boots on / · Lambda+DDB hit · 1-cert limit blocks custom domains</text>
+
+          <text x="572" y="32" fill="#2d3142" font-size="13" font-family="'Geist', sans-serif" font-weight="600">AFTER · Split Admin SPA + Edge KVS + Cloudflare for SaaS (B2)</text>
+          <text x="572" y="50" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace">app/stage = SPA · *.echo9.net &amp; proxy.echo9.net = Static HTML at / via KVS</text>
+
+          <!-- ============================================================= -->
+          <!-- ZONES (drawn before arrows and nodes)                         -->
+          <!-- ============================================================= -->
+          <rect x="28" y="72" width="488" height="456" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="44" y="76" width="160" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="124" y="85" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">CURRENT · SINGLE DIST</text>
+
+          <rect x="572" y="72" width="520" height="132" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="588" y="76" width="164" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="670" y="85" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">ADMIN PLANE · APP/STAGE</text>
+
+          <rect x="572" y="224" width="520" height="304" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="588" y="228" width="176" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="676" y="237" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">PUBLIC SITES · EDGE KVS</text>
+
+          <!-- ============================================================= -->
+          <!-- ARROWS                                                        -->
+          <!-- ============================================================= -->
+          <!-- LEFT PANEL -->
+          <line x1="188" y1="140" x2="252" y2="140" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#r-arrow-link)"/>
+          <line x1="332" y1="172" x2="332" y2="224" stroke="#bf4520" stroke-width="1.4" marker-end="url(#r-arrow-accent)"/>
+          <line x1="332" y1="288" x2="332" y2="340" stroke="#bf4520" stroke-width="1.4" marker-end="url(#r-arrow-accent)"/>
+          <line x1="332" y1="404" x2="332" y2="448" stroke="#bf4520" stroke-width="1.4" marker-end="url(#r-arrow-accent)"/>
+          <path d="M 116,340 V 164 Q 116,156 124,156 H 252" fill="none" stroke="#bf4520" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#r-arrow-accent)"/>
+
+          <!-- RIGHT PANEL -->
+          <line x1="736" y1="144" x2="796" y2="144" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#r-arrow-link)"/>
+          <line x1="736" y1="300" x2="796" y2="300" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#r-arrow-link)"/>
+          <path d="M 736,460 H 828 Q 836,460 836,452 V 332" fill="none" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#r-arrow-link)"/>
+          <line x1="876" y1="332" x2="876" y2="368" stroke="#bf4520" stroke-width="1.4" marker-end="url(#r-arrow-accent)"/>
+          <line x1="876" y1="424" x2="876" y2="456" stroke="#bf4520" stroke-width="1.4" marker-end="url(#r-arrow-accent)"/>
+
+          <!-- ============================================================= -->
+          <!-- ARROW LABELS                                                  -->
+          <!-- ============================================================= -->
+          <rect x="196" y="120" width="48" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="220" y="129" fill="#2e5aa8" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">GET /</text>
+
+          <rect x="344" y="192" width="116" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="402" y="201" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">DEFAULT /* -&gt; SPA</text>
+
+          <rect x="344" y="308" width="124" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="406" y="317" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">FETCH DEFAULT-SITE</text>
+
+          <rect x="344" y="420" width="116" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="402" y="429" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">302 REDIRECT HOP</text>
+
+          <rect x="52" y="244" width="128" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="116" y="253" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">1-CERT LIMIT FAILS</text>
+
+          <rect x="742" y="124" width="48" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="766" y="133" fill="#2e5aa8" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">HTTPS</text>
+
+          <rect x="742" y="280" width="48" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="766" y="289" fill="#2e5aa8" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">GET /</text>
+
+          <rect x="744" y="436" width="84" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="786" y="445" fill="#2e5aa8" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">X-FWD-HOST</text>
+
+          <rect x="888" y="344" width="96" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="936" y="353" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">O(1) HOST LOOKUP</text>
+
+          <rect x="888" y="434" width="116" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="946" y="443" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">REWRITE S3 PREFIX</text>
+
+          <!-- ============================================================= -->
+          <!-- NODES · LEFT PANEL (BEFORE)                                   -->
+          <!-- ============================================================= -->
+          <rect x="44" y="108" width="144" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="44" y="108" width="144" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+          <text x="116" y="136" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Site Visitor</text>
+          <text x="116" y="154" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">slug.echo9.net/</text>
+
+          <rect x="252" y="108" width="160" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="252" y="108" width="160" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.35)" stroke-width="1"/>
+          <text x="332" y="136" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Single CloudFront</text>
+          <text x="332" y="154" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">*.echo9.net cert</text>
+
+          <rect x="252" y="224" width="160" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="252" y="224" width="160" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+          <text x="332" y="252" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">React Admin SPA</text>
+          <text x="332" y="270" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">RootRoute boots JS</text>
+
+          <rect x="252" y="340" width="160" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="252" y="340" width="160" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="332" y="368" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Lambda + DynamoDB</text>
+          <text x="332" y="386" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">/tenant/default-site</text>
+
+          <rect x="252" y="448" width="160" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="252" y="448" width="160" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2" stroke-dasharray="4,3"/>
+          <text x="332" y="476" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ugly URL Redirect</text>
+          <text x="332" y="494" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">/site/{tenant}/{id}/</text>
+
+          <rect x="44" y="340" width="144" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="44" y="340" width="144" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2" stroke-dasharray="4,3"/>
+          <text x="116" y="368" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Per-Domain ACM</text>
+          <text x="116" y="386" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">SSL_BAD_CERT_DOMAIN</text>
+
+          <!-- ============================================================= -->
+          <!-- NODES · RIGHT PANEL (AFTER)                                   -->
+          <!-- ============================================================= -->
+          <rect x="592" y="112" width="144" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="592" y="112" width="144" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+          <text x="664" y="140" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Admin / Editor</text>
+          <text x="664" y="158" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">app / stage.echo9.net</text>
+
+          <rect x="796" y="112" width="160" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="796" y="112" width="160" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="876" y="140" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Admin SPA Dist</text>
+          <text x="876" y="158" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">S3 Frontend + /api/*</text>
+
+          <rect x="592" y="268" width="144" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="592" y="268" width="144" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+          <text x="664" y="296" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Subdomain Visitor</text>
+          <text x="664" y="314" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">slug.echo9.net/</text>
+
+          <rect x="592" y="428" width="144" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="592" y="428" width="144" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="#2e5aa8" stroke-width="1.2"/>
+          <text x="664" y="456" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Cloudflare for SaaS</text>
+          <text x="664" y="474" fill="#2e5aa8" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">CNAME proxy.echo9.net</text>
+
+          <rect x="796" y="268" width="160" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="796" y="268" width="160" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="876" y="296" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">EdgeHostRouter</text>
+          <text x="876" y="314" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">cf-site-content.js</text>
+
+          <rect x="796" y="368" width="160" height="56" rx="6" fill="#f5f5f5"/>
+          <rect x="796" y="368" width="160" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+          <text x="876" y="394" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CloudFront KVS</text>
+          <text x="876" y="410" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">host -&gt; tenant/site_id</text>
+
+          <rect x="796" y="456" width="160" height="56" rx="6" fill="#f5f5f5"/>
+          <rect x="796" y="456" width="160" height="56" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="876" y="482" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">S3 9host-sites</text>
+          <text x="876" y="498" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">{t}/{s}/live/index.html</text>
+
+          <!-- ============================================================= -->
+          <!-- BOTTOM LEGEND STRIP                                           -->
+          <!-- ============================================================= -->
+          <line x1="28" y1="556" x2="1092" y2="556" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <text x="28" y="574" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.16em">LEGEND</text>
+
+          <rect x="28" y="586" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+          <text x="48" y="594" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Focal edge module / bottleneck</text>
+
+          <rect x="236" y="586" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2" stroke-dasharray="4,3"/>
+          <text x="256" y="594" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Retired / broken flow</text>
+
+          <rect x="404" y="586" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="424" y="594" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Service / distribution</text>
+
+          <rect x="564" y="586" width="14" height="10" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="584" y="594" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">S3 / Edge store</text>
+
+          <line x1="700" y1="591" x2="728" y2="591" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#r-arrow-link)"/>
+          <text x="736" y="594" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Visitor HTTPS request</text>
+
+          <line x1="884" y1="591" x2="912" y2="591" stroke="#bf4520" stroke-width="1.4" marker-end="url(#r-arrow-accent)"/>
+          <text x="920" y="594" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Edge resolution path</text>
+        </svg>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <p class="card-eyebrow">HOW OPTION B2 WORKS END-TO-END</p>
+          <div class="card-header"><span class="card-dot link"></span><h3>1. User Adds CNAME at ClouDNS</h3></div>
+          <ul>
+            <li>User adds <code>myband.com</code> in 9host UI.</li>
+            <li>9host calls Cloudflare Custom Hostnames API (<code>POST /zones/{id}/custom_hostnames</code>) and returns the TXT validation record + <code>CNAME -&gt; proxy.echo9.net</code>.</li>
+            <li>Cloudflare automatically issues and renews the SSL certificate for <code>myband.com</code>.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <p class="card-eyebrow">SOLVING CLOUDFRONT HOST HEADER</p>
+          <div class="card-header"><span class="card-dot coral"></span><h3>2. Fallback Worker on echo9.net</h3></div>
+          <ul>
+            <li>A single 12-line Cloudflare Worker on your <code>echo9.net</code> Cloudflare zone routes custom hostname requests to <code>https://sites-origin.echo9.net</code> with header <code>X-Forwarded-Host: myband.com</code>.</li>
+            <li>Included in Cloudflare Workers Free plan (100,000 req/day free) + 100 Custom Hostnames free ($0/mo total).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <p class="card-eyebrow">SUB-MILLISECOND S3 RESOLUTION</p>
+          <div class="card-header"><span class="card-dot ink"></span><h3>3. CloudFront KVS Edge Lookup</h3></div>
+          <ul>
+            <li><code>cf-site-content.js</code> reads <code>x-forwarded-host || host</code>, looks up <code>{tenant}/{site_id}</code> in CloudFront KVS, and rewrites <code>request.uri</code> to <code>/{tenant}/{site_id}/live/index.html</code>.</li>
+            <li>Also supports <code>echo9.net</code> / <code>www.echo9.net</code> landing page!</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- DIAGRAM 2: BACKEND DEEPENING ARCHITECTURE                           -->
+    <!-- =================================================================== -->
+    <section id="diagram-backend" class="section-block">
+      <div class="section-head">
+        <p class="eyebrow">Section 03 · Candidates 02, 03 &amp; 04 · Backend Deepening &amp; Hybrid Auth</p>
+        <h2>Deep Backend Seams: RequestContext, TenantStore &amp; SiteCompiler</h2>
+        <p>Preserves 100% of Cognito Admin auth + Tenant-managed <code>TUSER</code> / <code>ROLE</code> / <code>GROUP</code> entities while collapsing 11 shallow handlers and 35 DynamoDB dict helpers into three deep, unit-testable modules.</p>
+      </div>
+
+      <div class="diagram-container">
+        <svg viewBox="0 1000 1120 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="backend-deep-title backend-deep-desc">
+          <title id="backend-deep-title">Backend deep modules and adapter seams</title>
+          <desc id="backend-deep-desc">Architecture diagram showing API Gateway requests entering the deep RequestContext policy gate, routing through thin domain handlers into the deep TenantStore repository and pure SiteCompiler module, backed by production AWS adapters and in-memory pytest fakes.</desc>
+          <defs>
+            <pattern id="backend-dots" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="0.85" fill="rgba(45,49,66,0.10)"/>
+            </pattern>
+            <marker id="b-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+            <marker id="b-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#bf4520"/>
+            </marker>
+            <marker id="b-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/>
+            </marker>
+          </defs>
+
+          <g transform="translate(0, 1000)">
+          <rect x="0" y="0" width="1120" height="520" fill="#f5f5f5"/>
+          <rect x="0" y="0" width="1120" height="520" fill="url(#backend-dots)" opacity="0.55"/>
+
+          <!-- Zones -->
+          <rect x="28" y="36" width="224" height="396" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="44" y="40" width="148" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="118" y="49" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">INGRESS &amp; POLICY GATE</text>
+
+          <rect x="308" y="36" width="464" height="396" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="324" y="40" width="160" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="404" y="49" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">DEEP DOMAIN MODULES</text>
+
+          <rect x="828" y="36" width="264" height="396" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="844" y="40" width="168" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="928" y="49" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">PORT ADAPTERS · PROD/TEST</text>
+
+          <!-- Arrows -->
+          <line x1="140" y1="140" x2="140" y2="204" stroke="#2e5aa8" stroke-width="1.2" marker-end="url(#b-arrow-link)"/>
+          <line x1="140" y1="284" x2="140" y2="340" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#b-arrow)"/>
+          <line x1="228" y1="244" x2="332" y2="244" stroke="#bf4520" stroke-width="1.4" marker-end="url(#b-arrow-accent)"/>
+          <path d="M 492,224 H 528 Q 536,224 536,216 V 140 Q 536,132 544,132 H 576" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#b-arrow-accent)"/>
+          <path d="M 492,264 H 528 Q 536,264 536,272 V 332 Q 536,340 544,340 H 576" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#b-arrow-accent)"/>
+          <line x1="664" y1="300" x2="664" y2="172" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#b-arrow)"/>
+          <line x1="752" y1="116" x2="856" y2="116" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#b-arrow)"/>
+          <path d="M 752,148 H 796 Q 804,148 804,156 V 220 Q 804,228 812,228 H 856" fill="none" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#b-arrow)"/>
+          <line x1="752" y1="340" x2="856" y2="340" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#b-arrow)"/>
+
+          <!-- Arrow Labels -->
+          <rect x="148" y="164" width="84" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="190" y="173" fill="#2e5aa8" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">RAW EVENT</text>
+
+          <rect x="148" y="304" width="88" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="192" y="313" fill="#4f5d75" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">LOCAL VERIFY</text>
+
+          <rect x="240" y="224" width="80" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="280" y="233" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">TYPED CTX</text>
+
+          <rect x="548" y="228" width="104" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="600" y="237" fill="#4f5d75" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">READ SNAPSHOT</text>
+
+          <rect x="764" y="96" width="80" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="804" y="105" fill="#4f5d75" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">PROD PORT</text>
+
+          <rect x="764" y="320" width="80" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="804" y="329" fill="#4f5d75" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">S3 + CF KVS</text>
+
+          <!-- Nodes -->
+          <rect x="52" y="76" width="176" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="52" y="76" width="176" height="64" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+          <text x="140" y="104" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">API Gateway HTTP</text>
+          <text x="140" y="122" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">/api/tenant/* · /admin/*</text>
+
+          <rect x="52" y="204" width="176" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="52" y="204" width="176" height="80" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="140" y="232" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">RequestContext</text>
+          <text x="140" y="250" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Cognito + TUSER Auth</text>
+          <text x="140" y="266" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Impersonation + Safe Err</text>
+
+          <rect x="52" y="340" width="176" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="52" y="340" width="176" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="140" y="368" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Warm Module Cache</text>
+          <text x="140" y="386" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Cognito JWKS + Secrets</text>
+
+          <rect x="332" y="204" width="160" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="332" y="204" width="160" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="412" y="232" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Unified Handlers</text>
+          <text x="412" y="250" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Tenant + Admin CRUD</text>
+          <text x="412" y="266" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Drops 338-LOC duplicate</text>
+
+          <rect x="576" y="92" width="176" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="576" y="92" width="176" height="80" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="664" y="120" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">TenantStore Seam</text>
+          <text x="664" y="138" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">TENANT# Isolation</text>
+          <text x="664" y="154" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Fixes SITE# scan &amp; quota</text>
+
+          <rect x="576" y="300" width="176" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="576" y="300" width="176" height="80" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="664" y="328" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pure SiteCompiler</text>
+          <text x="664" y="346" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">compile_site(snapshot)</text>
+          <text x="664" y="362" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Root / links + XSS clean</text>
+
+          <rect x="856" y="84" width="212" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="856" y="84" width="212" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="962" y="112" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">DynamoDBAdapter</text>
+          <text x="962" y="130" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">9host-main + GSI queries</text>
+
+          <rect x="856" y="196" width="212" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="856" y="196" width="212" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="962" y="224" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">InMemoryStore (Pytest)</text>
+          <text x="962" y="242" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Zero-AWS unit tests</text>
+
+          <rect x="856" y="308" width="212" height="64" rx="6" fill="#f5f5f5"/>
+          <rect x="856" y="308" width="212" height="64" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="962" y="336" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">SiteStoragePort</text>
+          <text x="962" y="354" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">S3 + KVS + CF SaaS API</text>
+
+          <!-- Legend -->
+          <line x1="28" y1="456" x2="1092" y2="456" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <text x="28" y="474" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.16em">LEGEND</text>
+
+          <rect x="28" y="486" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="48" y="494" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Deepened module boundary</text>
+
+          <rect x="236" y="486" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="256" y="494" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Consolidated handler</text>
+
+          <rect x="404" y="486" width="14" height="10" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <text x="424" y="494" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Production AWS/CF adapter</text>
+
+          <rect x="588" y="486" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="608" y="494" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">In-memory test fake</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- DIAGRAM 3: FRONTEND DEEPENING ARCHITECTURE                          -->
+    <!-- =================================================================== -->
+    <section id="diagram-frontend" class="section-block">
+      <div class="section-head">
+        <p class="eyebrow">Section 04 · Candidate 05 · Frontend Deepening &amp; Billing Feature Flag</p>
+        <h2>Deep Frontend Seams: Scoped ApiClient, Shared Views &amp; Feature Flag</h2>
+        <p>Replaces the 2,494-line <code>frontend/src/lib/api.ts</code> and deduplicates <code>administer-tenant.tsx</code> (1,088 LOC) into shared resource views, with Billing gated behind <code>VITE_ENABLE_BILLING=false</code> for MVP.</p>
+      </div>
+
+      <div class="diagram-container">
+        <svg viewBox="0 2000 1120 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="frontend-deep-title frontend-deep-desc">
+          <title id="frontend-deep-title">Frontend deep ApiClient and shared resource views</title>
+          <desc id="frontend-deep-desc">Architecture diagram showing Tenant Dashboard and Superadmin Administer Tenant shells sharing a single set of resource view components connected through TenantScopeProvider and a deep ApiClient to the backend API.</desc>
+          <defs>
+            <pattern id="frontend-dots" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="0.85" fill="rgba(45,49,66,0.10)"/>
+            </pattern>
+            <marker id="f-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
+            </marker>
+            <marker id="f-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+              <polygon points="0 0, 8 3, 0 6" fill="#bf4520"/>
+            </marker>
+          </defs>
+
+          <g transform="translate(0, 2000)">
+          <rect x="0" y="0" width="1120" height="440" fill="#f5f5f5"/>
+          <rect x="0" y="0" width="1120" height="440" fill="url(#frontend-dots)" opacity="0.55"/>
+
+          <!-- Zones -->
+          <rect x="28" y="36" width="248" height="316" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="44" y="40" width="128" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="108" y="49" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">APP ROUTE SHELLS</text>
+
+          <rect x="332" y="36" width="440" height="316" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="348" y="40" width="176" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="436" y="49" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">SHARED RESOURCE MODULES</text>
+
+          <rect x="828" y="36" width="264" height="316" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <rect x="844" y="40" width="160" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="924" y="49" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">CLIENT TRANSPORT SEAM</text>
+
+          <!-- Arrows -->
+          <path d="M 252,120 H 296 Q 304,120 304,128 V 168 Q 304,176 312,176 H 356" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#f-arrow)"/>
+          <path d="M 252,264 H 296 Q 304,264 304,256 V 216 Q 304,208 312,208 H 356" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#f-arrow)"/>
+          <line x1="540" y1="192" x2="588" y2="192" stroke="#bf4520" stroke-width="1.4" marker-end="url(#f-arrow-accent)"/>
+          <line x1="748" y1="192" x2="856" y2="192" stroke="#bf4520" stroke-width="1.4" marker-end="url(#f-arrow-accent)"/>
+
+          <!-- Arrow Labels -->
+          <rect x="760" y="172" width="84" height="12" rx="2" fill="#f5f5f5"/>
+          <text x="802" y="181" fill="#bf4520" font-size="7.5" font-family="'Geist Mono', monospace" text-anchor="middle">SCOPED CALLS</text>
+
+          <!-- Nodes -->
+          <rect x="52" y="84" width="200" height="72" rx="6" fill="#f5f5f5"/>
+          <rect x="52" y="84" width="200" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="152" y="114" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tenant Dashboard</text>
+          <text x="152" y="134" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">VITE_ENABLE_BILLING=off</text>
+
+          <rect x="52" y="228" width="200" height="72" rx="6" fill="#f5f5f5"/>
+          <rect x="52" y="228" width="200" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="152" y="258" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Superadmin Console</text>
+          <text x="152" y="278" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">/admin/tenants/:slug</text>
+
+          <rect x="356" y="144" width="184" height="96" rx="6" fill="#f5f5f5"/>
+          <rect x="356" y="144" width="184" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="448" y="174" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Shared Resource Views</text>
+          <text x="448" y="194" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Sites · Pages · Posts</text>
+          <text x="448" y="212" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Events · Media · Users</text>
+
+          <rect x="588" y="144" width="160" height="96" rx="6" fill="#f5f5f5"/>
+          <rect x="588" y="144" width="160" height="96" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="668" y="174" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">TenantScope</text>
+          <text x="668" y="194" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">useTenantScope()</text>
+          <text x="668" y="212" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">No global race state</text>
+
+          <rect x="856" y="144" width="212" height="96" rx="6" fill="#f5f5f5"/>
+          <rect x="856" y="144" width="212" height="96" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="962" y="174" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Deep ApiClient</text>
+          <text x="962" y="194" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">createApiClient(auth)</text>
+          <text x="962" y="212" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">Isolates Cognito/TUSER</text>
+
+          <!-- Legend -->
+          <line x1="28" y1="376" x2="1092" y2="376" stroke="rgba(45,49,66,0.12)" stroke-width="0.8"/>
+          <text x="28" y="394" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.16em">LEGEND</text>
+
+          <rect x="28" y="406" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.4"/>
+          <text x="48" y="414" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Deep frontend seam</text>
+
+          <rect x="220" y="406" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <text x="240" y="414" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unified UI shell &amp; views</text>
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- SECTION 5: CRITICAL BUG LEDGER & EXECUTION PLAN                     -->
+    <!-- =================================================================== -->
+    <section id="bug-ledger" class="section-block">
+      <div class="section-head">
+        <p class="eyebrow">Section 05 · Defect Resolution &amp; Unattended Opus Execution</p>
+        <h2>9 Critical Bugs Resolved by This Blueprint</h2>
+        <p>Every defect uncovered during the three-agent codebase scan is assigned to a specific deep module and vertical-slice ticket in <code>docs/SPEC.md</code> and <code>TASKS.md</code>.</p>
+      </div>
+
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Defect &amp; Location</th>
+            <th>Root Cause</th>
+            <th>Resolution in Blueprint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>01</strong></td>
+            <td><strong>Visitor Landing Lambda+DDB Hit &amp; Ugly Redirect</strong><br><code>App.tsx (RootRoute)</code> · <code>default_site_handler.py</code></td>
+            <td><code>*.echo9.net</code> default behavior serves the React Admin SPA, which calls <code>/api/tenant/default-site</code> and redirects to <code>/site/{tenant}/{id}/</code>.</td>
+            <td>Split Admin SPA to <code>app/stage.echo9.net</code>; route <code>*.echo9.net</code> directly to S3 via <code>cf-site-content.js</code> + CloudFront KVS at <code>/</code>. Delete <code>RootRoute</code> &amp; <code>default_site_handler.py</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>02</strong></td>
+            <td><strong>Custom Domain SSL Failure</strong><br><code>infra/cloudfront.tf:452</code> · <code>custom_domain_handler.py</code></td>
+            <td>CloudFront only supports 1 ACM cert per distribution; Lambda lacks <code>CLOUDFRONT_SITES_DISTRIBUTION_ID</code> and <code>cloudfront:*</code> IAM permissions.</td>
+            <td>Delete AWS ACM custom domain infra; use <strong>Cloudflare for SaaS</strong> (<code>proxy.echo9.net</code>, 100 free custom hostnames) + fallback Worker + CloudFront KVS.</td>
+          </tr>
+          <tr>
+            <td><strong>03</strong></td>
+            <td><strong>Full-Tenant DynamoDB Scan on Site List</strong><br><code>api/dynamodb_helpers.py:258</code></td>
+            <td><code>query_sites_in_tenant</code> queries <code>begins_with(sk, "SITE#")</code>, which reads every PAGE, POST, EVENT, and MEDIA item in the tenant partition!</td>
+            <td>In <code>TenantStore</code>, store/query site metadata under a dedicated prefix or filter before projection, and migrate cleanly so <code>list_sites</code> only reads site records.</td>
+          </tr>
+          <tr>
+            <td><strong>04</strong></td>
+            <td><strong>Media Delete 500 Crash</strong><br><code>api/content_handler.py:184</code></td>
+            <td>Uses <code>greatest(if_not_exists(...))</code> in DynamoDB <code>UpdateExpression</code>, which is not a valid DynamoDB function (<code>ValidationException</code>).</td>
+            <td>In <code>TenantStore.adjust_storage_bytes()</code>, use a conditional atomic decrement with fallback reset to <code>0</code> on <code>ConditionalCheckFailedException</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>05</strong></td>
+            <td><strong>Superadmin Impersonation 403 on Content Writes</strong><br><code>api/content_handler.py:602</code></td>
+            <td><code>content_handler</code> ignores the role from <code>require_tenant_auth</code> and re-queries <code>get_user_role_in_tenant</code>, which lacks the <code>X-Impersonate-Tenant</code> check.</td>
+            <td><code>RequestContext</code> resolves effective role (`ADMIN` when superadmin impersonates) once at the ingress seam; handlers never re-query roles.</td>
+          </tr>
+          <tr>
+            <td><strong>06</strong></td>
+            <td><strong>FREE Tenants Blocked from Stripe Checkout + VIP Overwrite</strong><br><code>api/billing_handler.py:85</code> · <code>stripe_webhook_handler.py:106</code></td>
+            <td><code>not is_payable_tier("FREE")</code> blocks FREE tenants as if they were VIP; webhook overwrites VIP with FREE on non-active events.</td>
+            <td>Check <code>tenant.get("tier") == "VIP"</code> explicitly in both checkout and webhook handler; gate UI behind <code>VITE_ENABLE_BILLING=false</code> for MVP.</td>
+          </tr>
+          <tr>
+            <td><strong>07</strong></td>
+            <td><strong>Per-Request Network Latency in Auth &amp; Secrets</strong><br><code>api/auth_helpers.py:40</code> · <code>stripe_helpers.py:18</code></td>
+            <td>Calls <code>cognito-idp.get_user()</code> and Secrets Manager over the network on every API request without caching.</td>
+            <td>Verify Cognito JWTs locally against cached JWKS in <code>RequestContext</code> and cache Secrets Manager payloads in module memory with TTL.</td>
+          </tr>
+          <tr>
+            <td><strong>08</strong></td>
+            <td><strong>Security: 500 Traceback Leak, Preview JWT &amp; Stored XSS</strong><br><code>api/handler.py:252</code> · <code>cf-preview-content.js</code> · <code>base_layout.py</code></td>
+            <td>500 responses return raw Python stack traces; <code>cf-preview-content.js</code> skips HMAC signature verify; rich text HTML is unsanitized.</td>
+            <td>Sanitize 500 responses in <code>RequestContext</code>; verify HMAC-SHA256 in <code>cf-preview-content.js</code> using <code>crypto.subtle</code>; sanitize HTML in <code>SiteCompiler</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>09</strong></td>
+            <td><strong>S3 Noncurrent Version Bloat &amp; Vendored Packages in Git</strong><br><code>infra/s3.tf:107</code> · <code>api/stripe,jwt,bcrypt,requests</code></td>
+            <td><code>9host-sites</code> and <code>9host-media</code> keep infinite noncurrent S3 versions; 3rd-party pip wheels are committed inside <code>api/</code>.</td>
+            <td>Add 7-day noncurrent version expiration lifecycle rules in <code>infra/s3.tf</code>; install <code>api/requirements.txt</code> into a build artifact directory during packaging.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="footer">
+      <span>9host · Master Decisions &amp; Architecture Blueprint</span>
+      <span>Verified with diagram-design · Ready for Unattended Opus Execution</span>
+    </footer>
+  </div>
+</body>
+</html>
