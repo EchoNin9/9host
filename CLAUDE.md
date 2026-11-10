@@ -34,6 +34,27 @@ Multi-tenant SaaS website hosting platform. Tenants get subdomains at `<slug>.ec
 - Runtime: `cloudfront-js-2.0` (ES5-like, no ES6+ features, no async/await).
 - Must be pure functions — no external calls, no sub-requests.
 
+## Testing
+
+- **Backend (Pytest):**
+  ```bash
+  cd api && ../.venv/bin/pytest -q
+  ```
+  Run specific test file:
+  ```bash
+  cd api && ../.venv/bin/pytest tests/test_html_sanitizer.py -v
+  ```
+
+- **Frontend (Vitest):**
+  ```bash
+  npm --prefix frontend test -- --run
+  ```
+
+- **Frontend Typecheck & Build:**
+  ```bash
+  npm --prefix frontend run build
+  ```
+
 ## Commit & PR Message Format
 
 Always include agent number, task number, and description:

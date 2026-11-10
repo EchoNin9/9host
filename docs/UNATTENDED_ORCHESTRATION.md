@@ -79,7 +79,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 
 ## 3. Detailed Ticket Specifications & Acceptance Criteria
 
-### `T-01`: Pytest + Vitest Harness & HTML Sanitizer (`[TODO]`)
+### `T-01`: Pytest + Vitest Harness & HTML Sanitizer (`[DONE]`)
 - **Agent:** `agent1` / `agent2`
 - **Blocked by:** None
 - **Scope:**

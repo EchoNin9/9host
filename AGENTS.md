@@ -28,7 +28,7 @@ Before starting work, read:
 
 ## Active Overhaul Tickets (`docs/UNATTENDED_ORCHESTRATION.md`)
 
-- [ ] `T-01`: Pytest + Vitest Harness & HTML Sanitizer [agent1/agent2]
+- [x] `T-01`: Pytest + Vitest Harness & HTML Sanitizer [agent1/agent2] — DONE
 - [ ] `T-02`: Deep `RequestContext` & Auth/Secret Caching [agent1]
 - [ ] `T-03`: Deep `TenantStore` & Fix `SITE#` Scan + Media Delete Crash [agent1]
 - [ ] `T-04`: Pure `SiteCompiler` (Root `/` Links + XSS Clean) & `SiteStoragePort` [agent1]
