@@ -15,7 +15,11 @@ from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, r
 from dynamodb_helpers import get_tenant_item
 from middleware import with_tenant
 from stripe_helpers import get_stripe_api_key, get_stripe_price_id, stripe_configured
-from tier_config import is_payable_tier
+
+
+def is_billing_enabled() -> bool:
+    """Check if billing is enabled via BILLING_ENABLED environment variable."""
+    return os.environ.get("BILLING_ENABLED", "").lower() in ("true", "1", "yes")
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -48,6 +52,9 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
     Body: { "tier": "pro"|"business", "success_url": "...", "cancel_url": "..." }
     Requires: tenant_slug, Cognito auth, admin/manager role.
     """
+    if not is_billing_enabled():
+        return _json_response(403, {"error": "Billing is disabled"})
+
     if not stripe_configured():
         return _json_response(503, {"error": "Billing is not configured."})
 
@@ -80,9 +87,9 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
     elif not role_is_admin_or_manager(role):
         return _json_response(403, {"error": "Admin or manager role required."})
 
-    # VIP tier excluded from billing (Task 1.82)
+    # VIP tier excluded from billing (Task 1.82 / Bug #6a)
     tenant = _get_tenant(table, tenant_slug)
-    if tenant and not is_payable_tier(tenant.get("tier", "FREE")):
+    if tenant and (tenant.get("tier") or "FREE").upper() == "VIP":
         return _json_response(
             400,
             {"error": "VIP tier does not require billing. You already have full features."},
@@ -144,6 +151,9 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
     Body: { "return_url": "..." }
     Requires: tenant_slug, Cognito auth, admin/manager role.
     """
+    if not is_billing_enabled():
+        return _json_response(403, {"error": "Billing is disabled"})
+
     if not stripe_configured():
         return _json_response(503, {"error": "Billing is not configured."})
 
@@ -177,8 +187,8 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
         return _json_response(403, {"error": "Admin or manager role required."})
 
     tenant = _get_tenant(table, tenant_slug)
-    # VIP tier excluded from billing (Task 1.82)
-    if tenant and not is_payable_tier(tenant.get("tier", "FREE")):
+    # VIP tier excluded from billing (Task 1.82 / Bug #6a)
+    if tenant and (tenant.get("tier") or "FREE").upper() == "VIP":
         return _json_response(
             400,
             {"error": "VIP tier does not require billing. You already have full features."},

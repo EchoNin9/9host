@@ -6,6 +6,17 @@
  * VIP: Business features, no payment. Superadmin only. Never shown in billing/upgrade.
  */
 
+/**
+ * Billing feature flag (Task T-05 / US-06).
+ * Controls whether billing UI, upgrade prompts, and pricing links are shown.
+ * Defaults to false in MVP.
+ */
+export const BILLING_ENABLED = import.meta.env.VITE_ENABLE_BILLING === "true";
+
+export function isBillingEnabled(): boolean {
+  return import.meta.env.VITE_ENABLE_BILLING === "true";
+}
+
 export type FeatureTier = "free" | "pro" | "business" | "vip";
 
 /** Feature keys aligned with saas-architecture.mdc (Task 2.89: + content modules) */

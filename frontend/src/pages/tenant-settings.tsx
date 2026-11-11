@@ -28,7 +28,7 @@ import { useTenantUsers } from "@/hooks/use-tenant-users"
 import { useAuth } from "@/hooks/use-auth"
 import { Crown, CreditCard, Settings2 } from "lucide-react"
 
-import { ALL_MODULE_KEYS } from "@/lib/feature-flags"
+import { ALL_MODULE_KEYS, isBillingEnabled } from "@/lib/feature-flags"
 
 const TIER_ORDER = ["free", "pro", "business", "vip"] as const
 type TierSlug = (typeof TIER_ORDER)[number]
@@ -151,7 +151,7 @@ function TenantSettings() {
         </p>
       </div>
 
-      {checkoutMessage && (
+      {isBillingEnabled() && checkoutMessage && (
         <div
           className={`rounded-lg border p-3 text-sm ${
             checkoutMessage.includes("success")
@@ -163,87 +163,89 @@ function TenantSettings() {
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="size-4" />
-            Billing
-          </CardTitle>
-          <CardDescription>
-            Manage your subscription and tier
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Current tier:</span>
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    currentTier === "vip"
-                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                      : currentTier === "business"
-                        ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
-                        : currentTier === "pro"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                          : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
-                </span>
-              </div>
-              {currentTier === "vip" && (
-                <p className="text-sm text-muted-foreground">
-                  VIP — Full features, no billing required.
-                </p>
-              )}
-              {billingError && (
-                <p className="text-sm text-destructive">{billingError}</p>
-              )}
-              {canEdit && (
-                <div className="flex flex-wrap gap-2">
-                  {tierRank(currentTier) < tierRank("pro") && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      disabled={!!billingLoading}
-                      onClick={() => handleUpgrade("pro")}
-                    >
-                      {billingLoading === "pro" ? "Redirecting…" : "Upgrade to Pro"}
-                    </Button>
-                  )}
-                  {tierRank(currentTier) < tierRank("business") && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      disabled={!!billingLoading}
-                      onClick={() => handleUpgrade("business")}
-                    >
-                      {billingLoading === "business"
-                        ? "Redirecting…"
-                        : "Upgrade to Business"}
-                    </Button>
-                  )}
-                  {tierRank(currentTier) >= tierRank("pro") && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!!billingLoading}
-                      onClick={handleManageBilling}
-                    >
-                      {billingLoading === "portal"
-                        ? "Opening…"
-                        : "Manage billing"}
-                    </Button>
-                  )}
+      {isBillingEnabled() && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="size-4" />
+              Billing
+            </CardTitle>
+            <CardDescription>
+              Manage your subscription and tier
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Current tier:</span>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      currentTier === "vip"
+                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                        : currentTier === "business"
+                          ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
+                          : currentTier === "pro"
+                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                            : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
+                  </span>
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                {currentTier === "vip" && (
+                  <p className="text-sm text-muted-foreground">
+                    VIP — Full features, no billing required.
+                  </p>
+                )}
+                {billingError && (
+                  <p className="text-sm text-destructive">{billingError}</p>
+                )}
+                {canEdit && (
+                  <div className="flex flex-wrap gap-2">
+                    {tierRank(currentTier) < tierRank("pro") && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        disabled={!!billingLoading}
+                        onClick={() => handleUpgrade("pro")}
+                      >
+                        {billingLoading === "pro" ? "Redirecting…" : "Upgrade to Pro"}
+                      </Button>
+                    )}
+                    {tierRank(currentTier) < tierRank("business") && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        disabled={!!billingLoading}
+                        onClick={() => handleUpgrade("business")}
+                      >
+                        {billingLoading === "business"
+                          ? "Redirecting…"
+                          : "Upgrade to Business"}
+                      </Button>
+                    )}
+                    {tierRank(currentTier) >= tierRank("pro") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!!billingLoading}
+                        onClick={handleManageBilling}
+                      >
+                        {billingLoading === "portal"
+                          ? "Opening…"
+                          : "Manage billing"}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

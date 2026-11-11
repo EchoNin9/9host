@@ -125,7 +125,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/test_site_compiler.py` passes (verifying all 5 templates render valid HTML, root-relative links in `live` mode, `/preview` links in `draft` mode, and zero `<script>` tags survive in user content).
 
-### `T-05`: Fix Stripe Billing Bugs + `VITE_ENABLE_BILLING` Feature Flag (`[TODO]`)
+### `T-05`: Fix Stripe Billing Bugs + `VITE_ENABLE_BILLING` Feature Flag (`[DONE]`)
 - **Agent:** `agent3` / `agent2`
 - **Blocked by:** `T-01`
 - **Scope:**

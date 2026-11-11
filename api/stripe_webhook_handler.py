@@ -79,7 +79,7 @@ def _handle_subscription_event(subscription: dict, table) -> None:
 
     now = datetime.now(timezone.utc).isoformat()
 
-    if status == "active":
+    if status in ("active", "trialing"):
         price_id = None
         items = subscription.get("items") or {}
         data = items.get("data") or []
@@ -104,6 +104,12 @@ def _handle_subscription_event(subscription: dict, table) -> None:
             ExpressionAttributeValues=values,
         )
     else:
+        # Before downgrading, check if tenant is VIP (Bug #6b)
+        resp = table.get_item(Key=get_tenant_item(tenant_slug))
+        tenant = resp.get("Item")
+        if tenant and (tenant.get("tier") or "FREE").upper() == "VIP":
+            return
+
         table.update_item(
             Key=get_tenant_item(tenant_slug),
             UpdateExpression="SET tier = :tier, updated_at = :u REMOVE stripe_subscription_id",
@@ -152,6 +158,13 @@ def stripe_webhook_handler(event: dict, context: dict) -> dict:
         return _json_response(405, {"error": "Method not allowed."})
 
     body = event.get("body") or ""
+    if event.get("isBase64Encoded"):
+        import base64
+        if isinstance(body, str):
+            body = base64.b64decode(body.encode("utf-8")).decode("utf-8")
+        elif isinstance(body, bytes):
+            body = base64.b64decode(body).decode("utf-8")
+
     sig_header = _get_header(event, "Stripe-Signature")
     secret = get_stripe_webhook_secret()
 

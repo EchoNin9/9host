@@ -32,7 +32,7 @@ Before starting work, read:
 - [ ] `T-02`: Deep `RequestContext` & Auth/Secret Caching [agent1]
 - [ ] `T-03`: Deep `TenantStore` & Fix `SITE#` Scan + Media Delete Crash [agent1]
 - [ ] `T-04`: Pure `SiteCompiler` (Root `/` Links + XSS Clean) & `SiteStoragePort` [agent1]
-- [ ] `T-05`: Fix Stripe Billing Bugs + `VITE_ENABLE_BILLING` Feature Flag [agent3/agent2]
+- [x] `T-05`: Fix Stripe Billing Bugs + `VITE_ENABLE_BILLING` Feature Flag [agent3/agent2] — DONE
 - [ ] `T-06`: CloudFront KVS + `cf-site-content.js` + Preview HMAC Verify [agent1]
 - [ ] `T-07`: `CloudflareSaaSAdapter` + Delete AWS ACM Custom Domain Infra [agent1]
 - [ ] `T-08`: Split Admin SPA (`app`/`stage`) vs Public Sites (`*.echo9.net`) + S3 Lifecycle [agent1]
