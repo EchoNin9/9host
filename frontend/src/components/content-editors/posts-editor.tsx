@@ -41,9 +41,11 @@ import {
   type ContentPost,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 export function PostsEditor({ siteId }: { siteId: string }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [posts, setPosts] = useState<ContentPost[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -57,7 +59,7 @@ export function PostsEditor({ siteId }: { siteId: string }) {
     setLoading(true)
     try {
       const token = await getToken()
-      const list = await fetchContentPosts(tenantSlug, token, siteId)
+      const list = await fetchContentPosts(api, token, siteId)
       setPosts(list)
     } catch {
       setPosts([])
@@ -89,7 +91,7 @@ export function PostsEditor({ siteId }: { siteId: string }) {
   const handleDelete = async () => {
     if (!deleteTarget || !tenantSlug) return
     const token = await getToken()
-    const ok = await deleteContentPost(tenantSlug, token, siteId, deleteTarget.id)
+    const ok = await deleteContentPost(api, token, siteId, deleteTarget.id)
     if (ok) {
       void load()
       setDeleteTarget(null)
@@ -212,6 +214,7 @@ function PostFormSheet({
   setError: (v: string | null) => void
 }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [slug, setSlug] = useState("")
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
@@ -253,7 +256,7 @@ function PostFormSheet({
       const token = await getToken()
       if (post) {
         const updated = await updateContentPost(
-          tenantSlug,
+          api,
           token,
           siteId,
           post.id,
@@ -263,7 +266,7 @@ function PostFormSheet({
         else setError("Failed to update post")
       } else {
         const created = await createContentPost(
-          tenantSlug,
+          api,
           token,
           siteId,
           { slug: slug.trim() || undefined, title: title.trim(), body, status }

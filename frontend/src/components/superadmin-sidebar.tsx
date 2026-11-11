@@ -8,6 +8,7 @@ import {
   Users,
   UserRound,
   Layers,
+  RadioTower,
   LogOut,
   type LucideIcon,
 } from "lucide-react"
@@ -44,6 +45,7 @@ function SuperadminSidebar() {
     { title: "Tenants", href: "/admin/tenants", icon: Users },
     { title: "Users", href: "/admin/users", icon: UserRound },
     { title: "Templates", href: "/admin/templates", icon: Layers },
+    { title: "Edge & Domains", href: "/admin/edge", icon: RadioTower },
   ]
 
   const handleSignOut = async () => {

@@ -19,6 +19,7 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { TenantSwitcher } from "@/components/tenant-switcher"
@@ -45,8 +46,8 @@ interface NavItem {
 
 function TenantAdminSidebar() {
   const { tenantSlug, tenantBasePath } = useTenant()
-  const { impersonateTenant, clearImpersonate, isImpersonating } =
-    useImpersonation()
+  const { clearImpersonate } = useImpersonation()
+  const { isSuperadminImpersonating } = useTenantScope()
   const { isSuperadmin } = useAdminTenants()
   const { isSiteUser, userDisplay } = useAuth()
   const location = useLocation()
@@ -114,10 +115,10 @@ function TenantAdminSidebar() {
       <Separator className="mx-2" />
 
       <SidebarFooter className="border-t border-sidebar-border p-2 space-y-2">
-        {isImpersonating && impersonateTenant && (
+        {isSuperadminImpersonating && (
           <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-600 dark:text-amber-400">
             <UserCog className="size-3.5 shrink-0" />
-            <span>Impersonating {impersonateTenant}</span>
+            <span>Impersonating {tenantSlug}</span>
             <Link
               to="/"
               onClick={clearImpersonate}

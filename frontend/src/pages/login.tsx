@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { signIn, confirmSignIn, fetchAuthSession } from "aws-amplify/auth"
+import { signIn, confirmSignIn } from "aws-amplify/auth"
 import { Hub } from "aws-amplify/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { fetchAllTenants, fetchTenants } from "@/lib/api"
+import { clearSiteToken, fetchAllTenants, fetchTenants, getToken } from "@/lib/api"
 
 export function Login() {
   const navigate = useNavigate()
@@ -84,9 +84,10 @@ export function Login() {
   }
 
   async function resolvePostLoginDestination(): Promise<string> {
+    // A Cognito sign-in ends any site-login (TUSER) session: the auth modes never mix.
+    clearSiteToken()
     try {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
+      const token = await getToken("cognito")
       if (!token) return "/"
 
       const { isSuperadmin } = await fetchAllTenants(token)

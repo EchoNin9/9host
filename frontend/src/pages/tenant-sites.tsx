@@ -25,6 +25,7 @@ import {
 import { FeatureGate } from "@/components/feature-gate"
 import { Link } from "react-router-dom"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
 import { SitePreview } from "@/components/site-preview"
@@ -37,16 +38,15 @@ const VALID_SLUG_RE = /^[a-z0-9-]*$/
 function ForkTemplateSheet({
   open,
   onOpenChange,
-  tenantSlug,
   platformTemplates,
   onForked,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  tenantSlug: string
   platformTemplates: Template[]
   onForked: () => void
 }) {
+  const { api } = useTenantScope()
   const [templateSlug, setTemplateSlug] = useState("")
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
@@ -59,7 +59,7 @@ function ForkTemplateSheet({
     setSaving(true)
     try {
       const token = await getToken()
-      const result = await forkTemplate(tenantSlug, token, {
+      const result = await forkTemplate(api, token, {
         template_slug: templateSlug,
         name: name.trim() || undefined,
         slug: slug.trim() || undefined,
@@ -142,6 +142,7 @@ function SiteForm({
   const [name, setName] = useState(site?.name ?? "")
   const [slug, setSlug] = useState(site?.slug ?? "")
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [status, setStatus] = useState(site?.status ?? "draft")
   const [templateId, setTemplateId] = useState(site?.template_id ?? "")
   const [saving, setSaving] = useState(false)
@@ -155,7 +156,7 @@ function SiteForm({
     if (!tenantSlug) return
     try {
       const token = await getToken()
-      const list = await fetchTemplates(tenantSlug, token)
+      const list = await fetchTemplates(api, token)
       setTemplates(list)
     } catch (e) {
       console.error("Failed to load templates", e)
@@ -176,7 +177,7 @@ function SiteForm({
       setSlugStatus("checking")
       const token = await getToken()
       const result = await validateSlug(
-        tenantSlug,
+        api,
         token,
         normalized,
         site?.id ?? null
@@ -316,7 +317,6 @@ function SiteForm({
       <ForkTemplateSheet
         open={forkOpen}
         onOpenChange={setForkOpen}
-        tenantSlug={tenantSlug ?? ""}
         platformTemplates={templates.filter((t) => !t.is_custom)}
         onForked={loadTemplates}
       />
@@ -361,7 +361,7 @@ function TenantSites() {
   const { tenantSlug, tenantBasePath } = useTenant()
   const base = tenantBasePath || `/${tenantSlug}`
   const { canEdit } = useTenantRole()
-  const { sites, loading, error, create, update, remove } = useSites(tenantSlug)
+  const { sites, loading, error, create, update, remove } = useSites()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingSite, setEditingSite] = useState<Site | null>(null)
   const [previewSite, setPreviewSite] = useState<Site | null>(null)

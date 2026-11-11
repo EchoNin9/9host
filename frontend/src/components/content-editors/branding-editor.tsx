@@ -22,6 +22,7 @@ import {
   type SiteBranding,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 const FONT_OPTIONS = [
   "",
@@ -37,6 +38,7 @@ const FONT_OPTIONS = [
 
 export function BrandingEditor({ site, onSaved }: { site: Site; onSaved?: () => void }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [logoS3Key, setLogoS3Key] = useState(site.branding?.logo_s3_key ?? "")
   const [primaryColor, setPrimaryColor] = useState(site.branding?.primary_color ?? "")
   const [fontFamily, setFontFamily] = useState(site.branding?.font_family ?? "")
@@ -58,7 +60,7 @@ export function BrandingEditor({ site, onSaved }: { site: Site; onSaved?: () => 
     setError(null)
     try {
       const token = await getToken()
-      const uploadResp = await fetchUploadUrl(tenantSlug, token, site.id, {
+      const uploadResp = await fetchUploadUrl(api, token, site.id, {
         content_length: file.size,
         filename: file.name,
       })
@@ -93,7 +95,7 @@ export function BrandingEditor({ site, onSaved }: { site: Site; onSaved?: () => 
       if (logoS3Key) branding.logo_s3_key = logoS3Key
       if (primaryColor) branding.primary_color = primaryColor.trim()
       if (fontFamily) branding.font_family = fontFamily.trim()
-      const updated = await updateSite(tenantSlug, token, site.id, { branding })
+      const updated = await updateSite(api, token, site.id, { branding })
       if (updated) {
         setError(null)
         onSaved?.()

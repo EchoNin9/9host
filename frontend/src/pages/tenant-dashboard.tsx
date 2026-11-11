@@ -12,9 +12,9 @@ import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 
 function TenantDashboard() {
   const { tenantSlug } = useTenant()
-  const { tenant } = useTenantMetadata(tenantSlug)
-  const { sites } = useSites(tenantSlug)
-  const { domains } = useDomains(tenantSlug)
+  const { tenant } = useTenantMetadata()
+  const { sites } = useSites()
+  const { domains } = useDomains()
   const tierLabel = tenant?.tier === "VIP" ? "VIP" : tenant?.tier ? tenant.tier.charAt(0) + tenant.tier.slice(1).toLowerCase() : "Free"
 
   return (

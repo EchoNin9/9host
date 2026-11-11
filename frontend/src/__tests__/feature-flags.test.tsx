@@ -12,6 +12,9 @@ import { TierContext } from "@/contexts/tier-context"
 vi.mock("@/hooks/use-tenant", () => ({
   useTenant: () => ({ tenantSlug: "test-tenant", tenantBasePath: "/test-tenant" }),
 }))
+vi.mock("@/context/tenant-scope", () => ({
+  useTenantScope: () => ({ tenantSlug: "test-tenant", isSuperadminImpersonating: false, api: {} }),
+}))
 vi.mock("@/hooks/use-tenant-role", () => ({
   useTenantRole: () => ({ role: "admin", canEdit: true }),
 }))

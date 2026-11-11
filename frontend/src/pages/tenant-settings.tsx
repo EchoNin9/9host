@@ -22,6 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantUsers } from "@/hooks/use-tenant-users"
@@ -43,9 +44,10 @@ function tierRank(t: string): number {
 
 function TenantSettings() {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const { role, canEdit } = useTenantRole()
-  const { tenant, loading, refetch } = useTenantMetadata(tenantSlug)
-  const { users } = useTenantUsers(tenantSlug)
+  const { tenant, loading, refetch } = useTenantMetadata()
+  const { users } = useTenantUsers()
   const { userId } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [transferOpen, setTransferOpen] = useState(false)
@@ -81,7 +83,7 @@ function TenantSettings() {
     setModuleOverridesSaving(true)
     const token = await getToken()
     const result = await patchTenantModuleOverrides(
-      tenantSlug,
+      api,
       token,
       next
     )
@@ -94,7 +96,7 @@ function TenantSettings() {
     setTransferring(true)
     setTransferError(null)
     const token = await getToken()
-    const ok = await putTransferOwner(tenantSlug, token, transferTarget)
+    const ok = await putTransferOwner(api, token, transferTarget)
     setTransferring(false)
     if (ok) {
       setTransferOpen(false)
@@ -113,7 +115,7 @@ function TenantSettings() {
     setBillingLoading(tier)
     setBillingError(null)
     const token = await getToken()
-    const result = await createBillingCheckout(tenantSlug, token, {
+    const result = await createBillingCheckout(api, token, {
       tier,
       success_url: `${baseUrl}${settingsPath}?checkout=success`,
       cancel_url: `${baseUrl}${settingsPath}?checkout=cancel`,
@@ -131,7 +133,7 @@ function TenantSettings() {
     setBillingLoading("portal")
     setBillingError(null)
     const token = await getToken()
-    const result = await createBillingPortal(tenantSlug, token, {
+    const result = await createBillingPortal(api, token, {
       return_url: `${baseUrl}${settingsPath}`,
     })
     setBillingLoading(null)

@@ -42,9 +42,11 @@ import {
   type ContentMedia,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 export function MediaEditor({ siteId }: { siteId: string }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [media, setMedia] = useState<ContentMedia[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -59,7 +61,7 @@ export function MediaEditor({ siteId }: { siteId: string }) {
     setLoading(true)
     try {
       const token = await getToken()
-      const list = await fetchContentMedia(tenantSlug, token, siteId)
+      const list = await fetchContentMedia(api, token, siteId)
       setMedia(list)
     } catch {
       setMedia([])
@@ -80,7 +82,7 @@ export function MediaEditor({ siteId }: { siteId: string }) {
     setError(null)
     try {
       const token = await getToken()
-      const uploadResp = await fetchUploadUrl(tenantSlug, token, siteId, {
+      const uploadResp = await fetchUploadUrl(api, token, siteId, {
         content_length: file.size,
         filename: file.name,
       })
@@ -99,7 +101,7 @@ export function MediaEditor({ siteId }: { siteId: string }) {
         setError("Upload failed")
         return
       }
-      const created = await createContentMedia(tenantSlug, token, siteId, {
+      const created = await createContentMedia(api, token, siteId, {
         s3_key: uploadResp.key,
         caption: "",
         status: "DRAFT",
@@ -127,7 +129,7 @@ export function MediaEditor({ siteId }: { siteId: string }) {
   const handleDelete = async () => {
     if (!deleteTarget || !tenantSlug) return
     const token = await getToken()
-    const ok = await deleteContentMedia(tenantSlug, token, siteId, deleteTarget.id)
+    const ok = await deleteContentMedia(api, token, siteId, deleteTarget.id)
     if (ok) {
       void load()
       setDeleteTarget(null)
@@ -144,8 +146,8 @@ export function MediaEditor({ siteId }: { siteId: string }) {
     const [a, b] = [sorted[idx], sorted[swapIdx]]
     const token = await getToken()
     await Promise.all([
-      updateContentMedia(tenantSlug, token, siteId, a.id, { sort_order: swapIdx }),
-      updateContentMedia(tenantSlug, token, siteId, b.id, { sort_order: idx }),
+      updateContentMedia(api, token, siteId, a.id, { sort_order: swapIdx }),
+      updateContentMedia(api, token, siteId, b.id, { sort_order: idx }),
     ])
     void load()
   }
@@ -193,7 +195,6 @@ export function MediaEditor({ siteId }: { siteId: string }) {
                   <MediaCard
                     key={m.id}
                     media={m}
-                    tenantSlug={tenantSlug}
                     siteId={siteId}
                     onEdit={() => handleEdit(m)}
                     onDelete={() => setDeleteTarget(m)}
@@ -243,7 +244,6 @@ export function MediaEditor({ siteId }: { siteId: string }) {
 
 function MediaCard({
   media,
-  tenantSlug,
   siteId,
   onEdit,
   onDelete,
@@ -251,26 +251,26 @@ function MediaCard({
   onReorderDown,
 }: {
   media: ContentMedia
-  tenantSlug: string
   siteId: string
   onEdit: () => void
   onDelete: () => void
   onReorderUp?: () => void
   onReorderDown?: () => void
 }) {
+  const { api } = useTenantScope()
   const [imgUrl, setImgUrl] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     getToken().then((token) => {
       if (cancelled) return
-      fetchMediaPresignedUrl(tenantSlug, token, siteId, media.id).then((url) => {
+      fetchMediaPresignedUrl(api, token, siteId, media.id).then((url) => {
         if (!cancelled && url) setImgUrl(url)
       })
     })
     return () => {
       cancelled = true
     }
-  }, [tenantSlug, siteId, media.id])
+  }, [api, siteId, media.id])
 
   return (
     <li className="flex flex-col rounded-md border overflow-hidden">
@@ -328,6 +328,7 @@ function MediaCaptionSheet({
   setError: (v: string | null) => void
 }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [caption, setCaption] = useState("")
   const [status, setStatus] = useState<"DRAFT" | "PUBLISHED">("DRAFT")
 
@@ -347,7 +348,7 @@ function MediaCaptionSheet({
     try {
       const token = await getToken()
       const updated = await updateContentMedia(
-        tenantSlug,
+        api,
         token,
         siteId,
         media.id,

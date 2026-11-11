@@ -26,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { UpgradePrompt } from "@/components/upgrade-prompt"
@@ -84,8 +85,9 @@ function tierRank(t: string): number {
 
 function TenantModules() {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const { canEdit } = useTenantRole()
-  const { tenant, loading, refetch } = useTenantMetadata(tenantSlug)
+  const { tenant, loading, refetch } = useTenantMetadata()
   const [savingKey, setSavingKey] = useState<string | null>(null)
 
   const currentTier = (tenant?.tier?.toLowerCase() ?? "free") as TierSlug
@@ -95,7 +97,7 @@ function TenantModules() {
     setSavingKey(key)
     const token = await getToken()
     const next = { ...(tenant.module_overrides ?? {}), [key]: value }
-    const result = await patchTenantModuleOverrides(tenantSlug, token, next)
+    const result = await patchTenantModuleOverrides(api, token, next)
     setSavingKey(null)
     if (result) void refetch()
   }

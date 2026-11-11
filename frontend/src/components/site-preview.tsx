@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet"
 import { getToken, fetchSitePreview, fetchTemplates, type SitePreviewData, type Template } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 interface SitePreviewProps {
   siteId: string
@@ -67,6 +68,7 @@ export function SitePreview({
   onOpenChange,
 }: SitePreviewProps) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [preview, setPreview] = useState<SitePreviewData | null>(null)
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string>(templateId ?? "")
@@ -82,7 +84,7 @@ export function SitePreview({
     if (!open || !tenantSlug) return
     async function loadTemplates() {
       const token = await getToken()
-      const list = await fetchTemplates(tenantSlug!, token)
+      const list = await fetchTemplates(api, token)
       setTemplates(list)
     }
     void loadTemplates()
@@ -98,7 +100,7 @@ export function SitePreview({
       if (cancelled) return
       try {
         const data = await fetchSitePreview(
-          tenantSlug,
+          api,
           token,
           siteId,
           selectedTemplate || undefined

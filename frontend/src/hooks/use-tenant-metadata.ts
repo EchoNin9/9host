@@ -1,5 +1,6 @@
 "use client"
 
+import { useTenantScope } from "@/context/tenant-scope"
 import { useCallback, useEffect, useState } from "react"
 import { getToken } from "@/lib/api"
 import { fetchTenant, type TenantMetadata } from "@/lib/api"
@@ -14,9 +15,8 @@ export interface UseTenantMetadataResult {
 /**
  * Fetches tenant metadata from GET /api/tenant (name, tier, owner_sub).
  */
-export function useTenantMetadata(
-  tenantSlug: string | null
-): UseTenantMetadataResult {
+export function useTenantMetadata(): UseTenantMetadataResult {
+  const { tenantSlug, api } = useTenantScope()
   const [tenant, setTenant] = useState<TenantMetadata | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,7 +31,7 @@ export function useTenantMetadata(
     setError(null)
     try {
       const token = await getToken()
-      const data = await fetchTenant(tenantSlug, token)
+      const data = await fetchTenant(api, token)
       setTenant(data)
     } catch (e) {
       setTenant(null)
@@ -39,7 +39,7 @@ export function useTenantMetadata(
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   useEffect(() => {
     void load()

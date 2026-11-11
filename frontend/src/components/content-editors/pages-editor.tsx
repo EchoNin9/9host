@@ -41,9 +41,11 @@ import {
   type ContentPage,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 export function PagesEditor({ siteId }: { siteId: string }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [pages, setPages] = useState<ContentPage[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -57,7 +59,7 @@ export function PagesEditor({ siteId }: { siteId: string }) {
     setLoading(true)
     try {
       const token = await getToken()
-      const list = await fetchContentPages(tenantSlug, token, siteId)
+      const list = await fetchContentPages(api, token, siteId)
       setPages(list)
     } catch {
       setPages([])
@@ -89,7 +91,7 @@ export function PagesEditor({ siteId }: { siteId: string }) {
   const handleDelete = async () => {
     if (!deleteTarget || !tenantSlug) return
     const token = await getToken()
-    const ok = await deleteContentPage(tenantSlug, token, siteId, deleteTarget.path)
+    const ok = await deleteContentPage(api, token, siteId, deleteTarget.path)
     if (ok) {
       void load()
       setDeleteTarget(null)
@@ -212,6 +214,7 @@ function PageFormSheet({
   setError: (v: string | null) => void
 }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [path, setPath] = useState("")
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
@@ -258,7 +261,7 @@ function PageFormSheet({
       const token = await getToken()
       if (page) {
         const updated = await updateContentPage(
-          tenantSlug,
+          api,
           token,
           siteId,
           page.path,
@@ -268,7 +271,7 @@ function PageFormSheet({
         else setError("Failed to update page")
       } else {
         const created = await createContentPage(
-          tenantSlug,
+          api,
           token,
           siteId,
           { path: trimmedPath, title: title.trim(), body, status }

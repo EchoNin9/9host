@@ -1,5 +1,6 @@
 "use client"
 
+import { useTenantScope } from "@/context/tenant-scope"
 import { useCallback, useEffect, useState } from "react"
 import { getToken } from "@/lib/api"
 import { fetchAnalytics, type AnalyticsResponse } from "@/lib/api"
@@ -15,7 +16,8 @@ export interface UseAnalyticsResult {
  * Fetches analytics for the current tenant from /api/tenant/analytics.
  * Requires Pro+ tier (API returns 403 for Free).
  */
-export function useAnalytics(tenantSlug: string | null): UseAnalyticsResult {
+export function useAnalytics(): UseAnalyticsResult {
+  const { tenantSlug, api } = useTenantScope()
   const [data, setData] = useState<AnalyticsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +32,7 @@ export function useAnalytics(tenantSlug: string | null): UseAnalyticsResult {
     setError(null)
     try {
       const token = await getToken()
-      const result = await fetchAnalytics(tenantSlug, token)
+      const result = await fetchAnalytics(api, token)
       setData(result)
     } catch (e) {
       setData(null)
@@ -38,7 +40,7 @@ export function useAnalytics(tenantSlug: string | null): UseAnalyticsResult {
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   useEffect(() => {
     void load()

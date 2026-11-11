@@ -21,8 +21,8 @@ import {
   Bar,
 } from "recharts"
 
-function AnalyticsCharts({ tenantSlug }: { tenantSlug: string }) {
-  const { data, loading, error } = useAnalytics(tenantSlug)
+function AnalyticsCharts() {
+  const { data, loading, error } = useAnalytics()
 
   if (loading) {
     return (
@@ -143,11 +143,11 @@ function AnalyticsCharts({ tenantSlug }: { tenantSlug: string }) {
 
 function TenantAnalytics() {
   const { tenantSlug } = useTenant()
-  const { tenant } = useTenantMetadata(tenantSlug)
+  const { tenant } = useTenantMetadata()
   const isVip = (tenant?.tier?.toLowerCase() ?? "") === "vip"
 
   const content = tenantSlug ? (
-    <AnalyticsCharts tenantSlug={tenantSlug} />
+    <AnalyticsCharts />
   ) : (
     <Card>
       <CardContent className="pt-6">

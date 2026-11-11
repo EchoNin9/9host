@@ -1,5 +1,6 @@
 "use client"
 
+import { useTenantScope } from "@/context/tenant-scope"
 import { useCallback, useEffect, useState } from "react"
 import { getToken } from "@/lib/api"
 import {
@@ -24,7 +25,8 @@ export interface UseTenantUsersResult {
 /**
  * Fetches tenant users from /api/tenant/users (admin/manager only).
  */
-export function useTenantUsers(tenantSlug: string | null): UseTenantUsersResult {
+export function useTenantUsers(): UseTenantUsersResult {
+  const { tenantSlug, api } = useTenantScope()
   const [users, setUsers] = useState<TenantUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +41,7 @@ export function useTenantUsers(tenantSlug: string | null): UseTenantUsersResult 
     setError(null)
     try {
       const token = await getToken()
-      const list = await fetchTenantUsers(tenantSlug, token)
+      const list = await fetchTenantUsers(api, token)
       setUsers(list)
     } catch (e) {
       setUsers([])
@@ -47,7 +49,7 @@ export function useTenantUsers(tenantSlug: string | null): UseTenantUsersResult 
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   useEffect(() => {
     void load()
@@ -67,10 +69,8 @@ export interface UseUserPermissionsResult {
 /**
  * Fetches and updates user permissions (admin/manager only).
  */
-export function useUserPermissions(
-  tenantSlug: string | null,
-  userSub: string | null
-): UseUserPermissionsResult {
+export function useUserPermissions(userSub: string | null): UseUserPermissionsResult {
+  const { tenantSlug, api } = useTenantScope()
   const [permissions, setPermissions] = useState<ModulePermissions | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +85,7 @@ export function useUserPermissions(
     setError(null)
     try {
       const token = await getToken()
-      const perms = await fetchUserPermissions(tenantSlug, token, userSub)
+      const perms = await fetchUserPermissions(api, token, userSub)
       setPermissions(perms)
     } catch (e) {
       setPermissions(null)
@@ -93,7 +93,7 @@ export function useUserPermissions(
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug, userSub])
+  }, [tenantSlug, api, userSub])
 
   useEffect(() => {
     void load()
@@ -103,19 +103,14 @@ export function useUserPermissions(
     async (perms: Partial<ModulePermissions>) => {
       if (!tenantSlug || !userSub) return false
       const token = await getToken()
-      const result = await updateUserPermissionsApi(
-        tenantSlug,
-        token,
-        userSub,
-        perms
-      )
+      const result = await updateUserPermissionsApi(api, token, userSub, perms)
       if (result) {
         setPermissions(result)
         return true
       }
       return false
     },
-    [tenantSlug, userSub]
+    [tenantSlug, api, userSub]
   )
 
   return { permissions, loading, error, refetch: load, update }
@@ -131,7 +126,8 @@ export interface UseTenantTUsersResult {
 /**
  * Fetches non-Cognito tenant users from /api/tenant/tusers (admin/manager only).
  */
-export function useTenantTUsers(tenantSlug: string | null): UseTenantTUsersResult {
+export function useTenantTUsers(): UseTenantTUsersResult {
+  const { tenantSlug, api } = useTenantScope()
   const [tusers, setTusers] = useState<TenantTUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -146,7 +142,7 @@ export function useTenantTUsers(tenantSlug: string | null): UseTenantTUsersResul
     setError(null)
     try {
       const token = await getToken()
-      const list = await fetchTenantTUsers(tenantSlug, token)
+      const list = await fetchTenantTUsers(api, token)
       setTusers(list)
     } catch (e) {
       setTusers([])
@@ -154,7 +150,7 @@ export function useTenantTUsers(tenantSlug: string | null): UseTenantTUsersResul
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   useEffect(() => {
     void load()
@@ -173,7 +169,8 @@ export interface UseTenantRolesResult {
 /**
  * Fetches custom roles from /api/tenant/roles (admin/manager only).
  */
-export function useTenantRoles(tenantSlug: string | null): UseTenantRolesResult {
+export function useTenantRoles(): UseTenantRolesResult {
+  const { tenantSlug, api } = useTenantScope()
   const [roles, setRoles] = useState<TenantRole[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -188,7 +185,7 @@ export function useTenantRoles(tenantSlug: string | null): UseTenantRolesResult 
     setError(null)
     try {
       const token = await getToken()
-      const list = await fetchTenantRoles(tenantSlug, token)
+      const list = await fetchTenantRoles(api, token)
       setRoles(list)
     } catch (e) {
       setRoles([])
@@ -196,7 +193,7 @@ export function useTenantRoles(tenantSlug: string | null): UseTenantRolesResult 
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   useEffect(() => {
     void load()

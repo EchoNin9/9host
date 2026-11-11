@@ -1,6 +1,6 @@
 /**
- * Impersonation context (Task 2.13).
- * Superadmin can impersonate a tenant; API client adds X-Impersonate-Tenant.
+ * Impersonation context (Task 2.13): which tenant a superadmin chose to impersonate.
+ * The header itself is attached only by TenantScope-scoped clients (context/tenant-scope).
  */
 
 import { createContext } from "react"

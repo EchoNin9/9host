@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { getToken } from "@/lib/api"
+import type { TenantApi } from "@/lib/api-client"
 import {
   fetchContentMedia,
   fetchMediaPresignedUrl,
@@ -26,6 +27,7 @@ import {
   type ContentMedia,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 interface MediaPickerProps {
   open: boolean
@@ -40,6 +42,7 @@ interface MediaWithUrl extends ContentMedia {
 
 export function MediaPicker({ open, onOpenChange, siteId, onSelect }: MediaPickerProps) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [media, setMedia] = useState<MediaWithUrl[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
@@ -53,11 +56,11 @@ export function MediaPicker({ open, onOpenChange, siteId, onSelect }: MediaPicke
     setError(null)
     try {
       const token = await getToken()
-      const list = await fetchContentMedia(tenantSlug, token, siteId)
+      const list = await fetchContentMedia(api, token, siteId)
       // Fetch presigned URLs for all media items
       const withUrls = await Promise.all(
         list.map(async (m) => {
-          const url = await fetchMediaPresignedUrl(tenantSlug, token, siteId, m.id)
+          const url = await fetchMediaPresignedUrl(api, token, siteId, m.id)
           return { ...m, displayUrl: url ?? undefined }
         })
       )
@@ -85,7 +88,7 @@ export function MediaPicker({ open, onOpenChange, siteId, onSelect }: MediaPicke
     setError(null)
     try {
       const token = await getToken()
-      const uploadResp = await fetchUploadUrl(tenantSlug, token, siteId, {
+      const uploadResp = await fetchUploadUrl(api, token, siteId, {
         content_length: file.size,
         filename: file.name,
       })
@@ -104,7 +107,7 @@ export function MediaPicker({ open, onOpenChange, siteId, onSelect }: MediaPicke
         setError("Upload failed")
         return
       }
-      await createContentMedia(tenantSlug, token, siteId, {
+      await createContentMedia(api, token, siteId, {
         s3_key: uploadResp.key,
         caption: "",
         status: "DRAFT",
@@ -229,13 +232,13 @@ export function MediaPicker({ open, onOpenChange, siteId, onSelect }: MediaPicke
  * Used by drag-and-drop in the RichTextEditor (Task 4.3).
  */
 export async function uploadFileAndGetUrl(
-  tenantSlug: string,
+  api: TenantApi,
   siteId: string,
   file: File
 ): Promise<string | null> {
   try {
     const token = await getToken()
-    const uploadResp = await fetchUploadUrl(tenantSlug, token, siteId, {
+    const uploadResp = await fetchUploadUrl(api, token, siteId, {
       content_length: file.size,
       filename: file.name,
     })
@@ -250,14 +253,14 @@ export async function uploadFileAndGetUrl(
     })
     if (!uploadRes.ok) return null
 
-    const created = await createContentMedia(tenantSlug, token, siteId, {
+    const created = await createContentMedia(api, token, siteId, {
       s3_key: uploadResp.key,
       caption: "",
       status: "DRAFT",
     })
     if (!created) return null
 
-    const url = await fetchMediaPresignedUrl(tenantSlug, token, siteId, created.id)
+    const url = await fetchMediaPresignedUrl(api, token, siteId, created.id)
     return url
   } catch {
     return null

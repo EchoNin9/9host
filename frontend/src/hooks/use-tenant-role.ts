@@ -2,7 +2,7 @@
 
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenants } from "@/hooks/use-tenants"
-import { useImpersonation } from "@/hooks/use-impersonation"
+import { useTenantScope } from "@/context/tenant-scope"
 
 /**
  * Returns the user's role in the current tenant and whether they can create/edit/delete.
@@ -15,7 +15,7 @@ export function useTenantRole(): {
 } {
   const { tenantSlug } = useTenant()
   const { tenants } = useTenants()
-  const { isImpersonating } = useImpersonation()
+  const { isSuperadminImpersonating } = useTenantScope()
 
   const role =
     tenantSlug && tenants.length > 0
@@ -23,7 +23,7 @@ export function useTenantRole(): {
       : "member"
 
   const canEdit =
-    isImpersonating || role === "admin" || role === "manager"
+    isSuperadminImpersonating || role === "admin" || role === "manager"
 
   return { role, canEdit }
 }
