@@ -1,0 +1,16 @@
+# 9host — Cloudflare for SaaS fallback origin Worker (T-07).
+# Deploy manually (see docs/UNATTENDED_ORCHESTRATION.md §5): `npx wrangler deploy`
+name = "9host-custom-domain-proxy"
+main = "custom-domain-proxy.js"
+compatibility_date = "2026-01-01"
+workers_dev = false
+
+# proxy.echo9.net is the Custom Hostnames fallback origin (AAAA 100::, proxied).
+# "*/*" catches every custom hostname routed to the echo9.net zone via Cloudflare for SaaS.
+routes = [
+  { pattern = "proxy.echo9.net/*", zone_name = "echo9.net" },
+  { pattern = "*/*", zone_name = "echo9.net" },
+]
+
+[vars]
+SITES_ORIGIN_HOST = "sites-origin.echo9.net"

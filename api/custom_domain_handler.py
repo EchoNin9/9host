@@ -1,140 +1,217 @@
 """
-Custom domain SSL handler (Task 1.146, 1.147).
+Custom domain lifecycle (T-07) — Cloudflare for SaaS + HostMappingKVS.
 
-Centralized ACM certificate + CloudFront alias operations for custom domains.
-Used by domains_handler (activate) and domain deletion (cleanup).
+Replaces the ACM certificate / CloudFront alias flow (Tasks 1.146, 1.147). Each
+custom domain is a DynamoDB row ``pk=TENANT#{slug}, sk=DOMAIN#{domain}`` that
+carries the Cloudflare ``cf_hostname_id``. Lifecycle:
+
+    register_domain(...)       -> Cloudflare custom hostname created, row PENDING_VALIDATION
+    refresh_domain_status(...) -> poll Cloudflare; when active: row ACTIVE + KVS put
+    remove_domain(...)         -> Cloudflare hostname deleted, KVS key deleted, row deleted
+
+The Cloudflare port is resolved through ``get_custom_domain_port()`` so tests can
+inject a fake (``set_custom_domain_port``).
 """
 
+from __future__ import annotations
+
 import json
-import os
-import time
+import logging
+from datetime import datetime, timezone
 
-import boto3
-from botocore.exceptions import ClientError
+from cloudflare_saas import (
+    CNAME_TARGET,
+    CloudflareAPIError,
+    CloudflareSaaSAdapter,
+    CustomDomainPort,
+    CustomHostnameRecord,
+)
 
-CLOUDFRONT_SITES_DISTRIBUTION_ID = os.environ.get("CLOUDFRONT_SITES_DISTRIBUTION_ID", "")
+logger = logging.getLogger(__name__)
+
+STATUS_PENDING = "PENDING_VALIDATION"
+STATUS_ACTIVE = "ACTIVE"
+
+_port: CustomDomainPort | None = None
 
 
-def request_acm_certificate(domain: str) -> tuple[str, list[dict]]:
-    """Request an ACM certificate for a custom domain and return (arn, validation_records).
+def get_custom_domain_port() -> CustomDomainPort:
+    global _port
+    if _port is None:
+        _port = CloudflareSaaSAdapter()
+    return _port
 
-    Requests DNS-validated cert in us-east-1 (required for CloudFront).
-    Retries up to 5 times (2s apart) to fetch validation CNAME records.
 
-    Returns:
-        (cert_arn, validation_records) where validation_records is a list of
-        {"type": str, "name": str, "value": str} dicts.
+def set_custom_domain_port(port: CustomDomainPort | None) -> None:
+    """Override the port (tests). ``None`` resets to the default adapter."""
+    global _port
+    _port = port
 
-    Raises:
-        RuntimeError on failure.
-    """
-    acm = boto3.client("acm", region_name="us-east-1")
 
-    try:
-        resp = acm.request_certificate(DomainName=domain, ValidationMethod="DNS")
-        cert_arn = resp.get("CertificateArn", "")
-    except ClientError as e:
-        raise RuntimeError(f"Failed to request certificate: {e}") from e
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    if not cert_arn:
-        raise RuntimeError("ACM did not return certificate ARN.")
 
-    # Fetch validation records (ACM may take a few seconds to populate)
-    validation_records: list[dict] = []
-    for _ in range(5):
+def domain_from_item(item: dict) -> str:
+    sk = item.get("sk", "")
+    return sk[len("DOMAIN#"):] if sk.startswith("DOMAIN#") else ""
+
+
+def tenant_from_item(item: dict) -> str:
+    pk = item.get("pk", "")
+    return pk[len("TENANT#"):] if pk.startswith("TENANT#") else ""
+
+
+def _load_list(raw) -> list:
+    if not raw:
+        return []
+    if isinstance(raw, str):
         try:
-            desc = acm.describe_certificate(CertificateArn=cert_arn)
-            opts = desc.get("Certificate", {}).get("DomainValidationOptions", [])
-            for opt in opts:
-                rec = opt.get("ResourceRecord")
-                if rec:
-                    validation_records.append({
-                        "type": rec.get("Type", ""),
-                        "name": rec.get("Name", ""),
-                        "value": rec.get("Value", ""),
-                    })
-            if validation_records:
-                break
-        except ClientError:
-            pass
-        time.sleep(2)
-
-    return cert_arn, validation_records
+            val = json.loads(raw)
+        except ValueError:
+            return []
+        return val if isinstance(val, list) else []
+    return list(raw)
 
 
-def add_cloudfront_alias(domain: str, distribution_id: str | None = None) -> bool:
-    """Add a custom domain as an alias to the CloudFront sites distribution.
+def record_fields(rec: CustomHostnameRecord) -> dict:
+    """DynamoDB attributes derived from a Cloudflare record."""
+    return {
+        "cf_hostname_id": rec.cf_hostname_id,
+        "cf_status": rec.status,
+        "ssl_status": rec.ssl_status,
+        "verification_cname_target": rec.cname_target,
+        "validation_records": json.dumps(rec.validation_records),
+        "verification_errors": json.dumps(rec.verification_errors),
+        "status": STATUS_ACTIVE if rec.is_active else STATUS_PENDING,
+    }
 
-    Returns True if alias was added (or already present), False on failure.
+
+def domain_to_response(item: dict) -> dict:
+    """Public API shape for a domain row (frontend contract)."""
+    validation_records = _load_list(item.get("validation_records"))
+    out = {
+        "domain": domain_from_item(item),
+        "site_id": item.get("site_id", ""),
+        "status": item.get("status", "pending"),
+        "created_at": item.get("created_at", ""),
+        "updated_at": item.get("updated_at", ""),
+        "cname_target": CNAME_TARGET,
+        "verification_cname_target": CNAME_TARGET,
+        "validation_records": validation_records,
+        # Back-compat alias: the existing wizard renders {type, name, value} rows from here.
+        "acm_validation_records": validation_records,
+    }
+    if item.get("cf_hostname_id"):
+        out["cf_hostname_id"] = item["cf_hostname_id"]
+    if item.get("cf_status"):
+        out["cf_status"] = item["cf_status"]
+    if item.get("ssl_status"):
+        out["ssl_status"] = item["ssl_status"]
+    errors = _load_list(item.get("verification_errors"))
+    if errors:
+        out["verification_errors"] = errors
+    return out
+
+
+def register_domain(table, tenant_slug: str, domain: str, site_id: str) -> dict:
+    """Create the Cloudflare custom hostname and persist the domain row.
+
+    Caller has already validated input, uniqueness and site existence.
+    Raises CloudflareAPIError on provider failure (no row is written).
     """
-    dist_id = distribution_id or CLOUDFRONT_SITES_DISTRIBUTION_ID
-    if not dist_id:
-        return False
-
-    cf = boto3.client("cloudfront")
+    port = get_custom_domain_port()
+    rec = port.register_hostname(domain)
+    now = _now()
+    item = {
+        "pk": f"TENANT#{tenant_slug}",
+        "sk": f"DOMAIN#{domain}",
+        "gsi2pk": f"DOMAIN#{domain}",
+        "gsi2sk": f"TENANT#{tenant_slug}",
+        "site_id": site_id,
+        "created_at": now,
+        "updated_at": now,
+        **_fields_for(rec, tenant_slug, domain, site_id),
+    }
     try:
-        config_resp = cf.get_distribution_config(Id=dist_id)
-        config = config_resp["DistributionConfig"]
-        etag = config_resp["ETag"]
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(pk)")
+    except Exception:
+        # Don't leak a Cloudflare hostname we have no row for.
+        try:
+            port.delete_hostname(rec.cf_hostname_id)
+        except CloudflareAPIError:
+            logger.warning("custom_domain: rollback delete failed for %s", domain)
+        raise
+    return item
 
-        aliases = config.get("Aliases", {})
-        items_list = list(aliases.get("Items") or [])
-        if domain in items_list:
-            return True  # already present
 
-        items_list.append(domain)
-        aliases["Items"] = items_list
-        aliases["Quantity"] = len(items_list)
-        config["Aliases"] = aliases
+def _put_mapping(tenant_slug: str, domain: str, site_id: str) -> bool:
+    """Write ``domain -> {tenant, site_id}`` into HostMappingKVS. Returns False on failure."""
+    from site_storage import put_host_mapping
 
-        cf.update_distribution(Id=dist_id, DistributionConfig=config, IfMatch=etag)
-        return True
-    except ClientError as e:
-        print(f"[9host] CloudFront add alias failed for {domain}: {e}")
+    try:
+        put_host_mapping(domain, tenant_slug, site_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("custom_domain: KVS put failed for %s: %s", domain, type(exc).__name__)
         return False
+    return True
 
 
-def remove_cloudfront_alias(domain: str, distribution_id: str | None = None) -> bool:
-    """Remove a custom domain alias from the CloudFront sites distribution.
+def _fields_for(rec: CustomHostnameRecord, tenant_slug: str, domain: str, site_id: str) -> dict:
+    """Row attributes for ``rec``; only ACTIVE once the KVS mapping is written."""
+    fields = record_fields(rec)
+    if rec.is_active and not _put_mapping(tenant_slug, domain, site_id):
+        fields["status"] = STATUS_PENDING  # retried on next poll
+    return fields
 
-    Returns True if removed (or not present), False on failure.
+
+def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> dict:
+    """Poll Cloudflare for a non-ACTIVE domain row and persist the result.
+
+    Rows without ``cf_hostname_id`` (legacy ACM-era rows) are registered with
+    Cloudflare first. Mutates and returns ``item``.
     """
-    dist_id = distribution_id or CLOUDFRONT_SITES_DISTRIBUTION_ID
-    if not dist_id:
-        return True  # nothing to remove
+    if (item.get("status") or "").upper() == STATUS_ACTIVE and item.get("cf_hostname_id"):
+        return item
 
-    cf = boto3.client("cloudfront")
+    port = get_custom_domain_port()
     try:
-        config_resp = cf.get_distribution_config(Id=dist_id)
-        config = config_resp["DistributionConfig"]
-        etag = config_resp["ETag"]
+        if item.get("cf_hostname_id"):
+            rec = port.get_hostname_status(item["cf_hostname_id"])
+        else:
+            rec = port.register_hostname(domain_from_item(item))
+    except CloudflareAPIError:
+        if raise_errors:
+            raise
+        return item
 
-        aliases = config.get("Aliases", {})
-        items_list = list(aliases.get("Items") or [])
-        if domain not in items_list:
-            return True  # not present
-
-        items_list.remove(domain)
-        aliases["Items"] = items_list
-        aliases["Quantity"] = len(items_list)
-        config["Aliases"] = aliases
-
-        cf.update_distribution(Id=dist_id, DistributionConfig=config, IfMatch=etag)
-        return True
-    except ClientError as e:
-        print(f"[9host] CloudFront remove alias failed for {domain}: {e}")
-        return False
+    fields = _fields_for(rec, tenant_from_item(item), domain_from_item(item), item.get("site_id", ""))
+    fields["updated_at"] = _now()
+    names = {f"#{k}": k for k in fields}
+    values = {f":{k}": v for k, v in fields.items()}
+    table.update_item(
+        Key={"pk": item["pk"], "sk": item["sk"]},
+        UpdateExpression="SET " + ", ".join(f"#{k} = :{k}" for k in fields),
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues=values,
+    )
+    item.update(fields)
+    return item
 
 
-def delete_acm_certificate(cert_arn: str) -> bool:
-    """Delete an ACM certificate. Returns True on success, False on failure."""
-    if not cert_arn:
-        return True
-    acm = boto3.client("acm", region_name="us-east-1")
+def remove_domain(table, item: dict) -> None:
+    """Delete the Cloudflare hostname, the KVS key and the DynamoDB row.
+
+    Raises CloudflareAPIError if Cloudflare deletion fails (row kept for retry).
+    """
+    from site_storage import delete_host_mapping
+
+    domain = domain_from_item(item)
+    cf_id = (item.get("cf_hostname_id") or "").strip()
+    if cf_id:
+        get_custom_domain_port().delete_hostname(cf_id)
     try:
-        acm.delete_certificate(CertificateArn=cert_arn)
-        return True
-    except ClientError as e:
-        # ResourceInUseException means cert is still attached — can't delete yet
-        print(f"[9host] ACM delete failed for {cert_arn}: {e}")
-        return False
+        delete_host_mapping(domain)
+    except Exception as exc:  # noqa: BLE001 - hostname is gone at Cloudflare; traffic can't reach us
+        logger.warning("custom_domain: KVS delete failed for %s: %s", domain, type(exc).__name__)
+    table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})

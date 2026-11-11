@@ -1,39 +1,39 @@
 """
 Domains API — GET/POST/DELETE /api/tenant/domains.
 
-Custom domains (Pro+ tier). Requires tenant_slug (header/subdomain), Cognito auth,
-tenant membership, tier >= Pro.
+Custom domains (Pro+ tier, ``custom_domains`` feature). Requires tenant_slug
+(header/subdomain), Cognito/TUSER auth, tenant membership, tier >= Pro.
+
+T-07: domains are provisioned as Cloudflare for SaaS custom hostnames
+(``CNAME -> proxy.echo9.net``) via ``custom_domain_handler`` / ``CloudflareSaaSAdapter``;
+ACTIVE domains are mapped in HostMappingKVS. No ACM / CloudFront alias calls.
 """
 
 import json
 import os
-import re
-import secrets
-from datetime import datetime, timezone
 from urllib.parse import unquote
 
 import boto3
+from boto3.dynamodb.conditions import Key
 
 from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
+from cloudflare_saas import CloudflareAPIError, InvalidDomainError, validate_domain
 from custom_domain_handler import (
-    add_cloudfront_alias,
-    delete_acm_certificate,
-    remove_cloudfront_alias,
-    request_acm_certificate,
+    STATUS_ACTIVE,
+    domain_to_response,
+    refresh_domain_status,
+    register_domain,
+    remove_domain,
 )
 from dynamodb_helpers import (
     get_domain_item,
-    get_site_item,
     get_tenant_item,
-    pk_tenant,
+    gsi2pk_domain,
     query_domains_in_tenant,
-    sk_domain,
 )
 from middleware import with_tenant
+from tenant_store import DynamoDBTenantStore
 from tier_config import tiers_with_pro_features
-
-# Domains: alphanumeric, hyphen, dot; at least one dot; no leading/trailing hyphen or dot
-DOMAIN_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", re.IGNORECASE)
 
 # Tiers that have custom_domains (Pro+), includes VIP (Task 1.82)
 DOMAINS_TIERS = tiers_with_pro_features()
@@ -73,267 +73,120 @@ def _extract_domain_from_path(path: str) -> tuple[str | None, str]:
     return None, ""
 
 
-def _domain_to_response(item: dict) -> dict:
-    """Convert DynamoDB item to API response."""
-    sk = item.get("sk", "")
-    domain = sk.replace("DOMAIN#", "") if sk.startswith("DOMAIN#") else ""
-
-    out = {
-        "domain": domain,
-        "site_id": item.get("site_id", ""),
-        "status": item.get("status", "pending"),
-        "created_at": item.get("created_at", ""),
-        "updated_at": item.get("updated_at", ""),
-    }
-    # Task 1.81: DNS verification fields for Domain Setup Guide
-    if item.get("verification_cname_target"):
-        out["verification_cname_target"] = item["verification_cname_target"]
-    if item.get("verification_txt_record"):
-        out["verification_txt_record"] = item["verification_txt_record"]
-    # Task 1.99/1.100: ACM cert ARN when requested
-    if item.get("acm_certificate_arn"):
-        out["acm_certificate_arn"] = item["acm_certificate_arn"]
-    # Task 1.146: ACM validation records (persisted for frontend display)
-    if item.get("acm_validation_records"):
-        raw = item["acm_validation_records"]
-        out["acm_validation_records"] = json.loads(raw) if isinstance(raw, str) else raw
-    return out
+def _cf_error_response(err: CloudflareAPIError) -> dict:
+    return _json_response(err.http_status, err.to_response_body())
 
 
-def _check_pending_certs(table, items: list[dict]) -> list[dict]:
-    """Check ACM status for PENDING_VALIDATION domains; promote to ACTIVE if cert is ISSUED."""
-    pending = [i for i in items if (i.get("status") or "").upper() == "PENDING_VALIDATION" and i.get("acm_certificate_arn")]
-    if not pending:
-        return items
+def _domain_in_use(table, domain: str) -> bool:
+    """Global uniqueness via the byDomain GSI (domain -> tenant)."""
+    resp = table.query(
+        IndexName="byDomain",
+        KeyConditionExpression=Key("gsi2pk").eq(gsi2pk_domain(domain)),
+        Limit=1,
+    )
+    return bool(resp.get("Items"))
 
-    acm = boto3.client("acm", region_name="us-east-1")
-    for item in pending:
-        cert_arn = item["acm_certificate_arn"]
-        try:
-            desc = acm.describe_certificate(CertificateArn=cert_arn)
-            cert_status = desc.get("Certificate", {}).get("Status", "")
-        except Exception:
-            continue
 
-        if cert_status == "ISSUED":
-            sk = item.get("sk", "")
-            domain = sk.replace("DOMAIN#", "") if sk.startswith("DOMAIN#") else ""
-            add_cloudfront_alias(domain)
-
-            now = datetime.now(timezone.utc).isoformat()
-            key = {"pk": item["pk"], "sk": item["sk"]}
-            table.update_item(
-                Key=key,
-                UpdateExpression="SET #status = :status, updated_at = :now",
-                ExpressionAttributeNames={"#status": "status"},
-                ExpressionAttributeValues={":status": "ACTIVE", ":now": now},
-            )
-            item["status"] = "ACTIVE"
-            item["updated_at"] = now
-
+def _refresh_pending(table, items: list[dict]) -> list[dict]:
+    """Poll Cloudflare for non-ACTIVE domains (best-effort; errors keep stored status)."""
+    for item in items:
+        if (item.get("status") or "").upper() != STATUS_ACTIVE or not item.get("cf_hostname_id"):
+            refresh_domain_status(table, item)
     return items
 
 
 def _list_domains(table, tenant_slug: str) -> dict:
-    """List domains in tenant. Checks ACM for any PENDING_VALIDATION certs."""
-    params = query_domains_in_tenant(tenant_slug)
-    resp = table.query(**params)
-    items = resp.get("Items", [])
-    items = _check_pending_certs(table, items)
-    domains = [_domain_to_response(item) for item in items]
-    return _json_response(200, {"domains": domains})
+    """List domains in tenant, refreshing pending ones from Cloudflare."""
+    resp = table.query(**query_domains_in_tenant(tenant_slug))
+    items = _refresh_pending(table, resp.get("Items", []))
+    return _json_response(200, {"domains": [domain_to_response(i) for i in items]})
+
+
+def _get_item(table, tenant_slug: str, domain: str) -> dict | None:
+    return table.get_item(Key=get_domain_item(tenant_slug, domain)).get("Item")
 
 
 def _get_domain(table, tenant_slug: str, domain: str) -> dict:
-    """Get single domain. Checks ACM if PENDING_VALIDATION."""
-    key = get_domain_item(tenant_slug, domain)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
+    item = _get_item(table, tenant_slug, domain)
     if not item:
         return _json_response(404, {"error": "Domain not found."})
-    _check_pending_certs(table, [item])
-    return _json_response(200, {"domain": _domain_to_response(item)})
+    _refresh_pending(table, [item])
+    return _json_response(200, {"domain": domain_to_response(item)})
 
 
 def _create_domain(table, tenant_slug: str, body: dict) -> dict:
-    """Create domain."""
-    domain_raw = (body.get("domain") or "").strip().lower()
+    """Validate, register with Cloudflare, persist row (status PENDING_VALIDATION)."""
     site_id = (body.get("site_id") or "").strip()
-    status = (body.get("status") or "pending").strip().lower()
-
-    if not domain_raw:
+    if not (body.get("domain") or "").strip():
         return _json_response(400, {"error": "domain is required."})
-
     if not site_id:
         return _json_response(400, {"error": "site_id is required."})
+    try:
+        domain = validate_domain(body.get("domain"))
+    except InvalidDomainError as e:
+        return _json_response(400, {"error": str(e)})
 
-    if status not in ("pending", "verified"):
-        status = "pending"
-
-    if not DOMAIN_PATTERN.match(domain_raw):
-        return _json_response(
-            400,
-            {"error": "domain must be a valid domain (e.g. example.com, blog.example.com)."},
-        )
-
-    # Verify site exists in tenant
-    site_resp = table.get_item(Key=get_site_item(tenant_slug, site_id))
-    if not site_resp.get("Item"):
+    if DynamoDBTenantStore(table).get_site(tenant_slug, site_id) is None:
         return _json_response(404, {"error": "Site not found."})
 
-    # Check domain not already in use (in this tenant)
-    key = get_domain_item(tenant_slug, domain_raw)
-    existing = table.get_item(Key=key)
-    if existing.get("Item"):
+    if _get_item(table, tenant_slug, domain):
         return _json_response(409, {"error": "Domain already exists for this tenant."})
+    if _domain_in_use(table, domain):
+        return _json_response(409, {"error": "Domain is already in use by another site."})
 
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Task 1.81: DNS verification — CNAME target (sites distribution for custom domains)
-    cname_target = (
-        os.environ.get("CLOUDFRONT_SITES_DOMAIN") or os.environ.get("CLOUDFRONT_CUSTOM_DOMAIN", "")
-    ).strip()
-    txt_token = secrets.token_hex(8)
-    verification_txt = f"9host-verify={txt_token}"
-
-    item = {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_domain(domain_raw),
-        "gsi2pk": f"DOMAIN#{domain_raw}",
-        "gsi2sk": f"TENANT#{tenant_slug}",
-        "site_id": site_id,
-        "status": status,
-        "created_at": now,
-        "updated_at": now,
-    }
-    if cname_target:
-        item["verification_cname_target"] = cname_target
-    item["verification_txt_record"] = verification_txt
-
-    table.put_item(Item=item)
-    return _json_response(201, {"domain": _domain_to_response(item)})
-
-
-def _delete_domain(table, tenant_slug: str, domain: str) -> dict:
-    """Delete domain. Cleans up CloudFront alias and ACM cert (Task 1.147)."""
-    key = get_domain_item(tenant_slug, domain)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
-    if not item:
-        return _json_response(404, {"error": "Domain not found."})
-
-    # Task 1.147: Remove CloudFront alias before deleting domain record
-    status = (item.get("status") or "").upper()
-    if status == "ACTIVE":
-        remove_cloudfront_alias(domain)
-
-    # Task 1.147: Delete ACM certificate (best-effort; may fail if still in use)
-    cert_arn = (item.get("acm_certificate_arn") or "").strip()
-    if cert_arn:
-        delete_acm_certificate(cert_arn)
-
-    table.delete_item(Key=key)
-    return _json_response(204, {}, empty_body=True)
-
-
-def _verify_dns_ownership(domain: str, cname_target: str, txt_record: str) -> bool:
-    """Verify domain ownership via CNAME or TXT. Returns True if either passes."""
     try:
-        import dns.resolver
-    except ImportError:
-        return False
+        item = register_domain(table, tenant_slug, domain, site_id)
+    except CloudflareAPIError as e:
+        return _cf_error_response(e)
 
-    # CNAME: domain should resolve to cname_target (or be a CNAME to it)
-    if cname_target:
-        cname_target_norm = cname_target.rstrip(".").lower()
-        try:
-            answers = dns.resolver.resolve(domain, "CNAME")
-            for rdata in answers:
-                target = str(rdata.target).rstrip(".").lower()
-                if target == cname_target_norm or target.endswith("." + cname_target_norm):
-                    return True
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
-            pass
-
-    # TXT: _9host-verify.{domain} should have our TXT value
-    if txt_record:
-        verify_host = f"_9host-verify.{domain}"
-        try:
-            answers = dns.resolver.resolve(verify_host, "TXT")
-            for rdata in answers:
-                txt_val = "".join(rdata.strings).strip('"')
-                if txt_record in txt_val or txt_val == txt_record:
-                    return True
-        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
-            pass
-
-    return False
-
-
-def _activate_domain(event: dict, table, tenant_slug: str, domain: str) -> dict:
-    """Task 1.100: On DNS verify pass, request ACM cert, store ARN, status PENDING_VALIDATION."""
-    key = get_domain_item(tenant_slug, domain)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
-    if not item:
-        return _json_response(404, {"error": "Domain not found."})
-
-    status = (item.get("status") or "pending").upper()
-    if status == "ACTIVE":
-        return _json_response(400, {"error": "Domain already ACTIVE. No activation needed."})
-    if status == "PENDING_VALIDATION":
-        # Check if cert was issued while waiting — promote to ACTIVE
-        _check_pending_certs(table, [item])
-        return _json_response(200, {"domain": _domain_to_response(item)})
-
-    cname_target = (item.get("verification_cname_target") or "").strip()
-    txt_record = (item.get("verification_txt_record") or "").strip()
-    if not cname_target and not txt_record:
-        return _json_response(
-            400,
-            {"error": "No verification records. Add domain with verification_cname_target or verification_txt_record."},
-        )
-
-    if not _verify_dns_ownership(domain, cname_target, txt_record):
-        return _json_response(
-            400,
-            {
-                "error": "DNS verification failed. Add the CNAME or TXT record at your DNS provider, then try again.",
-            },
-        )
-
-    # Task 1.146: Use centralized cert request from custom_domain_handler
-    try:
-        cert_arn, validation_records = request_acm_certificate(domain)
-    except RuntimeError as e:
-        return _json_response(500, {"error": str(e)})
-
-    # Persist validation records in DynamoDB so frontend can display them (Task 1.146)
-    now = datetime.now(timezone.utc).isoformat()
-    table.update_item(
-        Key=key,
-        UpdateExpression="SET #status = :status, acm_certificate_arn = :arn, acm_validation_records = :recs, updated_at = :now",
-        ExpressionAttributeNames={"#status": "status"},
-        ExpressionAttributeValues={
-            ":status": "PENDING_VALIDATION",
-            ":arn": cert_arn,
-            ":recs": json.dumps(validation_records),
-            ":now": now,
+    return _json_response(
+        201,
+        {
+            "domain": domain_to_response(item),
+            "message": f"Add a CNAME record pointing {domain} to {domain_to_response(item)['cname_target']}.",
         },
     )
 
-    updated = dict(item)
-    updated["status"] = "PENDING_VALIDATION"
-    updated["acm_certificate_arn"] = cert_arn
-    updated["acm_validation_records"] = validation_records
-    updated["updated_at"] = now
 
+def _delete_domain(table, tenant_slug: str, domain: str) -> dict:
+    """Delete Cloudflare hostname + KVS mapping + row."""
+    item = _get_item(table, tenant_slug, domain)
+    if not item:
+        return _json_response(404, {"error": "Domain not found."})
+    try:
+        remove_domain(table, item)
+    except CloudflareAPIError as e:
+        return _cf_error_response(e)
+    return _json_response(204, {}, empty_body=True)
+
+
+def _activate_domain(table, tenant_slug: str, domain: str) -> dict:
+    """Re-check Cloudflare status now (registers legacy rows lacking cf_hostname_id)."""
+    item = _get_item(table, tenant_slug, domain)
+    if not item:
+        return _json_response(404, {"error": "Domain not found."})
+    if (item.get("status") or "").upper() == STATUS_ACTIVE and item.get("cf_hostname_id"):
+        return _json_response(400, {"error": "Domain already ACTIVE. No activation needed."})
+    try:
+        refresh_domain_status(table, item, raise_errors=True)
+    except CloudflareAPIError as e:
+        return _cf_error_response(e)
+
+    out = domain_to_response(item)
+    if out["status"] == STATUS_ACTIVE:
+        message = "Domain is active."
+    else:
+        message = (
+            f"Point a CNAME for {domain} to {out['cname_target']}. If you cannot use a CNAME "
+            "(apex domain), add the TXT validation records. SSL is issued automatically once verified."
+        )
     return _json_response(
         200,
         {
-            "domain": _domain_to_response(updated),
-            "acm_validation_records": validation_records,
-            "message": "Add the ACM validation CNAME records above to your DNS. Certificate will activate when validated.",
+            "domain": out,
+            "validation_records": out["validation_records"],
+            "acm_validation_records": out["validation_records"],
+            "message": message,
         },
     )
 
@@ -414,8 +267,8 @@ def domains_handler(event: dict, context: dict) -> dict:
     if method == "DELETE" and domain and not path_suffix:
         return _delete_domain(table, tenant_slug, domain)
 
-    # Task 1.100: POST /api/tenant/domains/{domain}/activate — DNS verify + request ACM cert
+    # POST /api/tenant/domains/{domain}/activate — re-check Cloudflare custom hostname status
     if method == "POST" and domain and path_suffix == "activate":
-        return _activate_domain(event, table, tenant_slug, domain)
+        return _activate_domain(table, tenant_slug, domain)
 
     return _json_response(405, {"error": "Method not allowed."})

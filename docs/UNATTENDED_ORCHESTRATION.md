@@ -152,7 +152,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/test_billing_and_webhooks.py` and `npm --prefix frontend test -- --run` pass.
 
-### `T-06`: CloudFront KVS + `cf-site-content.js` + Preview HMAC Verify (`[TODO]`)
+### `T-06`: CloudFront KVS + `cf-site-content.js` + Preview HMAC Verify (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-04`
 - **Scope:**
@@ -163,7 +163,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/test_edge_kvs_sync.py` passes and `tofu -chdir=infra validate` succeeds.
 
-### `T-07`: `CloudflareSaaSAdapter` + Delete AWS ACM Custom Domain Infra (`[TODO]`)
+### `T-07`: `CloudflareSaaSAdapter` + Delete AWS ACM Custom Domain Infra (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-06`
 - **Scope:**
