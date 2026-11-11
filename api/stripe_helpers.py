@@ -1,26 +1,16 @@
 """
 Stripe helpers for 9host billing (Task 3.1).
-Fetches config from Secrets Manager, provides Stripe client.
+Fetches config from Secrets Manager (cached via secrets_cache), provides Stripe client.
 """
 
-import json
 import os
 
-import boto3
+import secrets_cache
 
 
 def _get_stripe_config() -> dict | None:
-    """Fetch Stripe config from Secrets Manager. Cached per cold start."""
-    arn = os.environ.get("STRIPE_SECRET_ARN")
-    if not arn:
-        return None
-    try:
-        client = boto3.client("secretsmanager")
-        resp = client.get_secret_value(SecretId=arn)
-        raw = resp.get("SecretString", "{}")
-        return json.loads(raw) if raw else None
-    except Exception:
-        return None
+    """Stripe config from Secrets Manager (5-minute module cache, Bug #7)."""
+    return secrets_cache.get_secret_json(os.environ.get("STRIPE_SECRET_ARN"))
 
 
 def get_stripe_api_key() -> str | None:

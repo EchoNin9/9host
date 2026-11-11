@@ -1,12 +1,11 @@
 """
 Auth helpers for 9host API.
 
-Supports dual-mode auth: Cognito (GetUser) and custom JWT (tenant_user).
+Supports dual-mode auth: Cognito (local JWKS verification) and custom JWT (tenant_user).
+Legacy shim over ``request_context`` until handlers migrate (T-09).
 """
 
 import os
-
-import jwt
 
 
 def _get_header(event: dict, name: str) -> str:
@@ -38,71 +37,46 @@ def _get_auth_header(event: dict) -> str:
 
 
 def _get_jwt_secret() -> str | None:
-    """Fetch JWT signing key from Secrets Manager."""
-    import boto3
+    """JWT signing key from Secrets Manager (5-minute module cache, Bug #7)."""
+    import secrets_cache
 
-    arn = os.environ.get("JWT_SECRET_ARN")
-    if not arn:
-        return None
-    try:
-        client = boto3.client("secretsmanager")
-        resp = client.get_secret_value(SecretId=arn)
-        return resp.get("SecretString", "").strip() or None
-    except Exception:
-        return None
+    return secrets_cache.get_secret_string(os.environ.get("JWT_SECRET_ARN"))
 
 
 def get_auth_context(event: dict, region: str = "us-east-1") -> dict | None:
     """
     Extract auth identity from Bearer token. Dual-mode: Cognito or custom JWT.
 
+    Cognito tokens are verified locally against the cached user-pool JWKS
+    (see ``request_context.authenticate``) instead of calling GetUser per request.
+
     Returns:
       - Cognito: {"user_type": "cognito", "sub": str}
       - Tenant user: {"user_type": "tenant_user", "username": str, "tenant_slug": str, "role": str}
       - None if missing/invalid
     """
-    import boto3
+    from request_context import authenticate
 
-    auth = _get_auth_header(event)
-    if not auth.startswith("Bearer "):
+    principal = authenticate(event, region)
+    if principal is None:
         return None
-    token = auth[7:].strip()
-    if not token:
-        return None
-
-    # Try Cognito first
-    try:
-        client = boto3.client("cognito-idp", region_name=region)
-        resp = client.get_user(AccessToken=token)
-        for attr in resp.get("UserAttributes", []):
-            if attr.get("Name") == "sub":
-                return {"user_type": "cognito", "sub": attr.get("Value")}
-        return {"user_type": "cognito", "sub": resp.get("Username", "")}
-    except Exception:
-        pass
-
-    # Try custom JWT (tenant_user)
-    secret = _get_jwt_secret()
-    if not secret or secret == "REPLACE_ME":
-        return None
-    try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
-        if payload.get("user_type") == "tenant_user":
-            return {
-                "user_type": "tenant_user",
-                "username": payload.get("username", ""),
-                "tenant_slug": payload.get("tenant_slug", ""),
-                "role": payload.get("role", "member"),
-            }
-    except Exception:
-        pass
-
-    return None
+    if principal.kind == "tuser":
+        return {
+            "user_type": "tenant_user",
+            "username": principal.identifier,
+            "tenant_slug": principal.token_tenant_slug or "",
+            "role": principal.token_role or "member",
+        }
+    return {
+        "user_type": "cognito",
+        "sub": principal.identifier,
+        "is_superadmin": principal.is_superadmin,
+    }
 
 
 def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | None:
     """
-    Extract Cognito sub from Bearer token via GetUser.
+    Extract Cognito sub from Bearer token (local JWKS verification).
     Returns sub or None if missing/invalid. Does not support tenant_user JWT.
     """
     ctx = get_auth_context(event, region)
@@ -160,19 +134,15 @@ def require_tenant_auth(
             "statusCode": 401,
             "body": '{"error": "Unauthorized. Provide Authorization: Bearer <access_token>."}',
         }
-    # Superadmin impersonation: X-Impersonate-Tenant allows access without membership
-    impersonate = _get_header(event, "x-impersonate-tenant")
-    if impersonate and impersonate.strip().lower() == tenant_slug:
-        if is_superadmin(sub, os.environ.get("USER_POOL_ID", ""), region=region):
-            return True, sub, "admin", True
-    from dynamodb_helpers import query_tenants_for_user
+    # Superadmin impersonation (Bug #5): X-Impersonate-Tenant or /api/admin/tenants/{slug}/*
+    # grants effective "admin" without membership.
+    from request_context import impersonated_tenant_slug
 
-    params = query_tenants_for_user(sub)
-    resp = table.query(**params)
-    for item in resp.get("Items", []):
-        if item.get("gsi1sk") == f"TENANT#{tenant_slug}#PROFILE":
-            role = (item.get("role") or "member").lower()
-            return True, sub, role, True
+    if ctx.get("is_superadmin") and impersonated_tenant_slug(event) == tenant_slug:
+        return True, sub, "admin", True
+    role = get_user_role_in_tenant(table, sub, tenant_slug)
+    if role is not None:
+        return True, sub, role, True
 
     return None, {
         "statusCode": 403,

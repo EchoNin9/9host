@@ -6,7 +6,6 @@ Uses tenant middleware (X-Tenant-Slug, subdomain, or path param) for
 tenant-scoped operations.
 """
 
-import json
 
 from admin_users_handler import (
     admin_stats_handler,
@@ -53,25 +52,16 @@ from publish_handler import draft_publish_handler, publish_handler
 from draft_handler import draft_token_handler
 from rollback_handler import rollback_handler
 from default_site_handler import default_site_handler
+from request_context import CORS_HEADERS, finalize_response, internal_error_response, json_dumps
 
 
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
 
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "*",
-    "Access-Control-Max-Age": "300",
-}
-
-
 def _with_cors(resp: dict) -> dict:
-    """Merge CORS headers into the response so cross-origin fetches succeed."""
-    h = resp.get("headers") or {}
-    resp["headers"] = {**CORS_HEADERS, **h}
-    return resp
+    """Merge CORS headers into the response and serialize non-string bodies (Decimal-safe)."""
+    return finalize_response(resp)
 
 
 def _json_response(status: int, body: dict, headers: dict | None = None) -> dict:
@@ -81,19 +71,7 @@ def _json_response(status: int, body: dict, headers: dict | None = None) -> dict
     return {
         "statusCode": status,
         "headers": h,
-        "body": json.dumps(body),
-    }
-
-
-def _error_500(message: str = "Internal server error", detail: dict | None = None) -> dict:
-    """Return 500 with CORS headers (Task 1.52: prevent 502 on unhandled exceptions)."""
-    body = {"error": message}
-    if detail:
-        body["detail"] = detail
-    return {
-        "statusCode": 500,
-        "headers": {**CORS_HEADERS, "Content-Type": "application/json"},
-        "body": json.dumps(body),
+        "body": json_dumps(body),
     }
 
 
@@ -245,16 +223,8 @@ def lambda_handler(event: dict, context: dict) -> dict:
     try:
         return _lambda_handler_impl(event, context)
     except Exception as e:
-        import traceback
-
-        tb = traceback.format_exc()
-        print(f"[9host] 500: {type(e).__name__}: {e}\n{tb}")  # CloudWatch
-        detail = {
-            "type": type(e).__name__,
-            "message": str(e),
-            "traceback": tb,
-        }
-        return _error_500(str(e), detail=detail)
+        # Bug #8: full traceback goes to CloudWatch only; client gets a scrubbed 500.
+        return internal_error_response(event, e)
 
 
 def _lambda_handler_impl(event: dict, context: dict) -> dict:

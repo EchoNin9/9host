@@ -105,7 +105,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
   - `pytest api/tests/test_html_sanitizer.py` passes (covering XSS payloads and valid rich-text formatting).
   - `npm --prefix frontend test -- --run` executes cleanly.
 
-### `T-02`: Deep `RequestContext` & Auth/Secret Caching (`[TODO]`)
+### `T-02`: Deep `RequestContext` & Auth/Secret Caching (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-01`
 - **Scope:**

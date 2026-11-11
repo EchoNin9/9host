@@ -29,7 +29,7 @@ Before starting work, read:
 ## Active Overhaul Tickets (`docs/UNATTENDED_ORCHESTRATION.md`)
 
 - [x] `T-01`: Pytest + Vitest Harness & HTML Sanitizer [agent1/agent2] — DONE
-- [ ] `T-02`: Deep `RequestContext` & Auth/Secret Caching [agent1]
+- [x] `T-02`: Deep `RequestContext` & Auth/Secret Caching [agent1] — DONE
 - [ ] `T-03`: Deep `TenantStore` & Fix `SITE#` Scan + Media Delete Crash [agent1]
 - [ ] `T-04`: Pure `SiteCompiler` (Root `/` Links + XSS Clean) & `SiteStoragePort` [agent1]
 - [x] `T-05`: Fix Stripe Billing Bugs + `VITE_ENABLE_BILLING` Feature Flag [agent3/agent2] — DONE

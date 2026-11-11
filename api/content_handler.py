@@ -597,16 +597,10 @@ def content_handler(event: dict, context: dict) -> dict:
     if not table.get_item(Key=site_key).get("Item"):
         return _json_response(404, {"error": "Site not found."})
 
-    # POST/PUT/DELETE require admin, manager, or editor (content editing)
-    if method in ("POST", "PUT", "DELETE"):
-        if is_cognito:
-            from auth_helpers import get_user_role_in_tenant
-
-            role_in_tenant = get_user_role_in_tenant(table, sub_or_username, tenant_slug)
-            if not role_can_upload(role_in_tenant or ""):
-                return _json_response(403, {"error": "Admin, manager, or editor role required."})
-        elif not role_can_upload(role):
-            return _json_response(403, {"error": "Admin, manager, or editor role required."})
+    # POST/PUT/DELETE require admin, manager, or editor (content editing).
+    # Use the role resolved by require_tenant_auth (impersonating superadmin => "admin", Bug #5).
+    if method in ("POST", "PUT", "DELETE") and not role_can_upload(role):
+        return _json_response(403, {"error": "Admin, manager, or editor role required."})
 
     if entity == "pages":
         if method == "GET" and not id_or_path:
