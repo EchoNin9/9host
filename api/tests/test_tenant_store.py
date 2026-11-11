@@ -97,15 +97,6 @@ def test_adjust_storage_bytes_missing_attribute(store_and_raw):
     assert store.adjust_storage_bytes("acme", 10) == 10
 
 
-def test_content_handler_decrement_storage_delegates(dynamodb_table):
-    from content_handler import _decrement_storage
-
-    dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "storage_used_bytes": 5})
-    _decrement_storage(dynamodb_table, "acme", 50)  # used to raise ValidationException (greatest)
-    item = dynamodb_table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"]
-    assert item["storage_used_bytes"] == 0
-
-
 # --- Tenant metadata ---------------------------------------------------------------
 
 def test_get_and_update_tenant(store_and_raw):

@@ -2,7 +2,8 @@
 Auth helpers for 9host API.
 
 Supports dual-mode auth: Cognito (local JWKS verification) and custom JWT (tenant_user).
-Legacy shim over ``request_context`` until handlers migrate (T-09).
+Legacy shim over ``request_context`` for handlers not yet on RequestContext
+(billing, analytics, templates, tenant metadata, validate-slug).
 """
 
 import os
@@ -85,19 +86,10 @@ def get_sub_from_access_token(event: dict, region: str = "us-east-1") -> str | N
     return None
 
 
-def get_user_role_in_tenant(table, sub: str, tenant_slug: str) -> str | None:
-    """
-    Get user's role in tenant from profile. Returns role (admin|manager|editor|member)
-    or None if not a member.
-    """
-    from dynamodb_helpers import get_user_profile_item
+def _member_role(table, sub: str, tenant_slug: str) -> str | None:
+    from tenant_store import DynamoDBTenantStore
 
-    key = get_user_profile_item(tenant_slug, sub)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
-    if not item:
-        return None
-    return (item.get("role") or "member").lower()
+    return DynamoDBTenantStore(table).get_member_role(tenant_slug, sub)
 
 
 def require_tenant_auth(
@@ -140,7 +132,7 @@ def require_tenant_auth(
 
     if ctx.get("is_superadmin") and impersonated_tenant_slug(event) == tenant_slug:
         return True, sub, "admin", True
-    role = get_user_role_in_tenant(table, sub, tenant_slug)
+    role = _member_role(table, sub, tenant_slug)
     if role is not None:
         return True, sub, role, True
 
@@ -162,7 +154,7 @@ def require_tenant_admin_or_manager(
         if impersonate and impersonate.strip().lower() == tenant_slug:
             if is_superadmin(sub, os.environ.get("USER_POOL_ID", ""), os.environ.get("AWS_REGION", "us-east-1")):
                 return True, None
-    role = get_user_role_in_tenant(table, sub, tenant_slug)
+    role = _member_role(table, sub, tenant_slug)
     if role is None:
         return False, "Not a member of this tenant."
     if role in ("admin", "manager"):
@@ -179,10 +171,6 @@ def role_is_admin_or_manager(role: str) -> bool:
     return False
 
 
-def role_can_upload(role: str) -> bool:
-    """Check if role can upload media/branding (admin, manager, editor)."""
-    r = (role or "").lower()
-    return r in ("admin", "manager", "editor")
 
 
 def is_superadmin(

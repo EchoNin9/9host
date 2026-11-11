@@ -24,14 +24,26 @@ from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
 from dynamodb_helpers import (
+    PLATFORM_TENANT,
     SITE_META_PREFIX,
+    gsi1pk_user,
+    gsi1sk_tenant_profile,
+    gsi2pk_domain,
+    gsi3pk_entity_user,
+    gsi3sk_tuser,
+    gsi3sk_user,
     gsi4pk_slug,
     gsi4sk_site,
     pk_tenant,
     query_by_site_slug,
+    sk_domain,
+    sk_role,
     sk_site,
     sk_site_meta,
+    sk_template,
     sk_tenant,
+    sk_tuser,
+    sk_user_permissions,
     sk_user_profile,
 )
 
@@ -66,6 +78,9 @@ class TenantStore(Protocol):
     def list_cognito_members(self, tenant_slug: str) -> list[dict]: ...
     def list_tusers(self, tenant_slug: str) -> list[dict]: ...
     def list_roles(self, tenant_slug: str) -> list[dict]: ...
+    # get/put/delete_{member,tuser,role}, get/put_permissions, list/get_domain, get_template,
+    # plus the explicit global lookups: domain_owner (byDomain GSI), list_all_domains
+    # (superadmin scan) and delete_tenant_cascade.
 
 
 # --- pure key / item helpers -------------------------------------------------
@@ -209,16 +224,96 @@ class _StoreBase:
         item = self._get(pk_tenant(tenant_slug), sk_user_profile(sub))
         return (item.get("role") or "member").lower() if item else None
 
+    def get_member(self, tenant_slug: str, sub: str) -> dict | None:
+        item = self._get(pk_tenant(tenant_slug), sk_user_profile(sub))
+        return {**_strip(item), "sub": sub} if item else None
+
+    def put_member(self, tenant_slug: str, member: dict) -> dict:
+        """Cognito member profile (USER#{sub}#PROFILE) + byUser/byEntity GSI attributes."""
+        sub = member["sub"]
+        body = {**_strip(member), "sub": sub}
+        self._put({
+            **body, "pk": pk_tenant(tenant_slug), "sk": sk_user_profile(sub),
+            "gsi1pk": gsi1pk_user(sub), "gsi1sk": gsi1sk_tenant_profile(tenant_slug),
+            "gsi3pk": gsi3pk_entity_user(), "gsi3sk": gsi3sk_user(tenant_slug, sub),
+        })
+        return body
+
+    def delete_member(self, tenant_slug: str, sub: str) -> None:
+        self._delete(pk_tenant(tenant_slug), sk_user_profile(sub))
+        self._delete(pk_tenant(tenant_slug), sk_user_permissions(sub))
+
     def list_cognito_members(self, tenant_slug: str) -> list[dict]:
         rows = self._query_prefix(pk_tenant(tenant_slug), "USER#")
-        return [_strip(r) for r in rows if r["sk"].endswith("#PROFILE")]
+        return [
+            {"sub": r["sk"][len("USER#"):-len("#PROFILE")], **_strip(r)}
+            for r in rows if r["sk"].endswith("#PROFILE")
+        ]
+
+    def get_permissions(self, tenant_slug: str, principal_id: str) -> dict:
+        """Per-user module permissions (Cognito sub or TUSER username); {} when unset."""
+        item = self._get(pk_tenant(tenant_slug), sk_user_permissions(principal_id)) or {}
+        perms = item.get("permissions")
+        return dict(perms) if isinstance(perms, dict) else {}
+
+    def put_permissions(self, tenant_slug: str, principal_id: str, permissions: dict, updated_at: str) -> None:
+        self._put({
+            "pk": pk_tenant(tenant_slug), "sk": sk_user_permissions(principal_id),
+            "permissions": permissions, "updated_at": updated_at,
+        })
+
+    def get_tuser(self, tenant_slug: str, username: str) -> dict | None:
+        """TenantUser row including password_hash (login / password change only)."""
+        item = self._get(pk_tenant(tenant_slug), sk_tuser(username))
+        return {**_strip(item), "username": username} if item else None
+
+    def put_tuser(self, tenant_slug: str, tuser: dict) -> dict:
+        username = tuser["username"]
+        body = {**_strip(tuser), "username": username}
+        self._put({
+            **body, "pk": pk_tenant(tenant_slug), "sk": sk_tuser(username),
+            "gsi3pk": gsi3pk_entity_user(), "gsi3sk": gsi3sk_tuser(tenant_slug, username),
+        })
+        return body
+
+    def delete_tuser(self, tenant_slug: str, username: str) -> None:
+        self._delete(pk_tenant(tenant_slug), sk_tuser(username))
 
     def list_tusers(self, tenant_slug: str) -> list[dict]:
         rows = self._query_prefix(pk_tenant(tenant_slug), "TUSER#")
-        return [{k: v for k, v in _strip(r).items() if k != "password_hash"} for r in rows]
+        return [
+            {k: v for k, v in {"username": r["sk"][len("TUSER#"):], **_strip(r)}.items() if k != "password_hash"}
+            for r in rows
+        ]
+
+    def get_role(self, tenant_slug: str, name: str) -> dict | None:
+        item = self._get(pk_tenant(tenant_slug), sk_role(name))
+        return {**_strip(item), "name": name} if item else None
+
+    def put_role(self, tenant_slug: str, role: dict) -> dict:
+        body = _strip(role)
+        self._put({**body, "pk": pk_tenant(tenant_slug), "sk": sk_role(body["name"])})
+        return body
+
+    def delete_role(self, tenant_slug: str, name: str) -> None:
+        self._delete(pk_tenant(tenant_slug), sk_role(name))
 
     def list_roles(self, tenant_slug: str) -> list[dict]:
-        return [_strip(r) for r in self._query_prefix(pk_tenant(tenant_slug), "ROLE#")]
+        return [{"name": r["sk"][len("ROLE#"):], **_strip(r)} for r in self._query_prefix(pk_tenant(tenant_slug), "ROLE#")]
+
+    # Custom domains. Rows are returned *with* pk/sk because custom_domain_handler (the
+    # Cloudflare + KVS lifecycle service) addresses them by key.
+    def list_domains(self, tenant_slug: str) -> list[dict]:
+        return self._query_prefix(pk_tenant(tenant_slug), "DOMAIN#")
+
+    def get_domain(self, tenant_slug: str, domain: str) -> dict | None:
+        return self._get(pk_tenant(tenant_slug), sk_domain(domain))
+
+    # Templates: tenant fork (TENANT#{slug}/TEMPLATE#) first when tenant_slug is given, then platform.
+    def get_template(self, template_id: str, tenant_slug: str | None = None) -> dict | None:
+        item = self._get(pk_tenant(tenant_slug), sk_template(template_id)) if tenant_slug else None
+        item = item or self._get(pk_tenant(PLATFORM_TENANT), sk_template(template_id))
+        return _strip(item) if item else None
 
 
 class DynamoDBTenantStore(_StoreBase):
@@ -315,6 +410,36 @@ class DynamoDBTenantStore(_StoreBase):
         return None
 
 
+    def domain_owner(self, domain: str) -> str | None:
+        """Global custom-domain uniqueness via the byDomain GSI. Returns the owning tenant."""
+        resp = self.table.query(
+            IndexName="byDomain", KeyConditionExpression=Key("gsi2pk").eq(gsi2pk_domain(domain)), Limit=1,
+        )
+        items = resp.get("Items", [])
+        return items[0]["pk"][len("TENANT#"):] if items else None
+
+    def list_all_domains(self) -> list[dict]:
+        """Explicit superadmin cross-tenant bypass (GET /api/admin/edge-kvs). Paginated Scan:
+        no GSI enumerates DOMAIN# rows (missing index: byEntity partition "ENTITY#DOMAIN")."""
+        kwargs: dict[str, Any] = {
+            "FilterExpression": "begins_with(pk, :t) AND begins_with(sk, :d)",
+            "ExpressionAttributeValues": {":t": "TENANT#", ":d": "DOMAIN#"},
+        }
+        resp = self.table.scan(**kwargs)
+        items = resp.get("Items", [])
+        while "LastEvaluatedKey" in resp:
+            resp = self.table.scan(**kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
+            items.extend(resp.get("Items", []))
+        return items
+
+    def delete_tenant_cascade(self, tenant_slug: str) -> None:
+        """Delete every row in the TENANT#{slug} partition (superadmin tenant delete)."""
+        rows = self._query(KeyConditionExpression=Key("pk").eq(pk_tenant(tenant_slug)))
+        with self.table.batch_writer() as batch:
+            for row in rows:
+                batch.delete_item(Key={"pk": row["pk"], "sk": row["sk"]})
+
+
 class InMemoryTenantStore(_StoreBase):
     """Zero-AWS store for tests. Same key layout as DynamoDB, held in a dict."""
 
@@ -356,3 +481,16 @@ class InMemoryTenantStore(_StoreBase):
             if item.get("gsi4pk") == gsi4pk_slug(slug) and str(item.get("gsi4sk", "")).startswith("SITE#"):
                 return {"tenant_slug": pk[len("TENANT#"):], "site_id": item["gsi4sk"][len("SITE#"):]}
         return None
+
+    def domain_owner(self, domain: str) -> str | None:
+        for (pk, _), item in sorted(self.items.items()):
+            if item.get("gsi2pk") == gsi2pk_domain(domain):
+                return pk[len("TENANT#"):]
+        return None
+
+    def list_all_domains(self) -> list[dict]:
+        return [dict(v) for (p, s), v in sorted(self.items.items()) if p.startswith("TENANT#") and s.startswith("DOMAIN#")]
+
+    def delete_tenant_cascade(self, tenant_slug: str) -> None:
+        for key in [k for k in self.items if k[0] == pk_tenant(tenant_slug)]:
+            del self.items[key]

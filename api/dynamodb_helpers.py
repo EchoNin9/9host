@@ -100,30 +100,6 @@ def query_by_site_slug(site_slug: str) -> dict[str, Any]:
     }
 
 
-def resolve_site_slug_by_subdomain(table, subdomain: str) -> tuple[str, str] | None:
-    """
-    Resolve subdomain as site slug via bySiteSlug GSI (Task 1.107).
-    Returns (tenant_slug, site_id) if found, else None.
-    Site item: pk=TENANT#{tenant}, sk=SITE#{site_id}.
-    """
-    slug_lower = (subdomain or "").strip().lower()
-    if not slug_lower:
-        return None
-    params = query_by_site_slug(slug_lower)
-    resp = table.query(**params)
-    items = resp.get("Items", [])
-    if not items:
-        return None
-    item = items[0]
-    pk = item.get("pk", "")
-    sk = item.get("sk", "")
-    if pk.startswith("TENANT#") and sk.startswith("SITE#"):
-        tenant_slug = pk[7:]  # strip "TENANT#"
-        site_id = sk[5:]  # strip "SITE#"
-        return (tenant_slug, site_id)
-    return None
-
-
 def slug_is_taken(table, slug: str, exclude_site_id: str | None = None) -> bool:
     """
     Check if slug is taken by a tenant or site (Task 1.77).
@@ -156,145 +132,11 @@ def sk_role(name: str) -> str:
     return f"ROLE#{name}"
 
 
-def get_role_item(tenant_slug: str, name: str) -> dict[str, Any]:
-    """GetItem params for custom role in tenant."""
-    return {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_role(name),
-    }
-
-
-def query_roles_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list custom roles in tenant."""
-    return {
-        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
-        "ExpressionAttributeValues": {
-            ":pk": pk_tenant(tenant_slug),
-            ":sk_prefix": "ROLE#",
-        },
-    }
-
-
 def get_tenant_item(tenant_slug: str) -> dict[str, Any]:
     """GetItem params for tenant metadata."""
     return {
         "pk": pk_tenant(tenant_slug),
         "sk": sk_tenant(),
-    }
-
-
-def get_user_profile_item(tenant_slug: str, sub: str) -> dict[str, Any]:
-    """GetItem params for user profile in tenant."""
-    return {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_user_profile(sub),
-    }
-
-
-def get_site_item(tenant_slug: str, site_id: str) -> dict[str, Any]:
-    """GetItem params for site in tenant."""
-    return {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_site(site_id),
-    }
-
-
-# Content entity SK prefixes (Task 1.93)
-def sk_site_page(site_id: str, path: str) -> str:
-    return f"SITE#{site_id}#PAGE#{path}"
-
-
-def sk_site_post(site_id: str, post_id: str) -> str:
-    return f"SITE#{site_id}#POST#{post_id}"
-
-
-def sk_site_event(site_id: str, event_id: str) -> str:
-    return f"SITE#{site_id}#EVENT#{event_id}"
-
-
-def sk_site_media(site_id: str, media_id: str) -> str:
-    return f"SITE#{site_id}#MEDIA#{media_id}"
-
-
-def query_site_content(tenant_slug: str, site_id: str, entity: str) -> dict[str, Any]:
-    """Query params: list content in site. entity = PAGE, POST, EVENT, or MEDIA."""
-    return {
-        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
-        "ExpressionAttributeValues": {
-            ":pk": pk_tenant(tenant_slug),
-            ":sk_prefix": f"SITE#{site_id}#{entity}#",
-        },
-    }
-
-
-def get_tuser_item(tenant_slug: str, username: str) -> dict[str, Any]:
-    """GetItem params for non-Cognito tenant user."""
-    return {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_tuser(username),
-    }
-
-
-def query_tusers_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list non-Cognito users in tenant."""
-    return {
-        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
-        "ExpressionAttributeValues": {
-            ":pk": pk_tenant(tenant_slug),
-            ":sk_prefix": "TUSER#",
-        },
-    }
-
-
-def get_user_permissions_item(tenant_slug: str, sub: str) -> dict[str, Any]:
-    """GetItem params for user permissions in tenant."""
-    return {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_user_permissions(sub),
-    }
-
-
-def query_users_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list users in tenant (profiles only, sk ends with #PROFILE)."""
-    return {
-        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
-        "ExpressionAttributeValues": {
-            ":pk": pk_tenant(tenant_slug),
-            ":sk_prefix": "USER#",
-        },
-    }
-
-
-def query_sites_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """LEGACY query params: reads SITE#{id} *and* every SITE#{id}#PAGE/POST/EVENT/MEDIA row
-    (Bug #3); callers must drop content rows in application code. Kept only for handlers that
-    still write sites solely to SITE#{id}; use tenant_store.TenantStore.list_sites instead
-    (SITE_META# query + lazy legacy backfill). Removed once handlers migrate (T-09)."""
-    return {
-        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
-        "ExpressionAttributeValues": {
-            ":pk": pk_tenant(tenant_slug),
-            ":sk_prefix": "SITE#",
-        },
-    }
-
-
-def get_domain_item(tenant_slug: str, domain: str) -> dict[str, Any]:
-    """GetItem params for domain in tenant."""
-    return {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_domain(domain),
-    }
-
-
-def query_domains_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list domains in tenant."""
-    return {
-        "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
-        "ExpressionAttributeValues": {
-            ":pk": pk_tenant(tenant_slug),
-            ":sk_prefix": "DOMAIN#",
-        },
     }
 
 

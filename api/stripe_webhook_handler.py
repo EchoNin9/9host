@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import boto3
 
 from dynamodb_helpers import get_tenant_item
-from stripe_helpers import get_stripe_api_key, get_stripe_webhook_secret
+from stripe_helpers import _get_stripe_config, get_stripe_api_key, get_stripe_webhook_secret
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -48,19 +48,6 @@ def _tier_from_price_id(price_id: str) -> str:
     if price_id == cfg.get("price_business"):
         return "BUSINESS"
     return "FREE"
-
-
-def _get_stripe_config() -> dict | None:
-    arn = os.environ.get("STRIPE_SECRET_ARN")
-    if not arn:
-        return None
-    try:
-        client = boto3.client("secretsmanager")
-        resp = client.get_secret_value(SecretId=arn)
-        raw = resp.get("SecretString", "{}")
-        return json.loads(raw) if raw else None
-    except Exception:
-        return None
 
 
 def _handle_subscription_event(subscription: dict, table) -> None:

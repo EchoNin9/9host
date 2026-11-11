@@ -102,6 +102,7 @@ def kvs(monkeypatch):
     def put_host_mapping(hostname, tenant_slug, site_id):
         calls.append(("put", hostname, tenant_slug, site_id))
         store[hostname] = {"tenant": tenant_slug, "site_id": site_id}
+        return True
 
     def delete_host_mapping(hostname):
         calls.append(("delete", hostname))
@@ -113,19 +114,19 @@ def kvs(monkeypatch):
     return store_calls
 
 
-# Fake auth: token "tok-<tenant>" grants admin in <tenant> only.
+# Fake auth: token "tok-<tenant>" is a Cognito principal that is admin in <tenant> only.
 @pytest.fixture
 def auth(monkeypatch):
-    def fake_require_tenant_auth(event, table, tenant_slug, region="us-east-1"):
-        token = (event.get("headers") or {}).get("authorization", "").replace("Bearer ", "")
-        if not token:
-            return None, {"statusCode": 401, "body": '{"error": "Unauthorized."}'}
-        if token != f"tok-{tenant_slug}":
-            return None, {"statusCode": 403, "body": '{"error": "Not a member of this tenant."}'}
-        return True, f"sub-{tenant_slug}", "admin", True
+    import request_context as rc
 
-    monkeypatch.setattr(dh, "require_tenant_auth", fake_require_tenant_auth)
-    monkeypatch.setattr(dh, "require_tenant_admin_or_manager", lambda table, sub, slug, event=None: (True, None))
+    def fake_authenticate(event, region=None):
+        token = (event.get("headers") or {}).get("authorization", "").replace("Bearer ", "")
+        if not token.startswith("tok-"):
+            return None
+        return rc.Principal(kind="cognito", identifier=f"sub-{token[4:]}", email=None, is_superadmin=False)
+
+    monkeypatch.setattr(rc, "authenticate", fake_authenticate)
+    monkeypatch.setattr(rc, "_member_role", lambda table, slug, sub: "admin" if sub == f"sub-{slug}" else None)
 
 
 def _seed_tenant(table, slug, tier="PRO", site_id="site1"):
@@ -144,7 +145,9 @@ def _event(method, path, tenant, token=None, body=None):
 
 
 def _call(*args, **kwargs):
-    resp = dh.domains_handler(_event(*args, **kwargs), {})
+    from request_context import run_with_context
+
+    resp = run_with_context(_event(*args, **kwargs), dh.domains_handler)
     body = json.loads(resp["body"]) if resp.get("body") else None
     return resp["statusCode"], body
 
@@ -360,7 +363,7 @@ class TestDomainLifecycle:
         env.cf.activate("cfh-0001")
 
         def broken(*a):
-            raise RuntimeError("kvs down")
+            return False  # put_host_mapping never raises; False = write failed
 
         monkeypatch.setattr(site_storage, "put_host_mapping", broken, raising=False)
         code, body = _call("GET", "/api/tenant/domains/myband.com", "tenanta")

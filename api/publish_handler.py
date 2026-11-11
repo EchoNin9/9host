@@ -1,43 +1,26 @@
 """
 Site publish API (Task 1.96, 1.109, 1.115; T-04).
 
-POST /api/tenant/sites/{id}/publish — atomic versioned publish.
-POST /api/tenant/sites/{id}/draft-publish — draft render to draft/.
+POST /api/tenant/sites/{id}/publish — atomic versioned publish (admin/manager).
+POST /api/tenant/sites/{id}/draft-publish — draft render to draft/ (admin/manager/editor).
 
 Flow: load site content -> SiteSnapshot -> pure compile_site(snapshot, mode)
 (site_compiler.py: root-relative links in live mode, /preview in draft, sanitized
 rich text) -> SiteStoragePort (site_storage.py: v{N}/ + current/ + current.json).
+Site metadata is read and written only through TenantStore (Bug #3).
 """
 
-import json
 import os
 from datetime import datetime, timezone
 
-import boto3
-from botocore.exceptions import ClientError as BotoClientError
-
-from auth_helpers import require_tenant_admin_or_manager, require_tenant_auth, role_can_upload, role_is_admin_or_manager
-from dynamodb_helpers import (
-    get_site_item,
-    get_template_item,
-    get_tenant_item,
-    get_tenant_template_item,
-)
-from middleware import with_tenant
+from request_context import HttpError, RequestContext, respond
 from site_compiler import SiteSnapshot, compile_site
-from site_storage import S3_SITES_BUCKET, S3SiteStorageAdapter, SiteStoragePort
+from site_storage import S3SiteStorageAdapter, SiteStoragePort
 from tenant_store import DynamoDBTenantStore
 from tier_config import CONTENT_MODULE_KEYS, FEATURE_KEYS, tier_has_feature, tier_has_module
 
-S3_MEDIA_BUCKET = "9host-media"
-
-
-def _json_response(status: int, body: dict) -> dict:
-    return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps(body),
-    }
+MANAGE_ROLES = ("admin", "manager")
+CONTENT_ROLES = ("admin", "manager", "editor")
 
 
 def _now() -> str:
@@ -126,24 +109,20 @@ def _build_snapshot(
     )
 
 
-def _active_custom_domains(table, tenant_slug: str, site_id: str) -> list[str]:
+def _active_custom_domains(store, tenant_slug: str, site_id: str) -> list[str]:
     """ACTIVE custom domains (TENANT#{slug} / DOMAIN#{domain}) bound to this site, for HostMappingKVS."""
-    try:
-        kwargs = {
-            "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk)",
-            "ExpressionAttributeValues": {":pk": f"TENANT#{tenant_slug}", ":sk": "DOMAIN#"},
-        }
-        domains = []
-        while True:
-            resp = table.query(**kwargs)
-            for item in resp.get("Items", []):
-                if item.get("site_id") == site_id and (item.get("status") or "").upper() == "ACTIVE":
-                    domains.append(item["sk"][len("DOMAIN#"):])
-            if "LastEvaluatedKey" not in resp:
-                return domains
-            kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
-    except BotoClientError:
-        return []  # host mapping is best-effort; never fail a publish already written to S3
+    return [
+        row["sk"][len("DOMAIN#"):]
+        for row in store.list_domains(tenant_slug)
+        if row.get("site_id") == site_id and (row.get("status") or "").upper() == "ACTIVE"
+    ]
+
+
+def _update_site(store, tenant_slug: str, site_id: str, site_item: dict, **fields) -> None:
+    """Persist site metadata changes through TenantStore (keeps SITE_META# + SITE# in sync)."""
+    site = store.get_site(tenant_slug, site_id) or ({**site_item, "id": site_id} if site_item else None)
+    if site:
+        store.put_site(tenant_slug, {**site, **fields})
 
 
 def _publish_site(
@@ -169,16 +148,13 @@ def _publish_site(
 
     site_slug = (site_item.get("slug") or "").strip()
     hostnames = [f"{site_slug}.{snapshot.base_domain}"] if site_slug else []
-    hostnames += _active_custom_domains(table, tenant_slug, site_id)
+    store = DynamoDBTenantStore(table)
+    hostnames += _active_custom_domains(store, tenant_slug, site_id)
     if hostnames:
-        storage.sync_host_mapping(tenant_slug, site_id, hostnames)
-
-    # Site metadata stays on SITE#{id} until T-09 migrates all site-metadata callers together.
-    table.update_item(
-        Key=get_site_item(tenant_slug, site_id),
-        UpdateExpression="SET #status = :status, published_at = :now, published_version = :ver, updated_at = :now",
-        ExpressionAttributeNames={"#status": "status"},
-        ExpressionAttributeValues={":status": "published", ":now": now, ":ver": result["version"]},
+        storage.sync_host_mapping(tenant_slug, site_id, hostnames)  # best-effort: never fails a publish
+    _update_site(
+        store, tenant_slug, site_id, site_item,
+        status="published", published_at=now, published_version=result["version"], updated_at=now,
     )
     return result
 
@@ -212,168 +188,59 @@ def _rollback_site(
     version: int,
     storage: SiteStoragePort | None = None,
 ) -> dict | None:
-    """Rollback to v{N} via SiteStoragePort; same signature/return as rollback_handler._rollback_site.
-    Returns None when v{N} doesn't exist."""
+    """Rollback to v{N} via SiteStoragePort. Returns None when v{N} doesn't exist."""
     storage = storage or S3SiteStorageAdapter(s3_client)
     now = _now()
     result = storage.rollback(tenant_slug, site_id, version, now=now)
     if result is None:
         return None
-    table.update_item(
-        Key=get_site_item(tenant_slug, site_id),
-        UpdateExpression="SET published_version = :ver, updated_at = :now",
-        ExpressionAttributeValues={":ver": version, ":now": now},
-    )
+    _update_site(DynamoDBTenantStore(table), tenant_slug, site_id, {}, published_version=version, updated_at=now)
     return result
 
 
-@with_tenant
-def draft_publish_handler(event: dict, context: dict) -> dict:
-    """
-    POST /api/tenant/sites/{id}/draft-publish — render draft to S3 draft/ (Task 1.116).
-    Admin/manager/editor only.
-    """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(400, {"error": "Missing tenant."})
+def load_site(ctx: RequestContext, action: str, roles: tuple[str, ...]):
+    """Shared prelude for /api/tenant/sites/{id}/{action}: role check + site lookup.
+    Returns (store, tenant_slug, site_id, site); raises HttpError (401/403/404)."""
+    tenant_slug, _ = ctx.require_tenant_member(roles)
+    parts = [p for p in ctx.path[len("/api/tenant/sites/"):].split("/") if p]
+    if len(parts) != 2 or parts[1] != action:
+        raise HttpError(404, "Not found.")
+    store = DynamoDBTenantStore()
+    site = store.get_site(tenant_slug, parts[0])
+    if not site:
+        raise HttpError(404, "Site not found.")
+    return store, tenant_slug, parts[0], site
 
-    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
-    prefix = "/api/tenant/sites/"
-    suffix = "/draft-publish"
-    if not path.startswith(prefix) or not path.endswith(suffix):
-        return _json_response(404, {"error": "Not found."})
-    site_id = path[len(prefix) : -len(suffix)].strip("/")
-    if not site_id:
-        return _json_response(400, {"error": "Missing site_id."})
 
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    s3_client = boto3.client("s3", region_name=region)
-
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-
-    if is_cognito:
-        if not role_can_upload(role):
-            return _json_response(403, {"error": "Editor, manager, or admin role required."})
-    elif not role_can_upload(role or ""):
-        return _json_response(403, {"error": "Editor, manager, or admin role required."})
-
-    site_key = get_site_item(tenant_slug, site_id)
-    site_resp = table.get_item(Key=site_key)
-    site_item = site_resp.get("Item")
-    if not site_item:
-        return _json_response(404, {"error": "Site not found."})
-
-    template_id = (site_item.get("template_id") or "").strip().lower()
+def _compile_inputs(store, tenant_slug: str, site: dict) -> tuple[dict, dict, str]:
+    """(template, resolved_features, media_base); template resolved tenant-first (Task 1.125)."""
+    template_id = (site.get("template_id") or "").strip().lower()
     if not template_id:
-        return _json_response(400, {"error": "Site has no template_id."})
-
-    template_resp = table.get_item(Key=get_tenant_template_item(tenant_slug, template_id))
-    template_item = template_resp.get("Item")
-    if not template_item:
-        template_resp = table.get_item(Key=get_template_item(template_id))
-        template_item = template_resp.get("Item")
-    if not template_item:
-        return _json_response(404, {"error": f"Template not found: {template_id}"})
-
-    tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
-    tenant_item = tenant_resp.get("Item") or {}
-    resolved_features = _resolve_features(tenant_item)
-
-    media_base = os.environ.get("CLOUDFRONT_MEDIA_URL", "/media/")
-
-    try:
-        result = _draft_publish_site(
-            table, s3_client, tenant_slug, site_id, site_item, template_item, media_base, resolved_features
-        )
-        return _json_response(200, {"draft": result})
-    except BotoClientError as e:
-        return _json_response(500, {"error": "Draft publish failed.", "detail": str(e)})
+        raise HttpError(400, "Site has no template_id. Set a template before publishing.")
+    template = store.get_template(template_id, tenant_slug)
+    if not template:
+        raise HttpError(404, f"Template not found: {template_id}")
+    features = _resolve_features(store.get_tenant(tenant_slug) or {})
+    return template, features, os.environ.get("CLOUDFRONT_MEDIA_URL", "/media/")
 
 
-@with_tenant
-def publish_handler(event: dict, context: dict) -> dict:
-    """
-    POST /api/tenant/sites/{id}/publish — publish site (Task 1.96).
-    Admin/manager only.
-    """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(400, {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."})
+def draft_publish_handler(ctx: RequestContext) -> dict:
+    """POST /api/tenant/sites/{id}/draft-publish — render draft to S3 draft/ (Task 1.116)."""
+    store, tenant_slug, site_id, site = load_site(ctx, "draft-publish", CONTENT_ROLES)
+    template, features, media_base = _compile_inputs(store, tenant_slug, site)
+    result = _draft_publish_site(store.table, _s3(), tenant_slug, site_id, site, template, media_base, features)
+    return respond(200, {"draft": result})
 
-    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
-    prefix = "/api/tenant/sites/"
-    if not path.startswith(prefix) or "/publish" not in path:
-        return _json_response(404, {"error": "Not found."})
 
-    rest = path[len(prefix) :].strip("/")
-    parts = rest.split("/")
-    if len(parts) != 2 or parts[1] != "publish":
-        return _json_response(404, {"error": "Not found."})
-    site_id = parts[0]
-    if not site_id:
-        return _json_response(400, {"error": "Missing site_id."})
+def publish_handler(ctx: RequestContext) -> dict:
+    """POST /api/tenant/sites/{id}/publish — publish site (Task 1.96)."""
+    store, tenant_slug, site_id, site = load_site(ctx, "publish", MANAGE_ROLES)
+    template, features, media_base = _compile_inputs(store, tenant_slug, site)
+    result = _publish_site(store.table, _s3(), tenant_slug, site_id, site, template, media_base, features)
+    return respond(200, {"publish": result})
 
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
 
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    s3_client = boto3.client("s3", region_name=region)
+def _s3():
+    import boto3
 
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
-    site_key = get_site_item(tenant_slug, site_id)
-    site_resp = table.get_item(Key=site_key)
-    site_item = site_resp.get("Item")
-    if not site_item:
-        return _json_response(404, {"error": "Site not found."})
-
-    template_id = (site_item.get("template_id") or "").strip().lower()
-    if not template_id:
-        return _json_response(400, {"error": "Site has no template_id. Set a template before publishing."})
-
-    # Resolve template: tenant first, then platform (Task 1.125)
-    template_resp = table.get_item(Key=get_tenant_template_item(tenant_slug, template_id))
-    template_item = template_resp.get("Item")
-    if not template_item:
-        template_resp = table.get_item(Key=get_template_item(template_id))
-        template_item = template_resp.get("Item")
-    if not template_item:
-        return _json_response(404, {"error": f"Template not found: {template_id}"})
-
-    tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
-    tenant_item = tenant_resp.get("Item") or {}
-    resolved_features = _resolve_features(tenant_item)
-
-    media_base = os.environ.get("CLOUDFRONT_MEDIA_URL", "/media/")
-
-    try:
-        result = _publish_site(
-            table, s3_client, tenant_slug, site_id, site_item, template_item, media_base, resolved_features
-        )
-        return _json_response(200, {"publish": result})
-    except BotoClientError as e:
-        return _json_response(500, {"error": "Publish failed.", "detail": str(e)})
+    return boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))

@@ -11,7 +11,7 @@ import os
 import urllib.request
 import urllib.parse
 
-import boto3
+import secrets_cache
 
 logger = logging.getLogger(__name__)
 
@@ -21,22 +21,11 @@ CLOUDNS_LIST_RECORDS = "https://api.cloudns.net/dns/records.json"
 
 
 def _get_cloudns_creds() -> dict | None:
-    """Fetch CloudNS credentials from Secrets Manager. Returns None if not configured."""
-    secret_arn = os.environ.get("CLOUDNS_SECRET_ARN", "").strip()
-    if not secret_arn:
+    """CloudNS credentials from Secrets Manager (5-minute module cache, Bug #7). None if unset."""
+    data = secrets_cache.get_secret_json(os.environ.get("CLOUDNS_SECRET_ARN", "").strip()) or {}
+    if data.get("auth_id") is None or not data.get("password"):
         return None
-    try:
-        client = boto3.client("secretsmanager")
-        resp = client.get_secret_value(SecretId=secret_arn)
-        data = json.loads(resp.get("SecretString", "{}"))
-        auth_id = data.get("auth_id")
-        password = data.get("password")
-        if auth_id is None or not password:
-            return None
-        return {"auth_id": auth_id, "password": password}
-    except Exception as e:
-        logger.warning("CloudNS: failed to get credentials: %s", e)
-        return None
+    return {"auth_id": data["auth_id"], "password": data["password"]}
 
 
 def _cloudns_request(url: str, data: dict) -> dict | None:

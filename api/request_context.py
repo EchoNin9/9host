@@ -120,6 +120,28 @@ class RequestContext:
     tenant_item: dict | None = None  # Cached tenant METADATA row when loaded
     _table: Any = field(default=None, repr=False, compare=False)
 
+    @property
+    def method(self) -> str:
+        e = self.event
+        return ((e.get("requestContext") or {}).get("http", {}).get("method") or e.get("httpMethod") or "GET").upper()
+
+    @property
+    def path(self) -> str:
+        return (self.event.get("rawPath") or self.event.get("path") or "").rstrip("/")
+
+    def json_body(self) -> dict:
+        """Parsed JSON object body; {} when missing or invalid."""
+        raw = self.event.get("body")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw) if raw else None
+            except ValueError:
+                raw = None
+        return raw if isinstance(raw, dict) else {}
+
+    def query(self, name: str) -> str:
+        return ((self.event.get("queryStringParameters") or {}).get(name) or "").strip()
+
     def require_authenticated(self) -> Principal:
         if self.principal is None:
             raise HttpError(401, "Unauthorized. Provide Authorization: Bearer <access_token>.")
@@ -385,6 +407,15 @@ def _json_default(obj):
 def json_dumps(obj) -> str:
     """``json.dumps`` that serializes DynamoDB ``Decimal`` as int/float."""
     return json.dumps(obj, default=_json_default)
+
+
+def respond(status: int, body: dict | None = None) -> dict:
+    """Handler response; ``body=None`` gives an empty body (e.g. 204)."""
+    return {
+        "statusCode": status,
+        "headers": {"Content-Type": "application/json"},
+        "body": "" if body is None else json_dumps(body),
+    }
 
 
 def finalize_response(resp: dict) -> dict:

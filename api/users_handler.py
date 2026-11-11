@@ -1,209 +1,168 @@
 """
-Tenant users API — GET /api/tenant/users, GET/PUT /api/tenant/users/{sub}/permissions (Tasks 1.27, 1.25).
+Tenant users API (Tasks 1.25, 1.27, 1.39) — also serves /api/admin/tenants/{slug}/users.
 
-List tenant users (admin/manager only). Get/update per-user module permissions (admin/manager only).
+GET  /api/tenant/users                     list Cognito members (admin/manager)
+GET  /api/tenant/users/{id}/permissions    module permissions of a member or TUSER (admin/manager)
+PUT  /api/tenant/users/{id}/permissions    update module permissions (admin/manager)
+POST /api/tenant/users                     add Cognito member {sub|email, role, name?} or
+                                           TUSER {type: "tuser", username, password, ...} (superadmin)
+PUT  /api/tenant/users/{id}                update role/name/email of a member or TUSER (superadmin)
+DELETE /api/tenant/users/{id}              remove a member (+permissions) or TUSER (superadmin)
 """
 
-import json
 import os
+from datetime import datetime, timezone
 from urllib.parse import unquote
 
 import boto3
 
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
-from dynamodb_helpers import (
-    get_user_permissions_item,
-    get_user_profile_item,
-    pk_tenant,
-    query_users_in_tenant,
-    sk_user_permissions,
-)
-from middleware import with_tenant
+from request_context import RequestContext, respond
+from tenant_store import DynamoDBTenantStore
+from tenant_users_handler import create_tuser
 
-# Module keys for permissions (tenantadmin configures what tenantuser can access)
+BASE_PATH = "/api/tenant/users"
+MANAGE_ROLES = ("admin", "manager")
+MEMBER_ROLES = ("admin", "manager", "editor", "member")
 MODULE_KEYS = ("sites", "domains", "analytics", "settings")
 
 
-def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
+def _member_out(m: dict) -> dict:
     return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": "" if empty_body else json.dumps(body),
+        "sub": m.get("sub", ""),
+        "email": m.get("email", ""),
+        "name": m.get("name", ""),
+        "role": m.get("role", "member"),
+        "created_at": m.get("created_at", ""),
+        "updated_at": m.get("updated_at", ""),
     }
 
 
-def _parse_body(event: dict) -> dict | None:
-    """Parse JSON body from event."""
-    body = event.get("body")
-    if not body:
+def _tuser_out(t: dict) -> dict:
+    """TUSER in member shape (sub = username) for the unified users list UI."""
+    return {**_member_out({**t, "sub": t["username"], "email": "", "name": t.get("display_name") or t["username"]}),
+            "type": "tuser"}
+
+
+def _cognito_lookup(sub_or_email: str) -> dict | None:
+    """Cognito user {"sub", "email", "name"} by sub/username or email; None if not found."""
+    pool = os.environ.get("USER_POOL_ID", "")
+    if not pool or not sub_or_email or '"' in sub_or_email:
         return None
-    if isinstance(body, str):
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return None
-    return body
-
-
-def _extract_sub_from_path(path: str) -> str | None:
-    """Extract sub from /api/tenant/users/{sub} or /api/tenant/users/{sub}/permissions."""
-    prefix = "/api/tenant/users/"
-    if not path.startswith(prefix):
+    client = boto3.client("cognito-idp", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+    try:
+        users = []
+        if "@" in sub_or_email:
+            users = client.list_users(UserPoolId=pool, Filter=f'email = "{sub_or_email}"', Limit=1).get("Users", [])
+        if users:
+            username, attrs = users[0].get("Username", ""), users[0].get("Attributes", [])
+        else:
+            resp = client.admin_get_user(UserPoolId=pool, Username=sub_or_email)
+            username, attrs = resp.get("Username", ""), resp.get("UserAttributes", [])
+    except Exception:  # noqa: BLE001 - unknown user / Cognito unavailable
         return None
-    rest = path[len(prefix) :].strip("/")
-    if not rest:
-        return None
-    parts = rest.split("/")
-    if parts[0]:
-        return unquote(parts[0])
-    return None
-
-
-def _is_permissions_path(path: str) -> bool:
-    """Check if path is /api/tenant/users/{sub}/permissions."""
-    prefix = "/api/tenant/users/"
-    if not path.startswith(prefix):
-        return False
-    rest = path[len(prefix) :].strip("/")
-    parts = rest.split("/")
-    return len(parts) >= 2 and parts[1] == "permissions"
-
-
-def _profile_to_response(item: dict) -> dict:
-    """Convert profile item to API response."""
-    sk = item.get("sk", "")
-    sub = ""
-    if sk.startswith("USER#") and sk.endswith("#PROFILE"):
-        sub = sk.replace("USER#", "").replace("#PROFILE", "")
+    a = {x.get("Name"): x.get("Value", "") for x in attrs}
     return {
-        "sub": sub or item.get("sub", ""),
-        "email": item.get("email", ""),
-        "name": item.get("name", ""),
-        "role": item.get("role", "member"),
-        "created_at": item.get("created_at", ""),
-        "updated_at": item.get("updated_at", ""),
+        "sub": a.get("sub") or username,
+        "email": a.get("email", ""),
+        "name": a.get("name") or a.get("preferred_username") or username,
     }
 
 
-def _list_users(table, tenant_slug: str) -> dict:
-    """List users in tenant (profiles only)."""
-    params = query_users_in_tenant(tenant_slug)
-    resp = table.query(**params)
-    users = []
-    for item in resp.get("Items", []):
-        sk = item.get("sk", "")
-        if sk.endswith("#PROFILE"):
-            users.append(_profile_to_response(item))
-    return _json_response(200, {"users": users})
-
-
-def _get_permissions(table, tenant_slug: str, target_sub: str) -> dict:
-    """Get permissions for user in tenant."""
-    key = get_user_permissions_item(tenant_slug, target_sub)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
-    if not item:
-        # Default: all modules allowed (role-based access applies)
-        return _json_response(200, {"permissions": {k: True for k in MODULE_KEYS}})
-    perms = item.get("permissions", {})
-    if isinstance(perms, dict):
-        result = {k: perms.get(k, True) for k in MODULE_KEYS}
-    else:
-        result = {k: True for k in MODULE_KEYS}
-    return _json_response(200, {"permissions": result})
-
-
-def _put_permissions(table, tenant_slug: str, target_sub: str, body: dict) -> dict:
-    """Update permissions for user in tenant."""
-    from datetime import datetime, timezone
-
+def _permissions(store, tenant_slug: str, target: str, body: dict | None) -> dict:
+    current = store.get_permissions(tenant_slug, target)
+    merged = {k: current.get(k, True) for k in MODULE_KEYS}
+    if body is None:
+        return respond(200, {"permissions": merged})
     perms = body.get("permissions", {})
     if not isinstance(perms, dict):
-        return _json_response(400, {"error": "permissions must be an object."})
-    # Merge with defaults: only update keys present in request
-    existing = table.get_item(Key=get_user_permissions_item(tenant_slug, target_sub))
-    current = (existing.get("Item") or {}).get("permissions", {})
-    if isinstance(current, dict):
-        merged = {k: current.get(k, True) for k in MODULE_KEYS}
-    else:
-        merged = {k: True for k in MODULE_KEYS}
-    for k in MODULE_KEYS:
-        if k in perms:
-            merged[k] = bool(perms[k])
+        return respond(400, {"error": "permissions must be an object."})
+    merged.update({k: bool(perms[k]) for k in MODULE_KEYS if k in perms})
+    store.put_permissions(tenant_slug, target, merged, datetime.now(timezone.utc).isoformat())
+    return respond(200, {"permissions": merged})
+
+
+def _add_member(store, tenant_slug: str, body: dict) -> dict:
+    if (body.get("type") or "cognito").lower() == "tuser":
+        status, result = create_tuser(store, tenant_slug, body)
+        return respond(status, {"user": _tuser_out(result)} if status == 201 else result)
+
+    sub = (body.get("sub") or "").strip()
+    email = (body.get("email") or "").strip()
+    name = (body.get("name") or "").strip()
+    role = (body.get("role") or "member").lower()
+    found = None if (sub and email and name) else _cognito_lookup(sub or email)
+    if not sub and email:
+        if not found:
+            return respond(404, {"error": f"No Cognito user found with email: {email}"})
+        sub = found["sub"]
+    if not sub:
+        return respond(400, {"error": "sub or email is required."})
+    if role not in MEMBER_ROLES:
+        return respond(400, {"error": "role must be admin, manager, editor, or member."})
+    if store.get_member(tenant_slug, sub):
+        return respond(409, {"error": "User already in tenant."})
     now = datetime.now(timezone.utc).isoformat()
-    item = {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_user_permissions(target_sub),
-        "permissions": merged,
+    member = store.put_member(tenant_slug, {
+        "sub": sub,
+        "email": email or (found or {}).get("email", ""),
+        "name": name or (found or {}).get("name", "") or sub[:8],
+        "role": role,
+        "created_at": now,
         "updated_at": now,
-    }
-    table.put_item(Item=item)
-    return _json_response(200, {"permissions": merged})
+    })
+    return respond(201, {"user": _member_out(member)})
 
 
-@with_tenant
-def users_handler(event: dict, context: dict) -> dict:
-    """
-    GET /api/tenant/users — list tenant users (admin/manager).
-    GET /api/tenant/users/{sub}/permissions — get permissions (admin/manager).
-    PUT /api/tenant/users/{sub}/permissions — update permissions (admin/manager).
-    """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
+def _update_member(store, tenant_slug: str, target: str, body: dict) -> dict:
+    member = store.get_member(tenant_slug, target)
+    tuser = None if member else store.get_tuser(tenant_slug, target)
+    if not member and not tuser:
+        return respond(404, {"error": "User not found in tenant."})
+    item = member or tuser
+    role = str(body.get("role", "")).lower()
+    if role in MEMBER_ROLES:
+        item["role"] = role
+    if member:
+        item.update({k: str(body[k]).strip() for k in ("email", "name") if k in body})
+    elif "name" in body:
+        item["display_name"] = str(body["name"]).strip()
+    item["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if member:
+        return respond(200, {"user": _member_out(store.put_member(tenant_slug, item))})
+    return respond(200, {"user": _tuser_out(store.put_tuser(tenant_slug, item))})
 
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
 
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
+def users_handler(ctx: RequestContext) -> dict:
+    tenant_slug, _ = ctx.require_tenant_member(MANAGE_ROLES)
+    store = DynamoDBTenantStore()
+    method = ctx.method
+    parts = [unquote(p) for p in ctx.path[len(BASE_PATH):].split("/") if p]
+    target = parts[0] if parts else None
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    # All operations require admin/manager
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
-    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
-    method = (
-        event.get("requestContext", {}).get("http", {}).get("method")
-        or event.get("httpMethod")
-        or "GET"
-    )
-
-    target_sub = _extract_sub_from_path(path)
-    is_permissions = _is_permissions_path(path)
-
-    if not is_permissions and not target_sub:
-        # GET /api/tenant/users — list users
+    if not parts:
         if method == "GET":
-            return _list_users(table, tenant_slug)
-        return _json_response(405, {"error": "Method not allowed."})
+            return respond(200, {"users": [_member_out(m) for m in store.list_cognito_members(tenant_slug)]})
+        if method == "POST":
+            ctx.require_superadmin()
+            return _add_member(store, tenant_slug, ctx.json_body())
+        return respond(405, {"error": "Method not allowed."})
 
-    if is_permissions and target_sub:
-        # Verify target user is in tenant (has profile)
-        profile_resp = table.get_item(Key=get_user_profile_item(tenant_slug, target_sub))
-        if not profile_resp.get("Item"):
-            return _json_response(404, {"error": "User not found in tenant."})
-        if method == "GET":
-            return _get_permissions(table, tenant_slug, target_sub)
+    if len(parts) == 2 and parts[1] == "permissions":
+        if not store.get_member(tenant_slug, target) and not store.get_tuser(tenant_slug, target):
+            return respond(404, {"error": "User not found in tenant."})
+        if method in ("GET", "PUT"):
+            return _permissions(store, tenant_slug, target, ctx.json_body() if method == "PUT" else None)
+        return respond(405, {"error": "Method not allowed."})
+
+    if len(parts) == 1 and method in ("PUT", "DELETE"):
+        ctx.require_superadmin()
         if method == "PUT":
-            body = _parse_body(event) or {}
-            return _put_permissions(table, tenant_slug, target_sub, body)
-        return _json_response(405, {"error": "Method not allowed."})
-
-    return _json_response(404, {"error": "Not found."})
+            return _update_member(store, tenant_slug, target, ctx.json_body())
+        if store.get_member(tenant_slug, target):
+            store.delete_member(tenant_slug, target)
+        elif store.get_tuser(tenant_slug, target):
+            store.delete_tuser(tenant_slug, target)
+        else:
+            return respond(404, {"error": "User not found in tenant."})
+        return respond(204)
+    return respond(404, {"error": "Not found."})

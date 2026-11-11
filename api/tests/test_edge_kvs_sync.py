@@ -92,7 +92,7 @@ def kvs(monkeypatch):
 # --- put / delete payload shape -------------------------------------------------
 
 def test_put_host_mapping_lowercase_key_and_json_payload(kvs):
-    put_host_mapping("  Jinks1.Echo9.NET.  ", "echo9", "a1B2c3")
+    assert put_host_mapping("  Jinks1.Echo9.NET.  ", "echo9", "a1B2c3") is True
     assert kvs.store == {"jinks1.echo9.net": '{"tenant":"echo9","site_id":"a1B2c3"}'}
     assert json.loads(kvs.store["jinks1.echo9.net"]) == {"tenant": "echo9", "site_id": "a1B2c3"}
 
@@ -103,9 +103,9 @@ def test_put_host_mapping_strips_port(kvs):
 
 
 def test_put_host_mapping_ignores_incomplete_input(kvs):
-    put_host_mapping("", "acme", "s1")
-    put_host_mapping("x.com", "", "s1")
-    put_host_mapping("x.com", "acme", "")
+    assert put_host_mapping("", "acme", "s1") is False
+    assert put_host_mapping("x.com", "", "s1") is False
+    assert put_host_mapping("x.com", "acme", "") is False
     assert kvs.calls == []
 
 
@@ -142,7 +142,7 @@ def test_etag_conflict_retries_once(kvs):
 
 def test_repeated_conflict_gives_up_without_raising(kvs, caplog):
     kvs.fail_next = [_client_error("ConflictException", "PutKey")] * 3
-    put_host_mapping("a.echo9.net", "acme", "s1")
+    assert put_host_mapping("a.echo9.net", "acme", "s1") is False  # caller can retry later
     assert kvs.store == {}
     assert [c[0] for c in kvs.calls] == ["describe", "put", "describe", "put"]  # exactly one retry
     assert "put_host_mapping failed" in caplog.text
@@ -150,7 +150,7 @@ def test_repeated_conflict_gives_up_without_raising(kvs, caplog):
 
 def test_non_conflict_error_not_retried(kvs, caplog):
     kvs.fail_next = [_client_error("AccessDeniedException", "PutKey")]
-    put_host_mapping("a.echo9.net", "acme", "s1")
+    assert put_host_mapping("a.echo9.net", "acme", "s1") is False
     assert [c[0] for c in kvs.calls] == ["describe", "put"]
     assert "put_host_mapping failed" in caplog.text
 
@@ -164,7 +164,8 @@ def test_noop_when_kvs_arn_unset(monkeypatch):
         raise AssertionError("KVS client must not be created when SITE_HOSTS_KVS_ARN is unset")
 
     monkeypatch.setattr(site_storage, "_get_kvs_client", boom)
-    put_host_mapping("a.echo9.net", "acme", "s1")
+    assert put_host_mapping("a.echo9.net", "acme", "s1") is True  # nothing to sync
+    assert site_storage.list_host_mappings() == []
     delete_host_mapping("a.echo9.net")
     put_preview_jwt_secret("x")
     S3SiteStorageAdapter(None).sync_host_mapping("acme", "s1", ["a.echo9.net"])

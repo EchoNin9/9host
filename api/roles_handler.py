@@ -1,209 +1,82 @@
 """
-Custom roles API — tenant-defined roles (Task 1.47).
+Custom roles API — tenant-defined roles (Task 1.47). Admin/manager only.
+Also serves GET /api/admin/tenants/{slug}/roles.
 
-GET /api/tenant/roles — list custom roles
-POST /api/tenant/roles — create: { name, permissions }
-PUT /api/tenant/roles/{name} — update permissions
-DELETE /api/tenant/roles/{name} — delete (fail if users assigned)
-
-Requires tenant admin (Cognito admin or tenant_user with manager-equivalent).
+GET    /api/tenant/roles          list
+POST   /api/tenant/roles          create { name, permissions }
+PUT    /api/tenant/roles/{name}   update permissions
+DELETE /api/tenant/roles/{name}   delete (400 while users are assigned)
 """
 
-import json
-import os
 import re
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
-import boto3
-
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
-from dynamodb_helpers import (
-    get_role_item,
-    pk_tenant,
-    query_roles_in_tenant,
-    query_tusers_in_tenant,
-    query_users_in_tenant,
-    sk_role,
-)
-from middleware import with_tenant
+from request_context import RequestContext, respond
+from tenant_store import DynamoDBTenantStore
 
 ROLE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
 RESERVED_ROLES = ("manager", "member", "admin", "editor")
 MODULE_KEYS = ("sites", "domains", "analytics", "settings", "users")
+BASE_PATH = "/api/tenant/roles"
+MANAGE_ROLES = ("admin", "manager")
 
 
-def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
+def _clean_perms(perms) -> dict:
+    perms = perms if isinstance(perms, dict) else {}
+    return {k: bool(perms.get(k, False)) for k in MODULE_KEYS}
+
+
+def _role_out(role: dict) -> dict:
     return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": "" if empty_body else json.dumps(body),
+        "name": role.get("name", ""),
+        "permissions": _clean_perms(role.get("permissions")),
+        "created_at": role.get("created_at", ""),
+        "updated_at": role.get("updated_at", ""),
     }
 
 
-def _parse_body(event: dict) -> dict | None:
-    body = event.get("body")
-    if not body:
-        return None
-    if isinstance(body, str):
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return None
-    return body
+def _role_in_use(store, tenant_slug: str, name: str) -> bool:
+    users = store.list_cognito_members(tenant_slug) + store.list_tusers(tenant_slug)
+    return any(u.get("role") == name for u in users)
 
 
-def _role_to_response(item: dict) -> dict:
-    sk = item.get("sk", "")
-    name = sk.replace("ROLE#", "") if sk.startswith("ROLE#") else ""
-    perms = item.get("permissions", {})
-    return {
-        "name": name or item.get("name", ""),
-        "permissions": {k: bool(perms.get(k, False)) for k in MODULE_KEYS},
-        "created_at": item.get("created_at", ""),
-        "updated_at": item.get("updated_at", ""),
-    }
+def roles_handler(ctx: RequestContext) -> dict:
+    tenant_slug, _ = ctx.require_tenant_member(MANAGE_ROLES)
+    store = DynamoDBTenantStore()
+    method = ctx.method
+    parts = [p for p in ctx.path[len(BASE_PATH):].split("/") if p]
+    now = datetime.now(timezone.utc).isoformat()
 
-
-def _extract_role_name_from_path(path: str) -> str | None:
-    """Extract role name from /api/tenant/roles/{name}."""
-    prefix = "/api/tenant/roles/"
-    if not path.startswith(prefix):
-        return None
-    rest = path[len(prefix) :].strip("/")
-    if not rest or "/" in rest:
-        return None
-    return unquote(rest)
-
-
-def _any_user_has_role(table, tenant_slug: str, role_name: str) -> bool:
-    """Check if any Cognito or TUSER has this role."""
-    # Cognito users
-    params = query_users_in_tenant(tenant_slug)
-    resp = table.query(**params)
-    for item in resp.get("Items", []):
-        if item.get("sk", "").endswith("#PROFILE") and item.get("role") == role_name:
-            return True
-    # TUSER
-    params = query_tusers_in_tenant(tenant_slug)
-    resp = table.query(**params)
-    for item in resp.get("Items", []):
-        if item.get("role") == role_name:
-            return True
-    return False
-
-
-@with_tenant
-def roles_handler(event: dict, context: dict) -> dict:
-    """
-    GET/POST/PUT/DELETE /api/tenant/roles — custom role CRUD.
-    """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
-
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
-    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
-    method = (
-        event.get("requestContext", {}).get("http", {}).get("method")
-        or event.get("httpMethod")
-        or "GET"
-    )
-
-    role_name = _extract_role_name_from_path(path)
-    base_path = "/api/tenant/roles"
-    is_list_or_create = path in (base_path, f"{base_path}/")
-
-    if method == "GET" and is_list_or_create:
-        params = query_roles_in_tenant(tenant_slug)
-        resp = table.query(**params)
-        roles = [_role_to_response(item) for item in resp.get("Items", [])]
-        return _json_response(200, {"roles": roles})
-
-    if method == "POST" and is_list_or_create:
-        body = _parse_body(event) or {}
+    if not parts and method == "GET":
+        return respond(200, {"roles": [_role_out(r) for r in store.list_roles(tenant_slug)]})
+    if not parts and method == "POST":
+        body = ctx.json_body()
         name = (body.get("name") or "").strip().lower()
-        permissions = body.get("permissions")
-        if not isinstance(permissions, dict):
-            permissions = {}
-
         if not name:
-            return _json_response(400, {"error": "name is required."})
+            return respond(400, {"error": "name is required."})
         if not ROLE_NAME_PATTERN.match(name):
-            return _json_response(400, {"error": "name must be alphanumeric, underscores, hyphens."})
+            return respond(400, {"error": "name must be alphanumeric, underscores, hyphens."})
         if name in RESERVED_ROLES:
-            return _json_response(400, {"error": f"Role name '{name}' is reserved."})
+            return respond(400, {"error": f"Role name '{name}' is reserved."})
+        if store.get_role(tenant_slug, name):
+            return respond(409, {"error": f"Role {name} already exists."})
+        role = {"name": name, "permissions": _clean_perms(body.get("permissions")), "created_at": now, "updated_at": now}
+        return respond(201, {"role": _role_out(store.put_role(tenant_slug, role))})
+    if len(parts) != 1 or method not in ("PUT", "DELETE"):
+        return respond(405, {"error": "Method not allowed."})
 
-        key = get_role_item(tenant_slug, name)
-        if table.get_item(Key=key).get("Item"):
-            return _json_response(409, {"error": f"Role {name} already exists."})
-
-        perms_clean = {k: bool(permissions.get(k, False)) for k in MODULE_KEYS}
-        now = datetime.now(timezone.utc).isoformat()
-
-        item = {
-            "pk": pk_tenant(tenant_slug),
-            "sk": sk_role(name),
-            "name": name,
-            "permissions": perms_clean,
-            "created_at": now,
-            "updated_at": now,
-        }
-        table.put_item(Item=item)
-        return _json_response(201, {"role": _role_to_response(item)})
-
-    if method == "PUT" and role_name:
-        key = get_role_item(tenant_slug, role_name)
-        item = table.get_item(Key=key).get("Item")
-        if not item:
-            return _json_response(404, {"error": "Role not found."})
-
-        body = _parse_body(event) or {}
-        permissions = body.get("permissions")
-        if isinstance(permissions, dict):
-            perms_clean = {k: bool(permissions.get(k, False)) for k in MODULE_KEYS}
-            item["permissions"] = perms_clean
-
-        item["updated_at"] = datetime.now(timezone.utc).isoformat()
-        table.put_item(Item=item)
-        return _json_response(200, {"role": _role_to_response(item)})
-
-    if method == "DELETE" and role_name:
-        key = get_role_item(tenant_slug, role_name)
-        if not table.get_item(Key=key).get("Item"):
-            return _json_response(404, {"error": "Role not found."})
-
-        if _any_user_has_role(table, tenant_slug, role_name):
-            return _json_response(
-                400,
-                {"error": "Cannot delete role: users are assigned to it. Reassign users first."},
-            )
-
-        table.delete_item(Key=key)
-        return _json_response(204, {}, empty_body=True)
-
-    return _json_response(405, {"error": "Method not allowed."})
+    name = unquote(parts[0])
+    role = store.get_role(tenant_slug, name)
+    if not role:
+        return respond(404, {"error": "Role not found."})
+    if method == "PUT":
+        perms = ctx.json_body().get("permissions")
+        if isinstance(perms, dict):
+            role["permissions"] = _clean_perms(perms)
+        role["updated_at"] = now
+        return respond(200, {"role": _role_out(store.put_role(tenant_slug, role))})
+    if _role_in_use(store, tenant_slug, name):
+        return respond(400, {"error": "Cannot delete role: users are assigned to it. Reassign users first."})
+    store.delete_role(tenant_slug, name)
+    return respond(204)

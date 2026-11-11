@@ -147,14 +147,12 @@ def register_domain(table, tenant_slug: str, domain: str, site_id: str) -> dict:
 
 def _put_mapping(tenant_slug: str, domain: str, site_id: str) -> bool:
     """Write ``domain -> {tenant, site_id}`` into HostMappingKVS. Returns False on failure."""
-    from site_storage import put_host_mapping
+    import site_storage
 
-    try:
-        put_host_mapping(domain, tenant_slug, site_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("custom_domain: KVS put failed for %s: %s", domain, type(exc).__name__)
-        return False
-    return True
+    if site_storage.put_host_mapping(domain, tenant_slug, site_id):
+        return True
+    logger.warning("custom_domain: KVS put failed for %s; leaving PENDING_VALIDATION for retry", domain)
+    return False
 
 
 def _fields_for(rec: CustomHostnameRecord, tenant_slug: str, domain: str, site_id: str) -> dict:
@@ -210,8 +208,5 @@ def remove_domain(table, item: dict) -> None:
     cf_id = (item.get("cf_hostname_id") or "").strip()
     if cf_id:
         get_custom_domain_port().delete_hostname(cf_id)
-    try:
-        delete_host_mapping(domain)
-    except Exception as exc:  # noqa: BLE001 - hostname is gone at Cloudflare; traffic can't reach us
-        logger.warning("custom_domain: KVS delete failed for %s: %s", domain, type(exc).__name__)
+    delete_host_mapping(domain)  # best-effort, never raises
     table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})

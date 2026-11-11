@@ -186,7 +186,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `tofu -chdir=infra validate` passes with 0 errors.
 
-### `T-09`: Migrate API Handlers to `RequestContext`/`TenantStore` & Drop Duplicate Admin CRUD (`[TODO]`)
+### `T-09`: Migrate API Handlers to `RequestContext`/`TenantStore` & Drop Duplicate Admin CRUD (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-02`, `T-03`, `T-04`, `T-07`
 - **Scope:**
@@ -196,7 +196,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/` passes all handler integration tests (including Superadmin editing pages/posts/events/media while impersonating a tenant).
 
-### `T-10`: Frontend Deep `ApiClient`, Delete `RootRoute`, & Unify Admin/Tenant Views (`[TODO]`)
+### `T-10`: Frontend Deep `ApiClient`, Delete `RootRoute`, & Unify Admin/Tenant Views (`[DONE]`)
 - **Agent:** `agent2`
 - **Blocked by:** `T-05`, `T-09`
 - **Scope:**

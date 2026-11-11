@@ -90,17 +90,22 @@ def _kvs_write(key: str, value: str | None) -> bool:
     return False  # pragma: no cover
 
 
-def put_host_mapping(hostname: str, tenant_slug: str, site_id: str) -> None:
-    """HostMappingKVS: lowercase hostname -> {"tenant", "site_id"} (SPEC §1B). Best-effort."""
+def put_host_mapping(hostname: str, tenant_slug: str, site_id: str) -> bool:
+    """HostMappingKVS: lowercase hostname -> {"tenant", "site_id"} (SPEC §1B). Never raises.
+
+    Returns True when the key was written (or KVS is not configured, so there is nothing to
+    sync), False on incomplete input or a failed write so callers can retry later."""
     key = normalize_hostname(hostname)
     if not key or not tenant_slug or not site_id:
         logger.warning("put_host_mapping: missing hostname/tenant/site_id (%r, %r, %r)", hostname, tenant_slug, site_id)
-        return
+        return False
     value = json.dumps({"tenant": tenant_slug, "site_id": site_id}, separators=(",", ":"))
     try:
         _kvs_write(key, value)
     except Exception:
         logger.exception("KVS put_host_mapping failed for %s -> %s/%s", key, tenant_slug, site_id)
+        return False
+    return True
 
 
 def delete_host_mapping(hostname: str) -> None:
@@ -112,6 +117,33 @@ def delete_host_mapping(hostname: str) -> None:
         _kvs_write(key, None)
     except Exception:
         logger.exception("KVS delete_host_mapping failed for %s", key)
+
+
+def list_host_mappings() -> list[dict]:
+    """All HostMappingKVS routing entries as {"hostname", "tenant", "site_id"} (paginated ListKeys).
+    Internal keys starting with "__" (e.g. the preview JWT secret) are never returned.
+    Returns [] when SITE_HOSTS_KVS_ARN is unset."""
+    arn = (os.environ.get(KVS_ARN_ENV) or "").strip()
+    if not arn:
+        return []
+    client = _get_kvs_client()
+    entries: list[dict] = []
+    kwargs = {"KvsARN": arn}
+    while True:
+        resp = client.list_keys(**kwargs)
+        for item in resp.get("Items", []):
+            key = item.get("Key") or ""
+            if not key or key.startswith("__"):
+                continue
+            try:
+                value = json.loads(item.get("Value") or "")
+            except ValueError:
+                value = None
+            value = value if isinstance(value, dict) else {}
+            entries.append({"hostname": key, "tenant": value.get("tenant", ""), "site_id": value.get("site_id", "")})
+        if not resp.get("NextToken"):
+            return entries
+        kwargs["NextToken"] = resp["NextToken"]
 
 
 def put_preview_jwt_secret(secret: str) -> None:
