@@ -5,6 +5,7 @@ GET /api/tenant/sites/{id}/draft-token — HS256 JWT for the draft preview URL (
 admin/manager/editor only. The signing key comes from secrets_cache (Bug #7).
 """
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +25,8 @@ def draft_token_handler(ctx: RequestContext) -> dict:
     if not secret or secret == "REPLACE_ME":
         return respond(503, {"error": "Draft preview is not configured."})
 
+    # One-way derived key: the edge KVS holds this value, never the raw TUSER signing secret.
+    preview_key = hashlib.sha256(f"{secret}:9host-preview-v1".encode()).hexdigest()
     now = datetime.now(timezone.utc)
     token = jwt.encode(
         {
@@ -33,7 +36,7 @@ def draft_token_handler(ctx: RequestContext) -> dict:
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=1)).timestamp()),
         },
-        secret,
+        preview_key,
         algorithm="HS256",
     )
     preview_url = f"https://{site_slug}.{_base_domain()}/preview?token={token}"

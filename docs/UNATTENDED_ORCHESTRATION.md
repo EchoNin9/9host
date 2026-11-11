@@ -219,7 +219,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `scripts/build-lambda-package.sh` builds a clean Lambda zip, `pytest api/tests/` passes, and `git status` shows vendored wheel directories removed from `api/`.
 
-### `T-12`: Full Regression Suite, OpenTofu Validate, & Spec/Standards Review Gate (`[TODO]`)
+### `T-12`: Full Regression Suite, OpenTofu Validate, & Spec/Standards Review Gate (`[DONE]`)
 - **Agent:** All (`code-review` subagents)
 - **Blocked by:** `T-01` through `T-11`
 - **Scope:**

@@ -275,3 +275,21 @@ def test_publish_handler_uses_compiler_and_storage_port(dynamodb_table):
     rb = publish_handler._rollback_site(table, None, "acme", "s1", 1, storage=storage)
     assert rb["version"] == 1
     assert publish_handler._rollback_site(table, None, "acme", "s1", 5, storage=storage) is None
+
+
+def test_branding_css_injection_rejected_valid_values_kept():
+    bad = {
+        "primary_color": "red;}body{display:none",
+        "secondary_color": "url(javascript:x)",
+        "background_color": "#12",
+        "text_color": "#ABC",
+        "font_family": "Arial;}</style><script>alert(1)</script>",
+    }
+    for slug in TEMPLATE_RENDERERS:
+        html = html_files(compile_site(make_snapshot(slug, site={"name": "A", "slug": "a", "branding": bad})))["index.html"]
+        assert "display:none" not in html and "javascript:" not in html and "<script>alert" not in html
+        assert "--brand-text: #ABC;" in html  # the one valid value survives
+        assert "--brand-primary" not in html and "--brand-font" not in html and "--brand-bg" not in html
+    good = {"primary_color": "#ff8800", "font_family": "Open Sans, 'Fira-Code'"}
+    html = html_files(compile_site(make_snapshot(site={"name": "A", "slug": "a", "branding": good})))["index.html"]
+    assert "--brand-primary: #ff8800;" in html and "--brand-font: Open Sans, 'Fira-Code', sans-serif;" in html

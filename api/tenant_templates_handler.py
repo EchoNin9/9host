@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import boto3
 
-from auth_helpers import require_tenant_admin_or_manager, require_tenant_auth
+from auth_helpers import require_tenant_admin_or_manager, require_tenant_auth, role_is_admin_or_manager
 from dynamodb_helpers import (
     get_tenant_item,
     get_tenant_template_item,
@@ -102,6 +102,8 @@ def _fork_handler(event: dict, context: dict, tenant_slug: str) -> dict:
         ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
         if not ok:
             return _json_response(403, {"error": err or "Forbidden."})
+    elif not role_is_admin_or_manager(role):
+        return _json_response(403, {"error": "Admin or manager role required."})
 
     body = event.get("body")
     if isinstance(body, str):
@@ -222,6 +224,8 @@ def _put_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> dic
         ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
         if not ok:
             return _json_response(403, {"error": err or "Forbidden."})
+    elif not role_is_admin_or_manager(role):
+        return _json_response(403, {"error": "Admin or manager role required."})
 
     resp = table.get_item(Key=get_tenant_template_item(tenant_slug, slug))
     item = resp.get("Item")
@@ -285,6 +289,8 @@ def _delete_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> 
         ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
         if not ok:
             return _json_response(403, {"error": err or "Forbidden."})
+    elif not role_is_admin_or_manager(role):
+        return _json_response(403, {"error": "Admin or manager role required."})
 
     table.delete_item(Key=get_tenant_template_item(tenant_slug, slug))
     return {"statusCode": 204, "headers": {"Content-Type": "application/json"}, "body": ""}

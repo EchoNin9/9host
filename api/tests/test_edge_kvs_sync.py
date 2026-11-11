@@ -14,11 +14,9 @@ from botocore.validate import validate_parameters
 
 import site_storage
 from site_storage import (
-    PREVIEW_JWT_SECRET_KEY,
     S3SiteStorageAdapter,
     delete_host_mapping,
     put_host_mapping,
-    put_preview_jwt_secret,
 )
 
 KVS_ARN = "arn:aws:cloudfront::123456789012:key-value-store/0123abcd-0000-0000-0000-000000000000"
@@ -117,13 +115,6 @@ def test_delete_host_mapping_is_idempotent(kvs):
     assert kvs.calls[-1][0] == "delete"
 
 
-def test_put_preview_jwt_secret(kvs):
-    put_preview_jwt_secret("s3cr3t")
-    assert kvs.store == {PREVIEW_JWT_SECRET_KEY: "s3cr3t"}
-    put_preview_jwt_secret("")
-    assert kvs.store == {PREVIEW_JWT_SECRET_KEY: "s3cr3t"}
-
-
 # --- ETag flow ------------------------------------------------------------------
 
 def test_etag_from_describe_is_passed_as_if_match(kvs):
@@ -167,7 +158,6 @@ def test_noop_when_kvs_arn_unset(monkeypatch):
     assert put_host_mapping("a.echo9.net", "acme", "s1") is True  # nothing to sync
     assert site_storage.list_host_mappings() == []
     delete_host_mapping("a.echo9.net")
-    put_preview_jwt_secret("x")
     S3SiteStorageAdapter(None).sync_host_mapping("acme", "s1", ["a.echo9.net"])
 
 

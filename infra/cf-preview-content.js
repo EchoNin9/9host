@@ -3,7 +3,9 @@
  *
  * Path: /preview or /preview/* with ?token=<HS256 JWT issued by api/draft_handler.py>
  * Verifies the JWT HMAC-SHA256 signature against the key stored in KVS
- * (9host-site-hosts-kvs, key "__preview_jwt_secret__") and checks exp BEFORE
+ * (9host-site-hosts-kvs, key "__preview_jwt_secret__": hex sha256 of
+ * "<jwt secret>:9host-preview-v1", used as the raw UTF-8 key string; matches
+ * api/draft_handler.py) and checks exp BEFORE
  * serving any draft/ content. Rejects with 403 on a missing/invalid/expired token
  * or when the secret is unavailable (fail closed).
  * Rewrites to S3: {tenant}/{site_id}/draft/{path}
@@ -31,7 +33,24 @@ function b64urlDecode(s) {
     if (pad === 2) b64 += '==';
     else if (pad === 3) b64 += '=';
     else if (pad === 1) throw new Error('bad base64url');
-    return atob(b64);
+    // Buffer is documented in cloudfront-js-2.0 (atob is not); decode as UTF-8 JSON text.
+    return Buffer.from(b64, 'base64').toString('utf8');
+}
+
+// True if any path segment is "..", after normalising %2e / %2f / %5c / backslash.
+// (Duplicated from cf-site-content.js: CloudFront Functions cannot import each other.)
+function hasDotDotSegment(uri) {
+    var norm = String(uri)
+        .toLowerCase()
+        .replace(/%2e/g, '.')
+        .replace(/%2f/g, '/')
+        .replace(/%5c/g, '/')
+        .replace(/\\/g, '/');
+    var segs = norm.split('/');
+    for (var i = 0; i < segs.length; i++) {
+        if (segs[i] === '..') return true;
+    }
+    return false;
 }
 
 // Constant-time string comparison (length is not secret: HS256 sig is always 43 chars).
@@ -51,6 +70,10 @@ async function handler(event) {
 
     if (!uri.startsWith('/preview')) {
         return request;
+    }
+
+    if (hasDotDotSegment(uri)) {
+        return forbidden('Forbidden');
     }
 
     // Redirect /preview?token=X to /preview/?token=X so relative paths resolve correctly

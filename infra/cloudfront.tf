@@ -235,7 +235,8 @@ resource "aws_s3_bucket_policy" "frontend_production" {
 # T-06: HostMappingKVS — hostname -> {"tenant","site_id"} (docs/SPEC.md §1B)
 # Host keys are written by the 9host-api Lambda (api/site_storage.py) on publish
 # and on custom-domain activation. "__preview_jwt_secret__" holds the draft
-# preview HS256 key (same value as the 9host-jwt-signing-key secret).
+# preview HS256 key: sha256 of "<jwt secret>:9host-preview-v1" (one-way derived, so
+# KVS readers cannot forge TUSER tokens; api/draft_handler.py signs with the same key).
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_key_value_store" "site_hosts" {
   name    = "9host-site-hosts-kvs"
@@ -245,7 +246,7 @@ resource "aws_cloudfront_key_value_store" "site_hosts" {
 resource "aws_cloudfrontkeyvaluestore_key" "preview_jwt_secret" {
   key_value_store_arn = aws_cloudfront_key_value_store.site_hosts.arn
   key                 = "__preview_jwt_secret__"
-  value               = random_password.jwt_signing.result
+  value               = sha256("${random_password.jwt_signing.result}:9host-preview-v1")
 }
 
 # T-08: Landing page (US-02) — (www.)echo9.net -> landing site. Only when var.landing_site is set.

@@ -45,7 +45,7 @@ The deep ingress module for all Lambda API invocations. Encapsulates:
 - Safe JSON response serialization (`Decimal` conversion, CORS headers, and sanitized 500 error responses that never leak Python tracebacks).
 
 ### 3. TenantStore (`api/tenant_store.py`)
-The deep repository module hiding all DynamoDB single-table (`9host-main`) key construction, GSI queries (`byUser`, `byDomain`, `bySiteSlug`, `byTUser`), atomic storage-quota accounting (`adjust_storage_bytes`), and tenant partition isolation (`PK = TENANT#{slug}`). Exposes a clean protocol with two implementations:
+The deep repository module hiding all DynamoDB single-table (`9host-main`) key construction, GSI queries (`byUser`, `byDomain`, `bySiteSlug`, `byEntity`), atomic storage-quota accounting (`adjust_storage_bytes`), and tenant partition isolation (`PK = TENANT#{slug}`). Exposes a clean protocol with two implementations:
 - `DynamoDBTenantStore` (production AWS adapter)
 - `InMemoryTenantStore` (fast, zero-AWS `pytest` adapter)
 

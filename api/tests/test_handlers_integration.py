@@ -407,3 +407,72 @@ def test_handler_exception_returns_sanitized_500(api, monkeypatch, capsys):
     assert code == 500
     assert body == {"error": "Internal server error", "request_id": "req-9"}
     assert "kaboom" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# T-12: tenant templates enforce admin/manager for TUSER tokens too
+# ---------------------------------------------------------------------------
+
+
+def test_tuser_template_delete_requires_admin_or_manager(api):
+    api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TEMPLATE#mine", "name": "Mine"})
+    path = "/api/tenant/templates/mine"
+    assert call("DELETE", path, tuser(role="member"))[0] == 403
+    assert call("DELETE", path, tuser(role="editor"))[0] == 403
+    assert call("PUT", path, tuser(role="member"), body={"name": "X"})[0] == 403
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TEMPLATE#mine"}).get("Item")
+    assert call("DELETE", path, tuser(role="manager"))[0] == 204
+
+
+# ---------------------------------------------------------------------------
+# T-12: draft-preview tokens use a derived key, never the raw TUSER secret
+# ---------------------------------------------------------------------------
+
+
+def test_draft_token_signed_with_derived_key_not_raw_secret(api):
+    import hashlib
+
+    site_id = create_site(api)
+    code, body = call("GET", f"/api/tenant/sites/{site_id}/draft-token", owner(api))
+    assert code == 200, body
+    derived = hashlib.sha256(f"{JWT_SECRET}:9host-preview-v1".encode()).hexdigest()
+    claims = jwt.decode(body["token"], derived, algorithms=["HS256"])
+    assert claims["type"] == "draft" and claims["tenant_slug"] == "acme" and claims["site_id"] == site_id
+    with pytest.raises(jwt.InvalidSignatureError):
+        jwt.decode(body["token"], JWT_SECRET, algorithms=["HS256"])
+
+
+def test_users_module_permission_round_trips(api):
+    DynamoDBTenantStore(api.table).put_member("acme", {"sub": "jane", "role": "member", "name": "Jane"})
+    path = "/api/tenant/users/jane/permissions"
+    code, body = call("PUT", path, owner(api), body={"permissions": {"users": False}})
+    assert code == 200 and body["permissions"]["users"] is False
+    assert call("GET", path, owner(api))[1]["permissions"]["users"] is False
+
+
+def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
+    import handler_example
+
+    handler_example._owner_email_cache.clear()
+    api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO", "name": "Acme", "owner_sub": "owner-1"})
+    calls = []
+
+    class FakeCognito:
+        def admin_get_user(self, **kw):
+            calls.append(kw["Username"])
+            return {"UserAttributes": [{"Name": "email", "Value": "o@acme.test"}]}
+
+    real = handler_example.boto3.client
+    monkeypatch.setattr(
+        handler_example.boto3, "client", lambda name, **kw: FakeCognito() if name == "cognito-idp" else real(name, **kw)
+    )
+    now = [1000.0]
+    monkeypatch.setattr(handler_example, "_clock", lambda: now[0])
+    for _ in range(2):
+        code, body = call("GET", "/api/tenant", owner(api))
+        assert code == 200 and body["owner_email"] == "o@acme.test"
+    assert calls == ["owner-1"]
+    now[0] += 301
+    call("GET", "/api/tenant", owner(api))
+    assert calls == ["owner-1", "owner-1"]
+    handler_example._owner_email_cache.clear()

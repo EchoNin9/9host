@@ -10,7 +10,7 @@ Layout in s3://9host-sites:
 
 HostMappingKVS (CloudFront KeyValueStore 9host-site-hosts-kvs, read by cf-site-content.js):
   "<lowercase hostname>" -> '{"tenant":"<tenant_slug>","site_id":"<site_id>"}'
-  "__preview_jwt_secret__" -> HS256 key used by cf-preview-content.js (written by OpenTofu)
+  "__preview_jwt_secret__" -> sha256-derived draft-preview HS256 key (written by OpenTofu)
 
 S3SiteStorageAdapter and InMemorySiteStorage share all logic and differ only in five
 storage primitives, so tests of the in-memory adapter exercise the real flow.
@@ -35,7 +35,6 @@ ASSET_CACHE_CONTROL = "max-age=31536000, immutable"
 DRAFT_CACHE_CONTROL = "no-cache, no-store, must-revalidate"
 
 KVS_ARN_ENV = "SITE_HOSTS_KVS_ARN"
-PREVIEW_JWT_SECRET_KEY = "__preview_jwt_secret__"
 _KVS_CONFLICT_CODES = ("ConflictException", "PreconditionFailed")
 
 logger = logging.getLogger(__name__)
@@ -144,19 +143,6 @@ def list_host_mappings() -> list[dict]:
         if not resp.get("NextToken"):
             return entries
         kwargs["NextToken"] = resp["NextToken"]
-
-
-def put_preview_jwt_secret(secret: str) -> None:
-    """Write the draft-preview HS256 key read by cf-preview-content.js. OpenTofu already
-    manages this key (aws_cloudfrontkeyvaluestore_key.preview_jwt_secret); use this only
-    for out-of-band rotation of the 9host-jwt-signing-key secret."""
-    if not secret:
-        logger.warning("put_preview_jwt_secret: empty secret ignored")
-        return
-    try:
-        _kvs_write(PREVIEW_JWT_SECRET_KEY, secret)
-    except Exception:
-        logger.exception("KVS put_preview_jwt_secret failed")
 
 
 def _cache_control(path: str) -> str:

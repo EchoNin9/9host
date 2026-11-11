@@ -187,7 +187,6 @@ _PREFIX_ROUTES = [
     ("/api/tenant/tusers", lambda e, c, p, m: run_with_context(e, tenant_users_handler)),
     ("/api/tenant/roles", lambda e, c, p, m: run_with_context(e, roles_handler)),
     ("/api/tenant/templates", lambda e, c, p, m: tenant_templates_handler(e, c)),
-    ("/api/webhooks/stripe", lambda e, c, p, m: stripe_webhook_handler(e, c)),
     ("/api/admin/tenants/", _route_admin_tenants),
     ("/api/admin/templates/", _route_admin_templates),
 ]

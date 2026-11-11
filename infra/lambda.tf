@@ -45,8 +45,8 @@ resource "aws_iam_role" "api_lambda" {
 }
 
 resource "aws_iam_role_policy" "api_lambda" {
-  name   = "9host-api-lambda"
-  role   = aws_iam_role.api_lambda.id
+  name = "9host-api-lambda"
+  role = aws_iam_role.api_lambda.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -123,7 +123,6 @@ resource "aws_iam_role_policy" "api_lambda" {
         Effect = "Allow"
         Action = [
           "cloudfront-keyvaluestore:DescribeKeyValueStore",
-          "cloudfront-keyvaluestore:GetKey",
           "cloudfront-keyvaluestore:PutKey",
           "cloudfront-keyvaluestore:DeleteKey",
           "cloudfront-keyvaluestore:ListKeys"
@@ -156,18 +155,17 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE             = aws_dynamodb_table.main.name
-      DOMAINS                    = join(",", var.domains)
-      USER_POOL_ID               = aws_cognito_user_pool.main.id
-      STRIPE_SECRET_ARN          = aws_secretsmanager_secret.stripe.arn
-      JWT_SECRET_ARN             = aws_secretsmanager_secret.jwt_signing.arn
-      CLOUDFRONT_CUSTOM_DOMAIN   = aws_cloudfront_distribution.sites.domain_name
-      CLOUDFRONT_SITES_DOMAIN    = aws_cloudfront_distribution.sites.domain_name
-      CLOUDNS_SECRET_ARN         = aws_secretsmanager_secret.cloudns.arn
-      CLOUDNS_ZONE               = var.domains[0]
-      CLOUDNS_CF_TARGET          = aws_cloudfront_distribution.sites.domain_name
-      SITE_HOSTS_KVS_ARN         = aws_cloudfront_key_value_store.site_hosts.arn
-      CLOUDFLARE_SECRET_ARN      = local.cloudflare_secret_name
+      DYNAMODB_TABLE          = aws_dynamodb_table.main.name
+      DOMAINS                 = join(",", var.domains)
+      USER_POOL_ID            = aws_cognito_user_pool.main.id
+      STRIPE_SECRET_ARN       = aws_secretsmanager_secret.stripe.arn
+      JWT_SECRET_ARN          = aws_secretsmanager_secret.jwt_signing.arn
+      CLOUDFRONT_SITES_DOMAIN = aws_cloudfront_distribution.sites.domain_name
+      CLOUDNS_SECRET_ARN      = aws_secretsmanager_secret.cloudns.arn
+      CLOUDNS_ZONE            = var.domains[0]
+      CLOUDNS_CF_TARGET       = aws_cloudfront_distribution.sites.domain_name
+      SITE_HOSTS_KVS_ARN      = aws_cloudfront_key_value_store.site_hosts.arn
+      CLOUDFLARE_SECRET_ARN   = local.cloudflare_secret_name
     }
   }
 

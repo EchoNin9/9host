@@ -48,21 +48,32 @@ def rewrite_body_media_urls(body: str, tenant_slug: str, site_id: str, media_bas
     return pattern.sub(repl, body)
 
 
+_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3,8}$")
+_FONT_RE = re.compile(r"^[A-Za-z0-9 ,'\-]{1,100}$")
+
+
 def branding_styles(branding: dict) -> str:
-    """Generate CSS custom properties from site.branding."""
+    """Generate CSS custom properties from site.branding.
+
+    Values are interpolated into <style>, where HTML escaping does not help, so only strictly
+    matching colours (#hex) and font names are emitted; anything else falls back to the template default.
+    """
     if not branding or not isinstance(branding, dict):
         return ""
+
+    def ok(key: str, pattern: re.Pattern) -> str | None:
+        v = branding.get(key)
+        return v if isinstance(v, str) and pattern.match(v) else None
+
     parts = []
-    if branding.get("primary_color"):
-        parts.append(f"  --brand-primary: {escape_html(branding['primary_color'])};")
-    if branding.get("secondary_color"):
-        parts.append(f"  --brand-secondary: {escape_html(branding['secondary_color'])};")
-    if branding.get("font_family"):
-        parts.append(f"  --brand-font: {escape_html(branding['font_family'])}, sans-serif;")
-    if branding.get("background_color"):
-        parts.append(f"  --brand-bg: {escape_html(branding['background_color'])};")
-    if branding.get("text_color"):
-        parts.append(f"  --brand-text: {escape_html(branding['text_color'])};")
+    for key, prop in (("primary_color", "--brand-primary"), ("secondary_color", "--brand-secondary")):
+        if (v := ok(key, _COLOR_RE)):
+            parts.append(f"  {prop}: {v};")
+    if (v := ok("font_family", _FONT_RE)):
+        parts.append(f"  --brand-font: {v}, sans-serif;")
+    for key, prop in (("background_color", "--brand-bg"), ("text_color", "--brand-text")):
+        if (v := ok(key, _COLOR_RE)):
+            parts.append(f"  {prop}: {v};")
     if not parts:
         return ""
     return "<style>\n:root {\n" + "\n".join(parts) + "\n}\n</style>\n  "

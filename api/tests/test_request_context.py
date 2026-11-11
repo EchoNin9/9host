@@ -165,6 +165,18 @@ class TestCognitoLocalJwks:
         p = rc.authenticate(make_event(cognito_token(rsa_key, groups=["SuperAdmin"])))
         assert p.is_superadmin is True
 
+    def test_legacy_is_superadmin_uses_verified_claim_without_cognito(self, rsa_key, monkeypatch):
+        import auth_helpers
+
+        def boom(*a, **k):
+            raise AssertionError("Cognito must not be called for a verified token")
+
+        monkeypatch.setattr("boto3.client", boom)
+        rc.authenticate(make_event(cognito_token(rsa_key, sub="boss", groups=["superadmin"])))
+        rc.authenticate(make_event(cognito_token(rsa_key, sub="pleb")))
+        assert auth_helpers.is_superadmin("boss", "us-east-1_dummy") is True
+        assert auth_helpers.is_superadmin("pleb", "us-east-1_dummy") is False
+
     def test_does_not_call_cognito_get_user(self, rsa_key, monkeypatch):
         def boom(*a, **k):
             raise AssertionError("get_user must not be called when JWKS is configured")
@@ -241,8 +253,13 @@ class TestTenantUser:
 # ---------------------------------------------------------------------------
 
 
+def respond_ok():
+    return rc.respond(200, {})
+
+
 class TestImpersonation:
     def test_header_sets_admin_role(self, rsa_key, dynamodb_table):
+        dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO"})
         tok = cognito_token(rsa_key, sub="super-1", groups=["superadmin"])
         ctx = rc.build_request_context(
             make_event(tok, {"x-impersonate-tenant": "Acme", "x-tenant-slug": "ignored"}),
@@ -254,11 +271,26 @@ class TestImpersonation:
         assert ctx.require_tenant_member(("admin",)) == ("acme", "admin")
 
     def test_admin_tenant_path_sets_admin_role(self, rsa_key, dynamodb_table):
+        dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO"})
         tok = cognito_token(rsa_key, sub="super-1", groups=["superadmin"])
         ctx = rc.build_request_context(
             make_event(tok, path="/api/admin/tenants/acme/sites"), table=dynamodb_table
         )
         assert (ctx.tenant_slug, ctx.effective_role, ctx.is_impersonating) == ("acme", "admin", True)
+
+    def test_impersonating_nonexistent_tenant_is_404(self, rsa_key, dynamodb_table):
+        tok = cognito_token(rsa_key, sub="super-1", groups=["superadmin"])
+        resp = rc.run_with_context(
+            make_event(tok, {"x-impersonate-tenant": "ghost"}), lambda ctx: respond_ok(), table=dynamodb_table
+        )
+        assert resp["statusCode"] == 404
+        assert json.loads(resp["body"]) == {"error": "Tenant not found"}
+
+    def test_impersonation_reuses_loaded_tenant_item(self, rsa_key, dynamodb_table):
+        dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO"})
+        tok = cognito_token(rsa_key, sub="super-1", groups=["superadmin"])
+        ctx = rc.build_request_context(make_event(tok, {"x-impersonate-tenant": "acme"}), table=dynamodb_table)
+        assert ctx.tenant_item["tier"] == "PRO"
 
     def test_non_superadmin_header_ignored(self, rsa_key, dynamodb_table):
         tok = cognito_token(rsa_key, sub="user-1")

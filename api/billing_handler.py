@@ -6,6 +6,7 @@ POST /api/tenant/billing/portal — create Customer Portal session
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -15,6 +16,8 @@ from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, r
 from dynamodb_helpers import get_tenant_item
 from middleware import with_tenant
 from stripe_helpers import get_stripe_api_key, get_stripe_price_id, stripe_configured
+
+logger = logging.getLogger(__name__)
 
 
 def is_billing_enabled() -> bool:
@@ -140,7 +143,8 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
         session = stripe.checkout.Session.create(**session_params)
         return _json_response(200, {"url": session.url, "session_id": session.id})
     except stripe.StripeError as e:
-        return _json_response(502, {"error": str(e) or "Stripe error."})
+        logger.error("Stripe error: %s", e)
+        return _json_response(502, {"error": "Payment provider error"})
 
 
 @with_tenant
@@ -221,4 +225,5 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
         )
         return _json_response(200, {"url": session.url})
     except stripe.StripeError as e:
-        return _json_response(502, {"error": str(e) or "Stripe error."})
+        logger.error("Stripe error: %s", e)
+        return _json_response(502, {"error": "Payment provider error"})

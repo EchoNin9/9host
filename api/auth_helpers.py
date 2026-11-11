@@ -184,6 +184,14 @@ def is_superadmin(
     """
     if not sub or not user_pool_id:
         return False
+    # Decision comes from the already-verified token's cognito:groups claim (see
+    # request_context.authenticate); Cognito is only queried when no verified token exists
+    # (local-dev get_user fallback without JWKS verification).
+    from request_context import verified_superadmin
+
+    known = verified_superadmin(sub)
+    if known is not None:
+        return known
     try:
         import boto3
 

@@ -72,6 +72,7 @@ _jwks_cache: dict[str, tuple[float, dict]] = {}  # url -> (expires_at, jwks)
 def clear_jwks_cache() -> None:
     with _jwks_lock:
         _jwks_cache.clear()
+    _verified_superadmin.clear()
 
 
 def _get_jwks(url: str) -> dict:
@@ -344,12 +345,38 @@ def authenticate(event: dict, region: str | None = None) -> Principal | None:
     if not claims:
         return None
     groups = [str(g).lower() for g in (claims.get("cognito:groups") or [])]
+    is_super = "superadmin" in groups
+    _remember_verified_superadmin(claims["sub"], is_super, claims.get("exp"))
     return Principal(
         kind="cognito",
         identifier=claims["sub"],
         email=claims.get("email"),
-        is_superadmin="superadmin" in groups,
+        is_superadmin=is_super,
     )
+
+
+# sub -> (expires_at, is_superadmin) from locally verified tokens, so the legacy
+# ``auth_helpers.is_superadmin(sub, ...)`` agrees with ``authenticate`` without a Cognito call.
+_verified_superadmin: dict[str, tuple[float, bool]] = {}
+
+
+def _remember_verified_superadmin(sub: str, is_super: bool, exp) -> None:
+    now = time.time()
+    for k in [k for k, (e, _) in _verified_superadmin.items() if e <= now]:
+        _verified_superadmin.pop(k, None)
+    try:
+        expires = min(float(exp), now + 3600)
+    except (TypeError, ValueError):
+        expires = now + 300
+    _verified_superadmin[sub] = (expires, is_super)
+
+
+def verified_superadmin(sub: str) -> bool | None:
+    """Superadmin flag from a token already verified in this container, else None (unknown)."""
+    hit = _verified_superadmin.get(sub)
+    if hit and hit[0] > time.time():
+        return hit[1]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -365,12 +392,16 @@ def build_request_context(event: dict, table=None) -> RequestContext:
 
     impersonate = impersonated_tenant_slug(event) if principal and principal.is_superadmin else None
     if impersonate:
+        tenant_item = _load_tenant_item(table, impersonate)
+        if not tenant_item:
+            raise HttpError(404, "Tenant not found")
         return RequestContext(
             event=event,
             principal=principal,
             tenant_slug=impersonate,
             effective_role="admin",
             is_impersonating=True,
+            tenant_item=tenant_item,
             _table=table,
         )
 

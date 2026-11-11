@@ -39,4 +39,14 @@ Before starting work, read:
 - [x] `T-09`: Migrate API Handlers to `RequestContext`/`TenantStore` & Drop Duplicate Admin CRUD [agent1] — DONE
 - [x] `T-10`: Frontend Deep `ApiClient`, Delete `RootRoute`, & Unify Admin/Tenant Views [agent2] — DONE
 - [x] `T-11`: Clean Vendored Wheels from `api/` into Build Artifact Step [agent1] — DONE
-- [ ] `T-12`: Full Regression Suite, OpenTofu Validate, & Spec/Standards Review Gate [all]
+- [x] `T-12`: Full Regression Suite, OpenTofu Validate, & Spec/Standards Review Gate [all] — DONE
+
+**Not deployed.** Nothing has been pushed or applied. Follow `docs/UNATTENDED_ORCHESTRATION.md` §6 before pushing `develop` (push triggers `tofu apply`).
+
+Known follow-ups (accepted at the T-12 review gate):
+- Handlers still on legacy `auth_helpers`: billing, analytics, templates, validate-slug, `/api/tenant`, other `admin_*`.
+- `advanced_analytics` backend gate ignores `module_overrides`.
+- CI deploy role KVS statement uses `Resource = "*"`; CI runs no pytest/vitest/edge tests.
+- Publish/rollback site-metadata writes are read-then-write (not atomic); site delete leaves S3 objects.
+- `infra/api.zip` is still tracked in git; sanitizer keeps `target="_blank"` without `rel="noopener"`.
+- Edge functions and the Linux Lambda bundle are only tested locally with stubs, never on the real runtimes.

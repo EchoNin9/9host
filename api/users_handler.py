@@ -23,7 +23,7 @@ from tenant_users_handler import create_tuser
 BASE_PATH = "/api/tenant/users"
 MANAGE_ROLES = ("admin", "manager")
 MEMBER_ROLES = ("admin", "manager", "editor", "member")
-MODULE_KEYS = ("sites", "domains", "analytics", "settings")
+MODULE_KEYS = ("sites", "domains", "analytics", "settings", "users")
 
 
 def _member_out(m: dict) -> dict:

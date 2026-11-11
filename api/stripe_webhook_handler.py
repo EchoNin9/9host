@@ -6,6 +6,7 @@ No Cognito auth — Stripe authenticates via webhook signing secret.
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -13,6 +14,8 @@ import boto3
 
 from dynamodb_helpers import get_tenant_item
 from stripe_helpers import _get_stripe_config, get_stripe_api_key, get_stripe_webhook_secret
+
+logger = logging.getLogger(__name__)
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -164,9 +167,11 @@ def stripe_webhook_handler(event: dict, context: dict) -> dict:
         stripe.api_key = get_stripe_api_key()
         evt = stripe.Webhook.construct_event(body, sig_header, secret)
     except ValueError as e:
-        return _json_response(400, {"error": f"Invalid payload: {e}"})
+        logger.warning("Stripe webhook invalid payload: %s", e)
+        return _json_response(400, {"error": "Invalid payload"})
     except Exception as e:
-        return _json_response(400, {"error": f"Invalid signature: {e}"})
+        logger.warning("Stripe webhook invalid signature: %s", e)
+        return _json_response(400, {"error": "Invalid signature"})
 
     event_type = evt.get("type", "")
     data = evt.get("data") or {}
