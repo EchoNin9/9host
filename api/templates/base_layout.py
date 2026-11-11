@@ -5,8 +5,11 @@ Shared HTML structure, branding injection, and utilities.
 Template-specific layouts extend TemplateRenderer.
 """
 
+import html
 import re
 from abc import ABC, abstractmethod
+
+from html_sanitizer import sanitize_html
 
 
 def escape_html(s: str) -> str:
@@ -65,18 +68,18 @@ def branding_styles(branding: dict) -> str:
     return "<style>\n:root {\n" + "\n".join(parts) + "\n}\n</style>\n  "
 
 
-def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = False, site_base: str = "") -> str:
+def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = False, base_path: str = "") -> str:
     """Build nav links from pages + blog + events + gallery.
 
-    site_base: URL prefix for all internal links (e.g. '/site/{tenant}/{site_id}').
-    Empty string produces root-relative paths.
+    base_path: URL prefix for internal links — "" (live: root-relative /, /blog/, ...)
+    or "/preview" (draft).
     """
-    base = site_base.rstrip("/")
+    base = base_path.rstrip("/")
     links = []
     for p in pages:
-        path = (p.get("path") or "").strip()
+        path = (p.get("path") or "").strip().strip("/")
         if path:
-            links.append(f'<li><a href="{base}/{path}/">{escape_html(p.get("title") or path)}</a></li>')
+            links.append(f'<li><a href="{base}/{escape_html(path)}/">{escape_html(p.get("title") or path)}</a></li>')
     if has_posts:
         links.append(f'<li><a href="{base}/blog/">Blog</a></li>')
     if has_events:
@@ -128,11 +131,42 @@ def rich_text_content_css() -> str:
 """
 
 
+def _document(head: str, body: str) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+{head}
+</head>
+<body>
+{body}
+</body>
+</html>"""
+
+
+def _plain_text(html_fragment: str) -> str:
+    """Tags stripped, entities decoded, whitespace collapsed (for meta descriptions)."""
+    text = re.sub(r"<[^>]*>", " ", html_fragment or "")
+    return " ".join(html.unescape(text).split())
+
+
+def _list_or(items: str, empty: str) -> str:
+    """Return items, or an empty-state line (kept out of f-string expressions: Python 3.11)."""
+    return items or empty
+
+
 class TemplateRenderer(ABC):
     """
     Base class for template-specific HTML/CSS rendering.
-    Each template implements its own layout and theme.
+    Each template implements its own layout and theme (render_css).
+
+    base_path is the URL prefix for every internal link: "" in live mode (root-relative
+    /, /blog/, /posts/{slug}/, /events/, /gallery/) and "/preview" in draft mode.
+    Rich-text bodies pass through sanitize_html(); all plain-text fields are escaped.
+    Rendering is pure: the footer year comes from ``footer_year`` (set by the caller),
+    never from the clock.
     """
+
+    footer_year: str = ""
 
     def html_head(
         self,
@@ -146,19 +180,18 @@ class TemplateRenderer(ABC):
     ) -> str:
         """Generate <head> with meta, title, stylesheet link, branding overrides (Task 1.128 SEO)."""
         styles = branding_styles(branding)
-        # base_path: "" for root, "../" for blog/, "../../" for posts/slug/, etc.
-        css_href = f"{base_path}style.css" if base_path else "style.css"
-        css_link = f'  <link rel="stylesheet" href="{css_href}">'
+        css_link = f'  <link rel="stylesheet" href="{base_path.rstrip("/")}/style.css">'
+        page_title = f"{escape_html(title or site_name)} — {escape_html(site_name)}"
         meta_parts = []
         if meta_description:
             meta_parts.append(f'  <meta name="description" content="{escape_html(meta_description[:160])}">')
         if meta_image:
             meta_parts.append(f'  <meta property="og:image" content="{escape_html(meta_image)}">')
-        meta_parts.append(f'  <meta property="og:title" content="{escape_html(title or site_name)} — {escape_html(site_name)}">')
-        meta_block = "\n".join(meta_parts) + "\n" if meta_parts else ""
+        meta_parts.append(f'  <meta property="og:title" content="{page_title}">')
+        meta_block = "\n".join(meta_parts) + "\n"
         return f"""  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{escape_html(title or site_name)} — {escape_html(site_name)}</title>
+  <title>{page_title}</title>
 {meta_block}{css_link}
 {styles}"""
 
@@ -181,10 +214,9 @@ class TemplateRenderer(ABC):
   </header>"""
 
     def html_footer(self, site_name: str) -> str:
-        """Generate shared footer."""
-        from datetime import datetime, timezone
-        year = datetime.now(timezone.utc).year
-        return f"""  <footer class="site-footer">&copy; {year} {escape_html(site_name)}</footer>
+        """Generate shared footer (year from self.footer_year — no clock reads)."""
+        year = f"{escape_html(self.footer_year)} " if self.footer_year else ""
+        return f"""  <footer class="site-footer">&copy; {year}{escape_html(site_name)}</footer>
 </div>"""
 
     def html_hero(self, site_name: str) -> str:
@@ -199,6 +231,17 @@ class TemplateRenderer(ABC):
         """Generate complete CSS for this template. Includes reset, typography, components."""
         pass
 
+    def _chrome(self, title, site_name, branding, media_base, nav, base_path, main,
+                meta_description="", meta_image="", hero=False) -> str:
+        head = self.html_head(title, site_name, branding, media_base, base_path,
+                              meta_description=meta_description, meta_image=meta_image)
+        parts = [self.html_header(site_name, branding, media_base, nav)]
+        if hero:
+            parts.append(self.html_hero(site_name))
+        parts.append(f'  <main class="main-content">\n{main}\n  </main>')
+        parts.append(self.html_footer(site_name))
+        return _document(head, "\n".join(parts))
+
     def render_index(
         self,
         site_name: str,
@@ -211,44 +254,25 @@ class TemplateRenderer(ABC):
         base_path: str = "",
         meta_description: str = "",
         meta_image: str = "",
-        site_base: str = "",
     ) -> str:
         """Render index.html."""
-        sb = site_base.rstrip("/")
-        nav = nav_links(pages, bool(posts), bool(events), has_media, site_base=site_base)
-        links = "".join(
-            f'    <li><a href="{sb}/{p["path"]}/">{escape_html(p["title"] or p["path"])}</a></li>\n'
-            for p in pages
-        )
+        sb = base_path.rstrip("/")
+        nav = nav_links(pages, bool(posts), bool(events), has_media, base_path=base_path)
+        links = ""
+        for p in pages:
+            path = (p.get("path") or "").strip().strip("/")
+            if path:
+                links += f'    <li><a href="{sb}/{escape_html(path)}/">{escape_html(p.get("title") or path)}</a></li>\n'
         if posts:
             links += f'    <li><a href="{sb}/blog/">Blog</a></li>\n'
         if events:
             links += f'    <li><a href="{sb}/events/">Events</a></li>\n'
         if has_media:
             links += f'    <li><a href="{sb}/gallery/">Gallery</a></li>\n'
-        head = self.html_head(
-            site_name, site_name, branding, media_base, base_path,
-            meta_description=meta_description, meta_image=meta_image,
-        )
-        header = self.html_header(site_name, branding, media_base, nav)
-        hero = self.html_hero(site_name)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-{hero}
-  <main class="main-content">
-    <nav class="page-nav"><ul>
-{links or "    <li>No pages yet.</li>\n"}
-    </ul></nav>
-  </main>
-{footer}
-</body>
-</html>"""
+        items = _list_or(links, "    <li>No pages yet.</li>\n")
+        main = f'    <nav class="page-nav"><ul>\n{items}    </ul></nav>'
+        return self._chrome(site_name, site_name, branding, media_base, nav, base_path, main,
+                            meta_description, meta_image, hero=True)
 
     def render_page(
         self,
@@ -265,32 +289,18 @@ class TemplateRenderer(ABC):
         meta_description: str = "",
         meta_image: str = "",
     ) -> str:
-        """Render a single page."""
+        """Render a single page (body is rich text → sanitized)."""
         body_rewritten = (
             rewrite_body_media_urls(body, tenant_slug, site_id, media_base)
             if tenant_slug and site_id
             else (body or "")
         )
-        head = self.html_head(
-            title or path, site_name, branding, media_base, base_path,
-            meta_description=meta_description, meta_image=meta_image,
+        main = (
+            f'    <h2 class="page-title">{escape_html(title or path)}</h2>\n'
+            f'    <div class="content">{sanitize_html(body_rewritten)}</div>'
         )
-        header = self.html_header(site_name, branding, media_base, nav)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-  <main class="main-content">
-    <h2 class="page-title">{escape_html(title or path)}</h2>
-    <div class="content">{body_rewritten}</div>
-  </main>
-{footer}
-</body>
-</html>"""
+        return self._chrome(title or path, site_name, branding, media_base, nav, base_path, main,
+                            meta_description, meta_image)
 
     def render_blog_index(
         self,
@@ -300,33 +310,17 @@ class TemplateRenderer(ABC):
         media_base: str,
         nav: str,
         base_path: str = "",
-        site_base: str = "",
     ) -> str:
         """Render /blog/ index."""
-        sb = site_base.rstrip("/")
+        sb = base_path.rstrip("/")
         items = "".join(
-            f'    <li><a href="{sb}/posts/{escape_html(p["slug"])}/">{escape_html(p["title"] or p["slug"])}</a></li>\n'
+            f'    <li><a href="{sb}/posts/{escape_html(p.get("slug", ""))}/">'
+            f'{escape_html(p.get("title") or p.get("slug", ""))}</a></li>\n'
             for p in posts
         )
-        head = self.html_head("Blog", site_name, branding, media_base, base_path)
-        header = self.html_header(site_name, branding, media_base, nav)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-  <main class="main-content">
-    <h2 class="page-title">Blog</h2>
-    <ul class="posts-list">
-{items or "    <li>No posts yet.</li>\n"}
-    </ul>
-  </main>
-{footer}
-</body>
-</html>"""
+        items = _list_or(items, "    <li>No posts yet.</li>\n")
+        main = f'    <h2 class="page-title">Blog</h2>\n    <ul class="posts-list">\n{items}    </ul>'
+        return self._chrome("Blog", site_name, branding, media_base, nav, base_path, main)
 
     def render_post_detail(
         self,
@@ -339,35 +333,21 @@ class TemplateRenderer(ABC):
         site_id: str = "",
         base_path: str = "",
     ) -> str:
-        """Render /posts/{slug}/ detail."""
-        body = post.get("body", "")
+        """Render /posts/{slug}/ detail (body is rich text → sanitized)."""
+        body = post.get("body", "") or ""
         body_rewritten = (
             rewrite_body_media_urls(body, tenant_slug, site_id, media_base)
             if tenant_slug and site_id
             else body
         )
-        meta_desc = (post.get("excerpt") or post.get("body", ""))[:160] if post else ""
-        meta_img = media_url(post.get("featured_image_s3_key", ""), media_base) if post and post.get("featured_image_s3_key") else ""
-        head = self.html_head(
-            post.get("title", ""), site_name, branding, media_base, base_path,
-            meta_description=meta_desc, meta_image=meta_img,
+        meta_desc = post.get("excerpt") or _plain_text(sanitize_html(body))
+        meta_img = media_url(post.get("featured_image_s3_key", ""), media_base) if post.get("featured_image_s3_key") else ""
+        main = (
+            f'    <h2 class="page-title">{escape_html(post.get("title", ""))}</h2>\n'
+            f'    <div class="content post-body">{sanitize_html(body_rewritten)}</div>'
         )
-        header = self.html_header(site_name, branding, media_base, nav)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-  <main class="main-content">
-    <h2 class="page-title">{escape_html(post.get("title", ""))}</h2>
-    <div class="content post-body">{body_rewritten}</div>
-  </main>
-{footer}
-</body>
-</html>"""
+        return self._chrome(post.get("title", ""), site_name, branding, media_base, nav, base_path, main,
+                            meta_desc, meta_img)
 
     def render_events(
         self,
@@ -385,25 +365,9 @@ class TemplateRenderer(ABC):
             + "</li>\n"
             for e in events
         )
-        head = self.html_head("Events", site_name, branding, media_base, base_path)
-        header = self.html_header(site_name, branding, media_base, nav)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-  <main class="main-content">
-    <h2 class="page-title">Events</h2>
-    <ul class="events-list">
-{items or "    <li>No events yet.</li>\n"}
-    </ul>
-  </main>
-{footer}
-</body>
-</html>"""
+        items = _list_or(items, "    <li>No events yet.</li>\n")
+        main = f'    <h2 class="page-title">Events</h2>\n    <ul class="events-list">\n{items}    </ul>'
+        return self._chrome("Events", site_name, branding, media_base, nav, base_path, main)
 
     def render_gallery(
         self,
@@ -416,28 +380,13 @@ class TemplateRenderer(ABC):
     ) -> str:
         """Render /gallery/ page."""
         items = "".join(
-            f'    <figure><img src="{escape_html(media_url(m.get("s3_key", ""), media_base))}" alt="{escape_html(m.get("caption", ""))}"><figcaption>{escape_html(m.get("caption", ""))}</figcaption></figure>\n'
+            f'    <figure><img src="{escape_html(media_url(m.get("s3_key", ""), media_base))}" '
+            f'alt="{escape_html(m.get("caption", ""))}"><figcaption>{escape_html(m.get("caption", ""))}</figcaption></figure>\n'
             for m in media
         )
-        head = self.html_head("Gallery", site_name, branding, media_base, base_path)
-        header = self.html_header(site_name, branding, media_base, nav)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-  <main class="main-content">
-    <h2 class="page-title">Gallery</h2>
-    <div class="media-gallery">
-{items or "    <p>No media yet.</p>\n"}
-    </div>
-  </main>
-{footer}
-</body>
-</html>"""
+        items = _list_or(items, "    <p>No media yet.</p>\n")
+        main = f'    <h2 class="page-title">Gallery</h2>\n    <div class="media-gallery">\n{items}    </div>'
+        return self._chrome("Gallery", site_name, branding, media_base, nav, base_path, main)
 
     def render_404(
         self,
@@ -446,25 +395,12 @@ class TemplateRenderer(ABC):
         media_base: str,
         nav: str,
         base_path: str = "",
-        site_base: str = "",
     ) -> str:
         """Render template-aware 404 page (Task 1.127)."""
-        sb = site_base.rstrip("/")
-        head = self.html_head("Page not found", site_name, branding, media_base, base_path)
-        header = self.html_header(site_name, branding, media_base, nav)
-        footer = self.html_footer(site_name)
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-{head}
-</head>
-<body>
-{header}
-  <main class="main-content">
-    <h2 class="page-title">Page not found</h2>
-    <p>The page you requested could not be found.</p>
-    <p><a href="{sb}/">Return to home</a></p>
-  </main>
-{footer}
-</body>
-</html>"""
+        sb = base_path.rstrip("/")
+        main = (
+            '    <h2 class="page-title">Page not found</h2>\n'
+            '    <p>The page you requested could not be found.</p>\n'
+            f'    <p><a href="{sb}/">Return to home</a></p>'
+        )
+        return self._chrome("Page not found", site_name, branding, media_base, nav, base_path, main)

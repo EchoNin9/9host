@@ -127,7 +127,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/test_tenant_store.py` passes against both `InMemoryTenantStore` and mocked `DynamoDBTenantStore` (verifying `adjust_storage_bytes` never underflows below 0 and `list_sites` ignores content rows).
 
-### `T-04`: Pure `SiteCompiler` (Root `/` Links + XSS Clean) & `SiteStoragePort` (`[TODO]`)
+### `T-04`: Pure `SiteCompiler` (Root `/` Links + XSS Clean) & `SiteStoragePort` (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-01`, `T-03`
 - **Scope:**
