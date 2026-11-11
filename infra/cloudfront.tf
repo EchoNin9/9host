@@ -1,6 +1,10 @@
 # ------------------------------------------------------------------------------
-# CloudFront distributions for stage.echo9.net and prod.echo9.net
-# S3 origin with OAC. ACM cert (us-east-1). SPA routing (404/403 -> index.html).
+# CloudFront distributions (T-08 edge split, docs/SPEC.md §3 Module 1A):
+#   Admin SPA ("frontend"):  staging    -> stage.{domain}
+#                            production -> app.{domain} (+ prod.{domain} for cutover)
+#   Public Sites & Landing:  sites      -> *.{domain}, {landing}, www.{landing}
+# S3 origins with OAC. ACM certs (us-east-1). Admin SPA routing via cf-spa-routing.js.
+# The Admin SPA calls API Gateway directly (VITE_API_URL), so there is no /api/* behavior.
 # ------------------------------------------------------------------------------
 
 # Origin Access Control — CloudFront accesses S3 via SigV4 (no public bucket)
@@ -19,9 +23,9 @@ resource "aws_cloudfront_distribution" "staging" {
   provider = aws.us_east_1
 
   enabled             = true
-  is_ipv6_enabled      = true
-  comment              = "9host staging frontend"
-  default_root_object  = "index.html"
+  is_ipv6_enabled     = true
+  comment             = "9host staging frontend"
+  default_root_object = "index.html"
   price_class         = "PriceClass_100"
   wait_for_deployment = false
 
@@ -80,28 +84,20 @@ resource "aws_cloudfront_distribution" "staging" {
       }
     }
 
+    # SPA routing: CF Function rewrites non-file paths to /index.html
+    # (replaces custom_error_response so /media/* returns real S3 errors)
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_routing.arn
+    }
+
     min_ttl     = 0
     default_ttl = 3600
     max_ttl     = 86400
   }
 
-  # SPA routing: 404/403 -> index.html (React Router)
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
-
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.main.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.main.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -117,7 +113,8 @@ resource "aws_cloudfront_distribution" "staging" {
   }
 }
 
-# S3 bucket policy: allow CloudFront OAC (staging + sites) to read staging bucket
+# S3 bucket policy: allow CloudFront OAC (staging) to read staging bucket.
+# T-08: the sites distribution no longer serves the Admin SPA, so its grant is removed.
 resource "aws_s3_bucket_policy" "frontend_staging" {
   bucket = aws_s3_bucket.frontend_staging.id
 
@@ -137,20 +134,6 @@ resource "aws_s3_bucket_policy" "frontend_staging" {
             "AWS:SourceArn" = aws_cloudfront_distribution.staging.arn
           }
         }
-      },
-      {
-        Sid    = "AllowCloudFrontSites"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudfront.amazonaws.com"
-        }
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.frontend_staging.arn}/*"
-        Condition = {
-          StringEquals = {
-            "AWS:SourceArn" = aws_cloudfront_distribution.sites.arn
-          }
-        }
       }
     ]
   })
@@ -159,19 +142,19 @@ resource "aws_s3_bucket_policy" "frontend_staging" {
 }
 
 # ------------------------------------------------------------------------------
-# Production: prod.echo9.net
+# Production Admin SPA: app.echo9.net (+ prod.echo9.net kept for cutover compat)
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "production" {
   provider = aws.us_east_1
 
   enabled             = true
-  is_ipv6_enabled      = true
-  comment              = "9host production frontend"
-  default_root_object  = "index.html"
+  is_ipv6_enabled     = true
+  comment             = "9host production frontend"
+  default_root_object = "index.html"
   price_class         = "PriceClass_100"
   wait_for_deployment = false
 
-  aliases = [for d in var.domains : "prod.${d}"]
+  aliases = flatten([for d in var.domains : ["app.${d}", "prod.${d}"]])
 
   origin {
     domain_name              = aws_s3_bucket.frontend_production.bucket_regional_domain_name
@@ -193,27 +176,20 @@ resource "aws_cloudfront_distribution" "production" {
       }
     }
 
+    # SPA routing: CF Function rewrites non-file paths to /index.html
+    # (replaces custom_error_response so /media/* returns real S3 errors)
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.spa_routing.arn
+    }
+
     min_ttl     = 0
     default_ttl = 3600
     max_ttl     = 86400
   }
 
-  custom_error_response {
-    error_code            = 403
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
-
-  custom_error_response {
-    error_code            = 404
-    response_code         = 200
-    response_page_path    = "/index.html"
-    error_caching_min_ttl = 0
-  }
-
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.main.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.main.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -272,6 +248,15 @@ resource "aws_cloudfrontkeyvaluestore_key" "preview_jwt_secret" {
   value               = random_password.jwt_signing.result
 }
 
+# T-08: Landing page (US-02) — (www.)echo9.net -> landing site. Only when var.landing_site is set.
+resource "aws_cloudfrontkeyvaluestore_key" "landing" {
+  for_each = var.landing_site == null ? toset([]) : toset([var.landing_domain, "www.${var.landing_domain}"])
+
+  key_value_store_arn = aws_cloudfront_key_value_store.site_hosts.arn
+  key                 = each.value
+  value               = jsonencode({ tenant = var.landing_site.tenant, site_id = var.landing_site.site_id })
+}
+
 # ------------------------------------------------------------------------------
 # Task 1.97 / T-06: CloudFront Function — Host/X-Forwarded-Host → KVS → S3 path rewrite
 # ------------------------------------------------------------------------------
@@ -326,26 +311,30 @@ resource "aws_cloudfront_function" "spa_routing" {
 }
 
 # ------------------------------------------------------------------------------
-# Task 1.78: Wildcard distribution for *.echo9.net (sites + tenant subdomains)
-# Serves tenant admin SPA. Task 1.97: 9host-sites origin for published site content.
+# Task 1.78 / T-08: Public Sites & Landing distribution (*.echo9.net, echo9.net, www)
+# Default behavior serves published static HTML from 9host-sites via cf-site-content.js
+# (Host / X-Forwarded-Host -> 9host-site-hosts-kvs -> /{tenant}/{site_id}/published/current/...).
+# Host is NOT forwarded to S3 (forwarded_values has no headers); the viewer-request
+# function sees every viewer header (incl. X-Forwarded-Host) without a cache-key change,
+# and the cache key is the rewritten, per-site URI.
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "sites" {
   provider = aws.us_east_1
 
   enabled             = true
   is_ipv6_enabled     = true
-  comment              = "9host sites + tenant subdomains (*.echo9.net)"
-  default_root_object  = "index.html"
+  comment             = "9host public sites + landing (*.echo9.net, echo9.net)"
+  default_root_object = "index.html"
   price_class         = "PriceClass_100"
   wait_for_deployment = false
 
-  aliases = [for d in var.domains : "*.${d}"]
-
-  origin {
-    domain_name              = aws_s3_bucket.frontend_staging.bucket_regional_domain_name
-    origin_id                = "S3-9host-frontend-staging"
-    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
-  }
+  # Landing aliases are gated: echo9.net/www.echo9.net are currently attached to an
+  # unmanaged distribution (E164B9WJ8ALT9F) — adding them before it releases them fails
+  # the whole update with CNAMEAlreadyExists. Flip var.serve_landing_domain after cutover.
+  aliases = concat(
+    [for d in var.domains : "*.${d}"],
+    var.serve_landing_domain ? [var.landing_domain, "www.${var.landing_domain}"] : []
+  )
 
   # Task 1.97: 9host-sites origin for published site content
   origin {
@@ -413,7 +402,7 @@ resource "aws_cloudfront_distribution" "sites" {
     max_ttl     = 0
   }
 
-  # Task 1.97: Site content — /site/{site_id}/* → 9host-sites
+  # Task 1.97: Legacy site content — /site/{tenant}/{site_id}/* → 9host-sites
   ordered_cache_behavior {
     path_pattern           = "/site/*"
     target_origin_id       = "S3-9host-sites"
@@ -439,13 +428,15 @@ resource "aws_cloudfront_distribution" "sites" {
     max_ttl     = 300
   }
 
+  # T-08 (US-01/US-02): Host-routed published site — /* → 9host-sites published/current/
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-9host-frontend-staging"
+    target_origin_id       = "S3-9host-sites"
     compress               = true
     viewer_protocol_policy = "redirect-to-https"
 
+    # No headers forwarded: Host stays the S3 origin host (required for OAC/S3).
     forwarded_values {
       query_string = false
       cookies {
@@ -453,25 +444,21 @@ resource "aws_cloudfront_distribution" "sites" {
       }
     }
 
-    # SPA routing: CF Function rewrites non-file paths to /index.html
-    # (replaces custom_error_response so /site/* can return real S3 errors)
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.spa_routing.arn
+      function_arn = aws_cloudfront_function.site_content.arn
     }
 
+    # published/current/ is overwritten in place on publish — keep TTLs short.
     min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
+    default_ttl = 60
+    max_ttl     = 300
   }
 
-  # custom_error_response removed: SPA routing is now handled by the
-  # cf-spa-routing.js CF Function on the default behavior. This allows
-  # /site/* and /media/* behaviors to return real S3 403/404 errors
-  # instead of silently serving the React SPA.
+  # No custom_error_response: missing pages return real S3 403/404 errors.
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.wildcard.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.wildcard.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }

@@ -174,7 +174,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/test_cloudflare_saas.py` passes and `tofu -chdir=infra validate` succeeds with `lambda_acm.tf` removed.
 
-### `T-08`: Split Admin SPA (`app`/`stage`) vs Public Sites (`*.echo9.net`) + S3 Lifecycle (`[TODO]`)
+### `T-08`: Split Admin SPA (`app`/`stage`) vs Public Sites (`*.echo9.net`) + S3 Lifecycle (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-06`, `T-07`
 - **Scope:**
@@ -277,3 +277,20 @@ Because Cloudflare account configuration happens in your Cloudflare dashboard, c
 5. **Save Cloudflare API Token in AWS Secrets Manager (`9host-cloudflare`):**
    - Create a Cloudflare API Token with `Zone:SSL and Certificates:Edit` for `echo9.net`.
    - Store `{"zone_id": "<your-zone-id>", "api_token": "<your-api-token>"}` in AWS Secrets Manager secret `9host-cloudflare`.
+
+---
+
+## 6. Deploy Cutover Order (`T-06`–`T-08`) — READ BEFORE PUSHING `develop`
+
+`.github/workflows/dev.yml` / `main.yml` run a full `tofu apply` on push. Nothing in `T-06`–`T-08` has been applied. Follow this order:
+
+1. **Certs first (local, before pushing):** `tofu -chdir=infra apply -target=aws_acm_certificate.main -target=aws_acm_certificate.wildcard -var='domains=["echo9.net"]'`, then add the new `app.echo9.net` validation CNAME from `tofu output acm_validation_records` to ClouDNS. If you push first, CI waits ~75 min on `aws_acm_certificate_validation.main` and fails (safely).
+2. **Full apply** once both certs are `ISSUED`. `production` gains `app.echo9.net`; the `sites` default behaviour switches to static HTML via `cf-site-content.js` (unmapped hosts return 404). The first apply may hit AccessDenied creating the KVS because the deploy-role policy update lands in the same apply — rerun. The apply also destroys the `9host-acm-handler` Lambda, role and EventBridge rule.
+3. **ClouDNS (`infra/cloudns`)**: local state holds `cloudns_dns_zone.echo9_net` but config uses `cloudns_dns_zone.zone["echo9.net"]` — a plain apply would plan to destroy the zone. Run `tofu state mv cloudns_dns_zone.echo9_net 'cloudns_dns_zone.zone["echo9.net"]'` first, then apply with `-var manage_records=false` (creates `app`, `sites-origin`, `tools` records).
+4. **Republish every site** (or backfill KVS) so `{slug}.echo9.net` mappings exist — mappings are only written on publish, and unmapped hosts now 404.
+5. Move admins to `app.echo9.net` (Cognito callback/logout URLs already include it); remove the `prod` alias/record after traffic drains.
+6. **Landing page:** unmanaged distribution `E164B9WJ8ALT9F` still holds `echo9.net` / `www.echo9.net`. Remove them there by hand, then set `serve_landing_domain = true` and `landing_site = {tenant, site_id}` and apply.
+7. **ClouDNS `@` / `www` (manual, only after step 6):** `www` (`180304155`) WR -> `CNAME d2nqdv42n1qlhv.cloudfront.net`; `@` (`180304152`) -> 301 to `https://www.echo9.net` or ALIAS to the sites distribution.
+8. **Existing ACM-era custom domains** re-register with Cloudflare on their next status check and stay `PENDING_VALIDATION` until the tenant points `CNAME -> proxy.echo9.net`; delete orphaned ACM certs by hand.
+
+Known spec deviations: there is no `aws_cloudfront_distribution.frontend` (the SPA is `staging` + `production`), no `/api/*` CloudFront behaviour (SPA calls API Gateway via `VITE_API_URL`), and `cf-preview-content.js` uses `crypto.createHmac` (CloudFront Functions have no `crypto.subtle`).
