@@ -1,17 +1,32 @@
-# 9host — Unattended Orchestration Runbook (Opus 5.5 + Gemini Flash + Argon 4 Quota-Safe)
+# 9host — Unattended Orchestration Runbook (Fable 5.2 Commander + Opus 5.5 + Sonnet)
 
-> **Purpose:** This runbook allows a fresh `agy-cli` session to execute the entire [`docs/SPEC.md`](SPEC.md) overhaul **unattended** while protecting your remaining **19% Argon weekly quota** by leveraging **Opus 5.5 (High / Medium)** for orchestration and complex module implementation, **Gemini Flash (`flash` / `flash_lite`)** for subagent research/testing/review waves, and reserving **Argon 4** strictly as an optional escalation fallback.
+> **Purpose:** This runbook allows a fresh **Claude CLI** (or `agy-cli`) session with **Fable 5.2** as the Commander/Orchestrator to execute the remaining tickets (`T-02`, `T-03`, `T-04`, `T-06`–`T-12`) of [`docs/SPEC.md`](SPEC.md) **unattended** by delegating implementation and exploration to **Opus 5.5 (`opus`)** and **Sonnet (`sonnet`)** subagents.
 
 ---
 
-## 0. Model Routing Matrix (Conserving 19% Argon Quota)
+## 0. Current Handoff State (As of Commit `d58420c`+)
 
-| Role / Wave | Primary Model | Subagent `Model` Arg | Why |
-|-------------|---------------|----------------------|-----|
-| **Commander / Orchestrator** | **Opus 5.5 High** (`opus5.5` high) or **Opus 5.5 Medium** (`opus5.5` medium) | `inherit` | Handles multi-ticket orchestration, deep module design, and state tracking without burning Argon quota. |
-| **Deep Module Implementation (`T-02`, `T-03`, `T-04`, `T-06`, `T-07`, `T-08`, `T-09`, `T-10`)** | **Opus 5.5 Medium / High** | `inherit` or `pro` | High-precision Python/TypeScript/OpenTofu refactoring across module seams. |
-| **Test Harness, Boilerplate, Packaging & Review (`T-01`, `T-05`, `T-11`, `T-12`)** | **Gemini Flash** (`flash` / `flash_lite`) | `flash` | Fast, zero-Argon execution for test scaffolding, wheel cleanup, and parallel two-axis `code-review`. |
-| **Emergency Escalation Only** | **Argon 4** (`argon4`) | Manual switch only if blocked | Preserves your remaining 19% weekly Argon budget. |
+- **Completed & Committed:**
+  - `cca3913`: Architectural overhaul spec (`docs/SPEC.md`), `GLOSSARY.md`, ADRs (`0001`, `0002`), and runbook.
+  - `f031783` (**`T-01` DONE**): Python 3.11 `.venv` at `/Users/adam/Github/EchoNin9/9host/.venv`, `api/pytest.ini`, `api/tests/conftest.py` (moto single-table `9host-main` with all 4 GSIs `byUser`, `byDomain`, `byEntity`, `bySiteSlug`), `api/html_sanitizer.py` (`sanitize_html()` + 27 passing XSS/rich-text tests), and `frontend/vitest.config.ts`.
+  - `d58420c` (**`T-05` DONE**): Fixed Stripe billing bugs (`#6a` VIP-only check so `FREE` can checkout, `#6b` base64 webhook decode + `trialing` status + `VIP` downgrade protection) and added `BILLING_ENABLED` / `VITE_ENABLE_BILLING` feature flag (`false` by default) + 10 backend tests + 10 frontend Vitest tests.
+  - **Partial `T-02` Seed Committed:** `api/secrets_cache.py` (`get_secret_string`, `get_secret_json`, `clear_cache` with 5-minute TTL and patchable `_clock` seam) is already written and committed.
+- **Test Baseline (All Green):**
+  - Backend: `cd /Users/adam/Github/EchoNin9/9host/api && ../.venv/bin/pytest -q` -> **38 passed**
+  - Frontend tests: `npm --prefix /Users/adam/Github/EchoNin9/9host/frontend test -- --run` -> **11 passed**
+  - Frontend build: `npm --prefix /Users/adam/Github/EchoNin9/9host/frontend run build` -> **0 errors**
+- **Remaining Tickets:** `T-02`, `T-03`, `T-04`, `T-06`, `T-07`, `T-08`, `T-09`, `T-10`, `T-11`, `T-12`.
+
+---
+
+## 0.1 Model Routing Matrix (Fable 5.2 Commander -> Opus 5.5 & Sonnet Subagents)
+
+| Role / Wave | Model Tier | Claude CLI `Task` `model` | Why |
+|-------------|------------|---------------------------|-----|
+| **Commander / Orchestrator** | **Fable 5.2** | Session default (Lead) | Owns the session, writes tight subagent briefs, reviews diffs/test summaries, and commits each ticket. Never reads large files or edits implementation code directly. |
+| **Deep Module Implementation (`T-02`, `T-03`, `T-04`, `T-06`, `T-07`, `T-08`, `T-09`, `T-10`)** | **Claude Opus 5.5** | `model: "opus"` | High-precision multi-file Python/TypeScript/OpenTofu refactoring across deep module seams (`RequestContext`, `TenantStore`, `SiteCompiler`, `EdgeHostRouter`, `ApiClient`). |
+| **Repo Recon, Packaging Cleanup & Two-Axis Review (`T-11`, `T-12`, and fast file scouting)** | **Claude Sonnet** | `model: "sonnet"` | Fast, low-cost execution for codebase reconnaissance, wheel packaging cleanup (`T-11`), and parallel Standards + Spec `code-review` (`T-12`). |
+| **Off-Limits** | **Gemini 4 Argon** | **DO NOT USE** | Argon weekly quota is at 5%. |
 
 ---
 
