@@ -21,6 +21,7 @@ __pycache__/
 # OpenTofu (Terraform-compatible)
 infra/.terraform/
 infra/api.zip
+infra/.build/
 infra/*.tfstate
 infra/*.tfstate.*
 infra/cloudns/.terraform/

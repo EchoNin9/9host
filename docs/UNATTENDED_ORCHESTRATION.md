@@ -209,7 +209,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `npm --prefix frontend test -- --run` and `npm --prefix frontend run build` pass with 0 TypeScript or bundle errors.
 
-### `T-11`: Clean Vendored Wheels from `api/` into Build Artifact Step (`[TODO]`)
+### `T-11`: Clean Vendored Wheels from `api/` into Build Artifact Step (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-09`
 - **Scope:**

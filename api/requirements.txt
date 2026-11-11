@@ -1,8 +1,19 @@
-# 9host API Lambda dependencies
-# stripe — Stripe API for tier subscriptions (Task 3.1)
-stripe>=11.0.0
-# Site login (Task 1.44) — bcrypt for password verify, PyJWT for custom tokens
-bcrypt>=4.0.0
-PyJWT>=2.8.0
+# 9host API Lambda dependencies (bundled by scripts/build-lambda-package.sh)
+# Versions pinned to those previously vendored in api/.
+# boto3/botocore are NOT bundled: the python3.12 Lambda runtime provides them (see requirements-dev.txt for tests).
+stripe==14.4.1
+bcrypt==5.0.0
+PyJWT==2.12.1
+# PyJWT RS256 (Cognito JWKS verification) needs cryptography
+cryptography>=42.0.0
+# botocore SigV4A signing for the cloudfront-keyvaluestore API
+awscrt>=0.20.0
 # Task 1.100: DNS verification for domain activation
 dnspython>=2.4.0
+# Transitive deps (pinned to previously vendored versions)
+requests==2.32.5
+urllib3==2.6.3
+idna==3.11
+certifi==2026.2.25
+charset_normalizer==3.4.6
+typing_extensions==4.15.0

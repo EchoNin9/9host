@@ -38,5 +38,5 @@ Before starting work, read:
 - [x] `T-08`: Split Admin SPA (`app`/`stage`) vs Public Sites (`*.echo9.net`) + S3 Lifecycle [agent1] — DONE (code only; see runbook §6 before pushing)
 - [x] `T-09`: Migrate API Handlers to `RequestContext`/`TenantStore` & Drop Duplicate Admin CRUD [agent1] — DONE
 - [x] `T-10`: Frontend Deep `ApiClient`, Delete `RootRoute`, & Unify Admin/Tenant Views [agent2] — DONE
-- [ ] `T-11`: Clean Vendored Wheels from `api/` into Build Artifact Step [agent1]
+- [x] `T-11`: Clean Vendored Wheels from `api/` into Build Artifact Step [agent1] — DONE
 - [ ] `T-12`: Full Regression Suite, OpenTofu Validate, & Spec/Standards Review Gate [all]

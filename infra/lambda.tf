@@ -9,9 +9,11 @@ locals {
   cloudflare_secret_name = "9host-cloudflare"
 }
 
+# Requires the build step first: scripts/build-lambda-package.sh (creates infra/.build/api_lambda).
+# If that directory is missing, `tofu validate/plan` fails with a "source_dir ... no such file" error.
 data "archive_file" "api" {
   type        = "zip"
-  source_dir  = "${path.module}/../api"
+  source_dir  = "${path.module}/.build/api_lambda"
   output_path = "${path.module}/api.zip"
 
   excludes = [
