@@ -131,7 +131,7 @@ data "aws_iam_policy_document" "deploy" {
     ]
   }
 
-  # Create/update IAM roles (e.g. 9host-acm-handler) — CI needs CreateRole, TagRole, AttachRolePolicy, PassRole
+  # Create/update IAM roles (e.g. 9host-api-lambda) — CI needs CreateRole, TagRole, AttachRolePolicy, PassRole
   statement {
     sid    = "IAMRole"
     effect = "Allow"
@@ -363,6 +363,25 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:PublishFunction",
       "cloudfront:DescribeFunction",
       "cloudfront:ListFunctions"
+    ]
+    resources = ["*"]
+  }
+
+  # T-06: 9host-site-hosts-kvs (CloudFront KeyValueStore) + its __preview_jwt_secret__ key
+  statement {
+    sid    = "CloudFrontKeyValueStore"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateKeyValueStore",
+      "cloudfront:DescribeKeyValueStore",
+      "cloudfront:UpdateKeyValueStore",
+      "cloudfront:DeleteKeyValueStore",
+      "cloudfront:ListKeyValueStores",
+      "cloudfront-keyvaluestore:DescribeKeyValueStore",
+      "cloudfront-keyvaluestore:GetKey",
+      "cloudfront-keyvaluestore:PutKey",
+      "cloudfront-keyvaluestore:DeleteKey",
+      "cloudfront-keyvaluestore:ListKeys"
     ]
     resources = ["*"]
   }

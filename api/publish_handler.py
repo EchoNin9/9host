@@ -126,6 +126,26 @@ def _build_snapshot(
     )
 
 
+def _active_custom_domains(table, tenant_slug: str, site_id: str) -> list[str]:
+    """ACTIVE custom domains (TENANT#{slug} / DOMAIN#{domain}) bound to this site, for HostMappingKVS."""
+    try:
+        kwargs = {
+            "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk)",
+            "ExpressionAttributeValues": {":pk": f"TENANT#{tenant_slug}", ":sk": "DOMAIN#"},
+        }
+        domains = []
+        while True:
+            resp = table.query(**kwargs)
+            for item in resp.get("Items", []):
+                if item.get("site_id") == site_id and (item.get("status") or "").upper() == "ACTIVE":
+                    domains.append(item["sk"][len("DOMAIN#"):])
+            if "LastEvaluatedKey" not in resp:
+                return domains
+            kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+    except BotoClientError:
+        return []  # host mapping is best-effort; never fail a publish already written to S3
+
+
 def _publish_site(
     table,
     s3_client,
@@ -148,8 +168,10 @@ def _publish_site(
     result = storage.publish(tenant_slug, site_id, bundle, published_at=now)
 
     site_slug = (site_item.get("slug") or "").strip()
-    if site_slug:
-        storage.sync_host_mapping(tenant_slug, site_id, [f"{site_slug}.{snapshot.base_domain}"])
+    hostnames = [f"{site_slug}.{snapshot.base_domain}"] if site_slug else []
+    hostnames += _active_custom_domains(table, tenant_slug, site_id)
+    if hostnames:
+        storage.sync_host_mapping(tenant_slug, site_id, hostnames)
 
     # Site metadata stays on SITE#{id} until T-09 migrates all site-metadata callers together.
     table.update_item(

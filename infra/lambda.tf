@@ -3,6 +3,12 @@
 # Packages api/ handlers, uses tenant middleware. Prefix: 9host.
 # ------------------------------------------------------------------------------
 
+# T-07: Cloudflare for SaaS API credentials secret (referenced by name; value is
+# written out-of-band, never by OpenTofu).
+locals {
+  cloudflare_secret_name = "9host-cloudflare"
+}
+
 data "archive_file" "api" {
   type        = "zip"
   source_dir  = "${path.module}/../api"
@@ -111,13 +117,24 @@ resource "aws_iam_role_policy" "api_lambda" {
         ]
       },
       {
-        Sid    = "ACM"
+        Sid    = "SiteHostsKVS"
         Effect = "Allow"
         Action = [
-          "acm:RequestCertificate",
-          "acm:DescribeCertificate"
+          "cloudfront-keyvaluestore:DescribeKeyValueStore",
+          "cloudfront-keyvaluestore:GetKey",
+          "cloudfront-keyvaluestore:PutKey",
+          "cloudfront-keyvaluestore:DeleteKey",
+          "cloudfront-keyvaluestore:ListKeys"
         ]
-        Resource = "*"
+        Resource = aws_cloudfront_key_value_store.site_hosts.arn
+      },
+      {
+        # T-07: Cloudflare for SaaS credentials (zone_id, api_token). Secret is created
+        # out-of-band (docs/UNATTENDED_ORCHESTRATION.md §5); "-*" matches the ARN suffix.
+        Sid      = "CloudflareSecret"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${local.cloudflare_secret_name}-*"
       }
     ]
   })
@@ -147,6 +164,8 @@ resource "aws_lambda_function" "api" {
       CLOUDNS_SECRET_ARN         = aws_secretsmanager_secret.cloudns.arn
       CLOUDNS_ZONE               = var.domains[0]
       CLOUDNS_CF_TARGET          = aws_cloudfront_distribution.sites.domain_name
+      SITE_HOSTS_KVS_ARN         = aws_cloudfront_key_value_store.site_hosts.arn
+      CLOUDFLARE_SECRET_ARN      = local.cloudflare_secret_name
     }
   }
 

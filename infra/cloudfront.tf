@@ -256,13 +256,32 @@ resource "aws_s3_bucket_policy" "frontend_production" {
 }
 
 # ------------------------------------------------------------------------------
-# Task 1.97: CloudFront Function — Host → tenant + site → S3 path rewrite
+# T-06: HostMappingKVS — hostname -> {"tenant","site_id"} (docs/SPEC.md §1B)
+# Host keys are written by the 9host-api Lambda (api/site_storage.py) on publish
+# and on custom-domain activation. "__preview_jwt_secret__" holds the draft
+# preview HS256 key (same value as the 9host-jwt-signing-key secret).
+# ------------------------------------------------------------------------------
+resource "aws_cloudfront_key_value_store" "site_hosts" {
+  name    = "9host-site-hosts-kvs"
+  comment = "9host HostMappingKVS: hostname -> {tenant, site_id}; preview JWT secret"
+}
+
+resource "aws_cloudfrontkeyvaluestore_key" "preview_jwt_secret" {
+  key_value_store_arn = aws_cloudfront_key_value_store.site_hosts.arn
+  key                 = "__preview_jwt_secret__"
+  value               = random_password.jwt_signing.result
+}
+
+# ------------------------------------------------------------------------------
+# Task 1.97 / T-06: CloudFront Function — Host/X-Forwarded-Host → KVS → S3 path rewrite
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_function" "site_content" {
   name    = "9host-site-content"
   runtime = "cloudfront-js-2.0"
-  comment = "Site content path rewrite: Host + /site/{site_id}/* → S3"
+  comment = "Site content: Host via 9host-site-hosts-kvs (or /site/{tenant}/{site_id}/*) → S3"
   publish = true
+
+  key_value_store_associations = [aws_cloudfront_key_value_store.site_hosts.arn]
 
   code = file("${path.module}/cf-site-content.js")
 }
@@ -273,8 +292,10 @@ resource "aws_cloudfront_function" "site_content" {
 resource "aws_cloudfront_function" "preview_content" {
   name    = "9host-preview-content"
   runtime = "cloudfront-js-2.0"
-  comment = "Draft preview: /preview?token=jwt → S3 draft/ path"
+  comment = "Draft preview: /preview?token=jwt (HS256 verified via KVS secret) → S3 draft/ path"
   publish = true
+
+  key_value_store_associations = [aws_cloudfront_key_value_store.site_hosts.arn]
 
   code = file("${path.module}/cf-preview-content.js")
 }

@@ -8,6 +8,10 @@ Layout in s3://9host-sites:
   {tenant}/{site_id}/draft/...                 draft preview (no versioning)
   {tenant}/default/... + {tenant}/default.json first published site of a tenant (legacy)
 
+HostMappingKVS (CloudFront KeyValueStore 9host-site-hosts-kvs, read by cf-site-content.js):
+  "<lowercase hostname>" -> '{"tenant":"<tenant_slug>","site_id":"<site_id>"}'
+  "__preview_jwt_secret__" -> HS256 key used by cf-preview-content.js (written by OpenTofu)
+
 S3SiteStorageAdapter and InMemorySiteStorage share all logic and differ only in five
 storage primitives, so tests of the in-memory adapter exercise the real flow.
 """
@@ -15,9 +19,12 @@ storage primitives, so tests of the in-memory adapter exercise the real flow.
 from __future__ import annotations
 
 import json
+import logging
+import os
 from datetime import datetime, timezone
 from typing import Protocol
 
+import boto3
 from botocore.exceptions import ClientError
 
 from site_compiler import CompiledSiteBundle
@@ -26,6 +33,98 @@ S3_SITES_BUCKET = "9host-sites"
 HTML_CACHE_CONTROL = "max-age=60, s-maxage=300"
 ASSET_CACHE_CONTROL = "max-age=31536000, immutable"
 DRAFT_CACHE_CONTROL = "no-cache, no-store, must-revalidate"
+
+KVS_ARN_ENV = "SITE_HOSTS_KVS_ARN"
+PREVIEW_JWT_SECRET_KEY = "__preview_jwt_secret__"
+_KVS_CONFLICT_CODES = ("ConflictException", "PreconditionFailed")
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# HostMappingKVS — CloudFront KeyValueStore writes (ETag optimistic concurrency).
+# All public functions are best-effort: they log and swallow failures so a KVS
+# outage never fails a publish/domain operation that already succeeded, and they
+# are a logged no-op when SITE_HOSTS_KVS_ARN is unset (local dev / tests).
+# ---------------------------------------------------------------------------
+
+_kvs_client = None
+
+
+def _get_kvs_client():
+    """Module-cached client. Tests replace this via monkeypatch.
+    NOTE: the KVS data-plane API is SigV4A-signed -> needs awscrt (botocore[crt]) at runtime."""
+    global _kvs_client
+    if _kvs_client is None:
+        _kvs_client = boto3.client("cloudfront-keyvaluestore", region_name="us-east-1")
+    return _kvs_client
+
+
+def normalize_hostname(hostname: str) -> str:
+    """Lowercase, strip whitespace / port / trailing dot — matches cf-site-content.js lookup keys."""
+    return (hostname or "").strip().lower().split(":")[0].rstrip(".")
+
+
+def _kvs_write(key: str, value: str | None) -> bool:
+    """PutKey (value given) or DeleteKey (value None) with the store's current ETag.
+    Retries once on an ETag conflict. Returns False when KVS is not configured."""
+    arn = (os.environ.get(KVS_ARN_ENV) or "").strip()
+    if not arn:
+        logger.info("%s unset; skipping KVS %s of %r", KVS_ARN_ENV, "put" if value is not None else "delete", key)
+        return False
+    client = _get_kvs_client()
+    for attempt in range(2):
+        etag = client.describe_key_value_store(KvsARN=arn)["ETag"]
+        try:
+            if value is not None:
+                client.put_key(KvsARN=arn, Key=key, Value=value, IfMatch=etag)
+            else:
+                client.delete_key(KvsARN=arn, Key=key, IfMatch=etag)
+            return True
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if value is None and code == "ResourceNotFoundException":
+                return True  # key already absent — delete is idempotent
+            if code in _KVS_CONFLICT_CODES and attempt == 0:
+                continue  # another writer bumped the ETag; re-describe and retry once
+            raise
+    return False  # pragma: no cover
+
+
+def put_host_mapping(hostname: str, tenant_slug: str, site_id: str) -> None:
+    """HostMappingKVS: lowercase hostname -> {"tenant", "site_id"} (SPEC §1B). Best-effort."""
+    key = normalize_hostname(hostname)
+    if not key or not tenant_slug or not site_id:
+        logger.warning("put_host_mapping: missing hostname/tenant/site_id (%r, %r, %r)", hostname, tenant_slug, site_id)
+        return
+    value = json.dumps({"tenant": tenant_slug, "site_id": site_id}, separators=(",", ":"))
+    try:
+        _kvs_write(key, value)
+    except Exception:
+        logger.exception("KVS put_host_mapping failed for %s -> %s/%s", key, tenant_slug, site_id)
+
+
+def delete_host_mapping(hostname: str) -> None:
+    """Remove a hostname from HostMappingKVS. Idempotent and best-effort."""
+    key = normalize_hostname(hostname)
+    if not key:
+        return
+    try:
+        _kvs_write(key, None)
+    except Exception:
+        logger.exception("KVS delete_host_mapping failed for %s", key)
+
+
+def put_preview_jwt_secret(secret: str) -> None:
+    """Write the draft-preview HS256 key read by cf-preview-content.js. OpenTofu already
+    manages this key (aws_cloudfrontkeyvaluestore_key.preview_jwt_secret); use this only
+    for out-of-band rotation of the 9host-jwt-signing-key secret."""
+    if not secret:
+        logger.warning("put_preview_jwt_secret: empty secret ignored")
+        return
+    try:
+        _kvs_write(PREVIEW_JWT_SECRET_KEY, secret)
+    except Exception:
+        logger.exception("KVS put_preview_jwt_secret failed")
 
 
 def _cache_control(path: str) -> str:
@@ -41,6 +140,7 @@ class SiteStoragePort(Protocol):
     def publish_draft(self, tenant_slug: str, site_id: str, bundle: CompiledSiteBundle) -> dict: ...
     def rollback(self, tenant_slug: str, site_id: str, version: int, now: str | None = None) -> dict | None: ...
     def sync_host_mapping(self, tenant_slug: str, site_id: str, hostnames: list[str]) -> None: ...
+    def remove_host_mapping(self, hostnames: list[str]) -> None: ...
 
 
 class _SiteStorageBase:
@@ -135,9 +235,14 @@ class _SiteStorageBase:
         return {"version": version, "rolled_back_at": now}
 
     def sync_host_mapping(self, tenant_slug: str, site_id: str, hostnames: list[str]) -> None:
-        """Seam for HostMappingKVS (host -> {"tenant", "site_id"}). No-op until T-06
-        implements the CloudFront KeyValueStore (9host-site-hosts-kvs) sync here."""
-        return None
+        """HostMappingKVS: map every hostname to {tenant, site_id}. Best-effort (never raises)."""
+        for hostname in hostnames:
+            put_host_mapping(hostname, tenant_slug, site_id)
+
+    def remove_host_mapping(self, hostnames: list[str]) -> None:
+        """Drop hostnames from HostMappingKVS (site deleted / slug changed / domain removed)."""
+        for hostname in hostnames:
+            delete_host_mapping(hostname)
 
 
 class S3SiteStorageAdapter(_SiteStorageBase):
@@ -192,6 +297,7 @@ class InMemorySiteStorage(_SiteStorageBase):
     def __init__(self):
         self.objects: dict[str, tuple[bytes, str, str | None]] = {}
         self.host_mappings: list[tuple[str, str, list[str]]] = []
+        self.removed_host_mappings: list[str] = []
 
     def _put(self, key, body, content_type, cache_control=None):
         self.objects[key] = (body, content_type, cache_control)
@@ -218,6 +324,9 @@ class InMemorySiteStorage(_SiteStorageBase):
 
     def sync_host_mapping(self, tenant_slug, site_id, hostnames):
         self.host_mappings.append((tenant_slug, site_id, list(hostnames)))
+
+    def remove_host_mapping(self, hostnames):
+        self.removed_host_mappings.extend(hostnames)
 
     def read(self, key: str) -> str | None:
         body = self._get(key)

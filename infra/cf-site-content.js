@@ -1,63 +1,64 @@
 /**
- * CloudFront Function: Site content path rewrite (Task 1.97, 1.108).
+ * CloudFront Function (cloudfront-js-2.0): EdgeHostRouter — public site path rewrite.
+ * docs/SPEC.md §3 Module 1C. KVS: 9host-site-hosts-kvs (HostMappingKVS).
  *
- * Path formats:
- *   /site/{site_id}/*     — tenant from Host (e.g. acme.echo9.net)
- *   /site/{tenant}/{site_id}/* — tenant from path (site-slug subdomains)
+ *   /site/{tenant}/{site_id}/...  (backward compatible)  -> /{tenant}/{site_id}/published/current/...
+ *   Host or X-Forwarded-Host (Cloudflare SaaS Worker) looked up in KVS:
+ *     "<host>" -> {"tenant","site_id"}                    -> /{tenant}/{site_id}/published/current/...
+ *   Unmapped hosts pass through unchanged.
  *
- * S3 key: {tenant}/{site_id}/published/current/{rest}
+ * Directories resolve to index.html; extensionless paths to {path}/index.html.
  */
-function handler(event) {
-  var request = event.request;
-  var uri = request.uri;
-  var headers = request.headers;
+import cf from 'cloudfront';
 
-  // Extract tenant from Host (e.g. acme.echo9.net → acme)
-  var hostObj = headers.host || {};
-  var host = (hostObj.value !== undefined && hostObj.value !== null) ? String(hostObj.value) : "";
-  var tenantFromHost = "";
-  var dot = host.indexOf(".");
-  if (dot > 0) {
-    tenantFromHost = host.substring(0, dot).toLowerCase();
-  }
+var kvsHandle = null;
+try {
+    kvsHandle = cf.kvs();
+} catch (e) {}
 
-  if (!uri.startsWith("/site/")) {
+function resolvePath(p) {
+    if (!p || p === '/') return '/index.html';
+    if (p.endsWith('/')) return p + 'index.html';
+    var last = p.substring(p.lastIndexOf('/') + 1);
+    if (last.indexOf('.') === -1) return p + '/index.html';
+    return p;
+}
+
+function headerValue(headers, name) {
+    var h = headers[name];
+    return (h && h.value) ? String(h.value) : '';
+}
+
+async function handler(event) {
+    var request = event.request;
+    var headers = request.headers || {};
+    var uri = request.uri || '/';
+
+    // 1. Backwards-compatible explicit /site/{tenant}/{site_id}/... path
+    var siteMatch = uri.match(/^\/site\/([a-z0-9_-]+)\/([a-zA-Z0-9_-]+)(\/.*)?$/);
+    if (siteMatch) {
+        request.uri = '/' + siteMatch[1] + '/' + siteMatch[2] + '/published/current' + resolvePath(siteMatch[3] || '/');
+        return request;
+    }
+
+    // 2. Effective hostname: X-Forwarded-Host (Cloudflare for SaaS Worker) or Host
+    var host = headerValue(headers, 'host').toLowerCase().split(':')[0];
+    var fwdHost = headerValue(headers, 'x-forwarded-host').toLowerCase().split(',')[0].trim().split(':')[0];
+    var effectiveHost = fwdHost || host;
+
+    // 3. Resolve {tenant, site_id} via CloudFront KeyValueStore (get() throws on a missing key)
+    if (kvsHandle && effectiveHost && effectiveHost.indexOf('__') !== 0) {
+        try {
+            var raw = await kvsHandle.get(effectiveHost);
+            if (raw) {
+                var mapping = JSON.parse(raw);
+                if (mapping && mapping.tenant && mapping.site_id) {
+                    request.uri = '/' + mapping.tenant + '/' + mapping.site_id + '/published/current' + resolvePath(uri);
+                    return request;
+                }
+            }
+        } catch (err) {}
+    }
+
     return request;
-  }
-  var rest = uri.substring(6); // after "/site/"
-  var trailingSlash = rest.endsWith("/");
-  var parts = rest.split("/").filter(Boolean);
-  var tenant = tenantFromHost;
-  var siteId;
-  var pathPart;
-
-  // /site/{tenant}/{site_id}/... — tenant in path (Task 1.108)
-  if (parts.length >= 2) {
-    tenant = parts[0].toLowerCase();
-    siteId = parts[1];
-    pathPart = parts.slice(2).join("/");
-  } else if (parts.length === 1) {
-    siteId = parts[0];
-    pathPart = "";
-  } else {
-    return request;
-  }
-
-  if (!siteId || !tenant) {
-    return request;
-  }
-
-  // Resolve path to S3 key: directories → index.html, files pass through
-  if (!pathPart) {
-    pathPart = "index.html";
-  } else if (trailingSlash) {
-    // URL ended with / (e.g. /about/) — treat as directory
-    pathPart = pathPart + "/index.html";
-  } else if (pathPart.indexOf(".") === -1) {
-    // No file extension (e.g. /about) — treat as directory
-    pathPart = pathPart + "/index.html";
-  }
-
-  request.uri = "/" + tenant + "/" + siteId + "/published/current/" + pathPart;
-  return request;
 }
