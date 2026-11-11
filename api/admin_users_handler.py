@@ -43,6 +43,17 @@ def _require_superadmin(event: dict) -> tuple[str | None, dict | None]:
     return sub, None
 
 
+def _query_all_users(table) -> list[dict]:
+    """All USER#/TUSER# items across tenants via GSI byEntity (superadmin bypass; no scan)."""
+    params = query_all_users_by_entity()
+    resp = table.query(**params)
+    items = resp.get("Items", [])
+    while "LastEvaluatedKey" in resp:
+        resp = table.query(**params, ExclusiveStartKey=resp["LastEvaluatedKey"])
+        items.extend(resp.get("Items", []))
+    return items
+
+
 def admin_users_handler(event: dict, context: dict) -> dict:
     """
     GET /api/admin/users — list all users across tenants.
@@ -62,37 +73,7 @@ def admin_users_handler(event: dict, context: dict) -> dict:
     users_by_tenant = {}
     cognito_subs_in_db = set()
 
-    # Try GSI byEntity first; fallback to scan
-    try:
-        params = query_all_users_by_entity()
-        resp = table.query(**params)
-        items = resp.get("Items", [])
-        while "LastEvaluatedKey" in resp:
-            params["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
-            resp = table.query(**params)
-            items.extend(resp.get("Items", []))
-    except Exception:
-        # Fallback: scan for USER# and TUSER# items
-        resp = table.scan(
-            FilterExpression="begins_with(pk, :pk) AND (begins_with(sk, :u) OR begins_with(sk, :tu))",
-            ExpressionAttributeValues={
-                ":pk": "TENANT#",
-                ":u": "USER#",
-                ":tu": "TUSER#",
-            },
-        )
-        items = resp.get("Items", [])
-        while "LastEvaluatedKey" in resp:
-            resp = table.scan(
-                FilterExpression="begins_with(pk, :pk) AND (begins_with(sk, :u) OR begins_with(sk, :tu))",
-                ExpressionAttributeValues={
-                    ":pk": "TENANT#",
-                    ":u": "USER#",
-                    ":tu": "TUSER#",
-                },
-                ExclusiveStartKey=resp["LastEvaluatedKey"],
-            )
-            items.extend(resp.get("Items", []))
+    items = _query_all_users(table)
 
     for item in items:
         pk = item.get("pk", "")
@@ -177,7 +158,8 @@ def admin_stats_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Count tenants
+    # Count tenants. Scan kept: no GSI indexes tenant items (missing an "ENTITY#TENANT"
+    # byEntity partition); superadmin cross-tenant bypass.
     tenant_resp = table.scan(
         FilterExpression="begins_with(pk, :pk) AND sk = :sk",
         ExpressionAttributeValues={":pk": "TENANT#", ":sk": "TENANT"},
@@ -194,36 +176,11 @@ def admin_stats_handler(event: dict, context: dict) -> dict:
     # Count users (USER# and TUSER#)
     total_cognito = 0
     total_tenant_users = 0
-    try:
-        params = query_all_users_by_entity()
-        resp = table.query(**params)
-        for item in resp.get("Items", []):
-            if item.get("sk", "").startswith("TUSER#"):
-                total_tenant_users += 1
-            elif item.get("sk", "").endswith("#PROFILE"):
-                total_cognito += 1
-        while "LastEvaluatedKey" in resp:
-            params["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
-            resp = table.query(**params)
-            for item in resp.get("Items", []):
-                if item.get("sk", "").startswith("TUSER#"):
-                    total_tenant_users += 1
-                elif item.get("sk", "").endswith("#PROFILE"):
-                    total_cognito += 1
-    except Exception:
-        resp = table.scan(
-            FilterExpression="begins_with(pk, :pk) AND (begins_with(sk, :u) OR begins_with(sk, :tu))",
-            ExpressionAttributeValues={
-                ":pk": "TENANT#",
-                ":u": "USER#",
-                ":tu": "TUSER#",
-            },
-        )
-        for item in resp.get("Items", []):
-            if item.get("sk", "").startswith("TUSER#"):
-                total_tenant_users += 1
-            elif item.get("sk", "").endswith("#PROFILE"):
-                total_cognito += 1
+    for item in _query_all_users(table):
+        if item.get("sk", "").startswith("TUSER#"):
+            total_tenant_users += 1
+        elif item.get("sk", "").endswith("#PROFILE"):
+            total_cognito += 1
 
     total_users = total_cognito + total_tenant_users
 

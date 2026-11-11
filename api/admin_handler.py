@@ -212,12 +212,17 @@ def list_all_tenants_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Scan for tenant items (pk begins_with TENANT#, sk = TENANT)
-    resp = table.scan(
-        FilterExpression="begins_with(pk, :prefix) AND sk = :sk",
-        ExpressionAttributeValues={":prefix": "TENANT#", ":sk": "TENANT"},
-    )
+    # Superadmin cross-tenant bypass. Scan kept: no GSI indexes tenant items (missing an
+    # "ENTITY#TENANT" byEntity partition); byEntity only covers USER/TUSER rows.
+    scan_kwargs = {
+        "FilterExpression": "begins_with(pk, :prefix) AND sk = :sk",
+        "ExpressionAttributeValues": {":prefix": "TENANT#", ":sk": "TENANT"},
+    }
+    resp = table.scan(**scan_kwargs)
     items = resp.get("Items", [])
+    while "LastEvaluatedKey" in resp:
+        resp = table.scan(**scan_kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
+        items.extend(resp.get("Items", []))
 
     tenants = []
     for item in items:

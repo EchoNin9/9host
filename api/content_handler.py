@@ -177,13 +177,11 @@ def _increment_storage(table, tenant_slug: str, size_bytes: int) -> None:
 
 
 def _decrement_storage(table, tenant_slug: str, size_bytes: int) -> None:
-    """Subtract size_bytes from tenant storage_used_bytes (floor at 0)."""
-    key = get_tenant_item(tenant_slug)
-    table.update_item(
-        Key=key,
-        UpdateExpression="SET storage_used_bytes = greatest(if_not_exists(storage_used_bytes, :zero) - :delta, :zero)",
-        ExpressionAttributeValues={":delta": size_bytes, ":zero": 0},
-    )
+    """Subtract size_bytes from tenant storage_used_bytes (floor at 0). Bug #4: delegates to
+    TenantStore instead of the invalid DynamoDB greatest() expression."""
+    from tenant_store import DynamoDBTenantStore
+
+    DynamoDBTenantStore(table).adjust_storage_bytes(tenant_slug, -int(size_bytes))
 
 
 def _apply_content_fields(item: dict, body: dict, fields: tuple[str, ...]) -> None:

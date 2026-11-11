@@ -25,7 +25,17 @@ def sk_user_permissions(sub: str) -> str:
 
 
 def sk_site(site_id: str) -> str:
+    """Legacy site metadata SK. Collides with content prefix SITE#{id}#... (Bug #3)."""
     return f"SITE#{site_id}"
+
+
+# Bug #3: site metadata lives at SITE_META#{id} (mirrored to legacy SITE#{id} during
+# expand-contract). "SITE_META#" never prefixes content rows, so listing is O(sites).
+SITE_META_PREFIX = "SITE_META#"
+
+
+def sk_site_meta(site_id: str) -> str:
+    return f"{SITE_META_PREFIX}{site_id}"
 
 
 def sk_domain(domain: str) -> str:
@@ -256,8 +266,10 @@ def query_users_in_tenant(tenant_slug: str) -> dict[str, Any]:
 
 
 def query_sites_in_tenant(tenant_slug: str) -> dict[str, Any]:
-    """Query params: list sites in tenant. Excludes content items (PAGE, POST, EVENT, MEDIA).
-    Note: FilterExpression cannot use pk/sk; we filter in application code instead."""
+    """LEGACY query params: reads SITE#{id} *and* every SITE#{id}#PAGE/POST/EVENT/MEDIA row
+    (Bug #3); callers must drop content rows in application code. Kept only for handlers that
+    still write sites solely to SITE#{id}; use tenant_store.TenantStore.list_sites instead
+    (SITE_META# query + lazy legacy backfill). Removed once handlers migrate (T-09)."""
     return {
         "KeyConditionExpression": "pk = :pk AND begins_with(sk, :sk_prefix)",
         "ExpressionAttributeValues": {

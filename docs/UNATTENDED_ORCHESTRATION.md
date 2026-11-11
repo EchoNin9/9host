@@ -116,7 +116,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Acceptance Criteria:**
   - `pytest api/tests/test_request_context.py` passes 100% (testing Cognito token, `TUSER` token, Superadmin impersonation role override, unauthorized rejection, and 500 stack-trace scrubbing).
 
-### `T-03`: Deep `TenantStore` & Fix `SITE#` Scan + Media Delete Crash (`[TODO]`)
+### `T-03`: Deep `TenantStore` & Fix `SITE#` Scan + Media Delete Crash (`[DONE]`)
 - **Agent:** `agent1`
 - **Blocked by:** `T-01`
 - **Scope:**
