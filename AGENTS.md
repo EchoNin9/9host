@@ -43,10 +43,14 @@ Before starting work, read:
 
 **Not deployed.** Nothing has been pushed or applied. Follow `docs/UNATTENDED_ORCHESTRATION.md` §6 before pushing `develop` (push triggers `tofu apply`).
 
-Known follow-ups (accepted at the T-12 review gate):
-- Handlers still on legacy `auth_helpers`: billing, analytics, templates, validate-slug, `/api/tenant`, other `admin_*`.
-- `advanced_analytics` backend gate ignores `module_overrides`.
-- CI deploy role KVS statement uses `Resource = "*"`; CI runs no pytest/vitest/edge tests.
-- Publish/rollback site-metadata writes are read-then-write (not atomic); site delete leaves S3 objects.
-- `infra/api.zip` is still tracked in git; sanitizer keeps `target="_blank"` without `rel="noopener"`.
-- Edge functions and the Linux Lambda bundle are only tested locally with stubs, never on the real runtimes.
+## Follow-On Tickets (`docs/UNATTENDED_ORCHESTRATION.md` §7)
+
+Full scope, files, and acceptance criteria for each are in runbook §7. `T-13`–`T-18` are code-only and independent of the deploy; `T-19` needs the §6 cutover done first. Commit locally only — do not push without the §6 cutover.
+
+- [ ] `T-13`: Migrate remaining legacy-auth handlers to `RequestContext` & delete `auth_helpers`/`middleware` auth path [agent1]
+- [ ] `T-14`: Atomic site-metadata writes, S3 cleanup on site delete, migration marker on tenant create [agent1]
+- [ ] `T-15`: Verify & enforce custom `ROLE` permissions server-side [agent1]
+- [ ] `T-16`: CI test gate, deploy-role KVS scoping, untrack `infra/api.zip`, `tofu fmt` drift [agent1]
+- [ ] `T-17`: `byEntity` index entries for tenants/domains to replace superadmin scans [agent1]
+- [ ] `T-18`: Small hardening (sanitizer `rel`, `X-Forwarded-Host` trust, Cloudflare poll throttle, admin console polish) [agent1/agent2]
+- [ ] `T-19`: Post-deploy runtime verification (edge functions, Lambda bundle, Cloudflare, browser) [all] — blocked by §6

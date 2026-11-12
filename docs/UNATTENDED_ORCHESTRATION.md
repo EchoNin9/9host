@@ -15,7 +15,8 @@
   - Backend: `cd /Users/adam/Github/EchoNin9/9host/api && ../.venv/bin/pytest -q` -> **38 passed**
   - Frontend tests: `npm --prefix /Users/adam/Github/EchoNin9/9host/frontend test -- --run` -> **11 passed**
   - Frontend build: `npm --prefix /Users/adam/Github/EchoNin9/9host/frontend run build` -> **0 errors**
-- **Remaining Tickets:** `T-02`, `T-03`, `T-04`, `T-06`, `T-07`, `T-08`, `T-09`, `T-10`, `T-11`, `T-12`.
+- **UPDATE (commit `88934ff`): `T-01`–`T-12` are ALL DONE and committed on `develop`. Nothing is pushed or applied.** The baseline above is historical. Current baseline: backend **215 passed**, frontend **28 passed**, build 0 errors, edge tests `node --test infra/tests/*.test.mjs` **14 passed**, `tofu -chdir=infra validate` valid (run `scripts/build-lambda-package.sh` first if `infra/.build/api_lambda/` is missing).
+- **Remaining work:** the deploy cutover in §6 (human-driven) and the follow-on tickets `T-13`–`T-19` in §7. §1–§3 below are the historical plan — do not re-execute them.
 
 ---
 
@@ -294,3 +295,58 @@ Because Cloudflare account configuration happens in your Cloudflare dashboard, c
 8. **Existing ACM-era custom domains** re-register with Cloudflare on their next status check and stay `PENDING_VALIDATION` until the tenant points `CNAME -> proxy.echo9.net`; delete orphaned ACM certs by hand.
 
 Known spec deviations: there is no `aws_cloudfront_distribution.frontend` (the SPA is `staging` + `production`), no `/api/*` CloudFront behaviour (SPA calls API Gateway via `VITE_API_URL`), and `cf-preview-content.js` uses `crypto.createHmac` (CloudFront Functions have no `crypto.subtle`).
+
+---
+
+## 7. Follow-On Tickets (`T-13` – `T-19`)
+
+Accepted at the `T-12` review gate. Same rules as before: commit locally as `agent{N} task {T-XX}: ...`, mark `[x] ... — DONE` in `AGENTS.md` and `([DONE])` here, **never push** (push runs `tofu apply`; see §6), no `tofu apply`, no AWS/ClouDNS/Cloudflare mutations. Verify every ticket with the five checks in §0. `T-13`–`T-18` do not depend on each other or on the deploy, except where noted.
+
+### `T-13`: Migrate Remaining Legacy-Auth Handlers to `RequestContext` (`[TODO]`)
+- **Why:** `T-09` migrated only the content/sites/users/domains handlers. The rest still use `auth_helpers.require_tenant_auth` + `middleware.with_tenant`, which is how a `TUSER` role-check gap slipped into `tenant_templates_handler.py` (patched in `T-12`, not migrated).
+- **Scope:** convert to the `handler(ctx)` signature used by `api/sites_handler.py` (run under `run_with_context` in `api/handler.py`): `api/billing_handler.py`, `api/analytics_handler.py`, `api/tenant_templates_handler.py`, `api/validate_slug_handler.py`, `api/handler_example.py` (serves `GET/PUT/PATCH /api/tenant`; rename to `tenant_handler.py`), `api/tenants_handler.py`, `api/admin_handler.py`, `api/admin_users_handler.py`, `api/admin_templates_handler.py`. Use `ctx.require_tenant_member(...)`, `ctx.require_superadmin()`, `ctx.require_feature(...)` and `TenantStore`.
+  - `analytics_handler.py` must gate with `ctx.require_feature("advanced_analytics")` so `module_overrides` are honoured (today it checks `ANALYTICS_TIERS` only).
+  - Then delete what is dead: `auth_helpers.require_tenant_auth` / `is_superadmin` / `require_tenant_admin_or_manager`, `middleware.with_tenant`, and the per-`sub` verified-superadmin registry in `api/request_context.py` (added in `T-12` only to serve legacy `is_superadmin`).
+- **Acceptance:** `grep -rn "require_tenant_auth\|with_tenant\|is_superadmin(" api --include='*.py' --exclude-dir=tests` returns nothing outside `request_context.py`; no route changes its path, response shape or status code; new tests: `TUSER` `member` gets 403 on every admin/manager-only route in the migrated handlers, analytics respects a `module_overrides` off-switch, superadmin routes reject non-superadmins; `grep -rn "admin_list_groups_for_user\|admin_get_user" api --exclude-dir=tests` shows only the JWKS-unavailable fallback and tenant creation.
+
+### `T-14`: Atomic Site-Metadata Writes, S3 Cleanup, Migration Marker (`[TODO]`)
+- **Why:** `publish_handler._update_site` and rollback do read-then-`put_site`, so two concurrent writes to one site can lose an update. Site delete leaves `s3://9host-sites/{tenant}/{site_id}/`. `TenantStore.list_sites` reads the legacy `SITE#` range once per tenant until its `MIGRATION#SITE_META` marker exists — including for brand-new tenants.
+- **Scope:** add `TenantStore.update_site(tenant_slug, site_id, updates)` to the Protocol and both implementations in `api/tenant_store.py`, using `update_item` on the `SITE_META#{id}` row and its legacy `SITE#{id}` mirror (one `transact_write_items`); use it from `api/publish_handler.py`, `api/rollback_handler.py`, `api/draft_handler.py`, `api/upload_handler.py`. Add a prefix-delete to `SiteStoragePort` (`api/site_storage.py`, both adapters) and call it from site delete in `api/sites_handler.py` and from `delete_tenant_cascade`. Write the `MIGRATION#SITE_META` marker when a tenant is created (`api/tenants_handler.py`, `api/admin_handler.py`).
+- **Acceptance:** tests in `api/tests/test_tenant_store.py` (both backends) prove an `update_site` of one field does not clobber a concurrent change to another and keeps both rows equal; site delete empties the in-memory storage prefix; a new tenant's first `list_sites` issues no `SITE#` query.
+
+### `T-15`: Verify & Enforce Custom `ROLE` Permissions Server-Side (`[TODO]`)
+- **Why (UNVERIFIED by the reviewer — confirm first):** `CONTENT_ROLES` in `api/content_handler.py` is hard-coded to built-in roles, so a `TUSER` with a tenant-defined `ROLE#{name}` may never be able to write content, and the permissions stored via `api/roles_handler.py` / `api/users_handler.py` (`MODULE_KEYS`) may only be enforced in the UI.
+- **Scope:** first write a failing test in `api/tests/test_handlers_integration.py` that shows the actual behaviour. If confirmed, resolve custom-role permissions once in `RequestContext` (load `ROLE#{name}` from `TenantStore` only when `effective_role` is not a built-in role) and expose one check used by `content_handler`, `upload_handler`, `publish_handler`. If not confirmed, record the finding here and close.
+- **Acceptance:** custom role with content permission can create/edit content; without it gets 403; built-in role behaviour unchanged.
+
+### `T-16`: CI Test Gate & Infra Hygiene (`[TODO]`)
+- **Scope:**
+  - `.github/workflows/dev.yml` and `main.yml`: run `cd api && pytest -q` (install `api/requirements-dev.txt`), `npm --prefix frontend test -- --run`, `npm --prefix frontend run build`, and `node --test infra/tests/*.test.mjs` **before** any `tofu` step; a failure must stop the apply.
+  - `infra/iam.tf` statement `CloudFrontKeyValueStore` on the deploy role: scope `cloudfront-keyvaluestore:*` actions to the `9host-site-hosts-kvs` ARN (keep `"*"` only for the `cloudfront:*KeyValueStore*` management actions that do not support resource scoping, with a comment).
+  - `git rm --cached infra/api.zip` and add it to `.gitignore` (stale build artifact; the bundle now comes from `infra/.build/api_lambda/`).
+  - `tofu -chdir=infra fmt` on `api_gateway.tf`, `iam.tf`, `secrets.tf` (pre-existing drift, whitespace only).
+- **Acceptance:** `tofu -chdir=infra validate` and `tofu -chdir=infra fmt -check` both clean; workflows are valid YAML with the test steps ordered before `tofu init`.
+
+### `T-17`: Index Tenants & Domains to Replace Superadmin Scans (`[TODO]`)
+- **Why:** three paginated full-table scans remain, each commented as a superadmin bypass: `admin_handler.list_all_tenants_handler`, `admin_users_handler.admin_stats_handler` (tenant count), `tenant_store.list_all_domains` (feeds `GET /api/admin/edge-kvs`).
+- **Scope:** write `ENTITY#TENANT` / `ENTITY#DOMAIN` keys for the existing `byEntity` GSI (check attribute names in `infra/dynamodb.tf`; `ENTITY#USER` is the existing pattern) on tenant and domain rows in `api/tenant_store.py`, with lazy backfill on read like the `SITE_META#` migration; switch the three call sites to GSI queries. No new GSI, no `infra/` change expected.
+- **Acceptance:** tests assert no `scan` call on those three paths after backfill and that pre-existing rows without the new keys still appear.
+
+### `T-18`: Small Hardening & Polish (`[TODO]`)
+- `api/html_sanitizer.py`: add `rel="noopener noreferrer"` to any `<a target="_blank">` (test in `api/tests/test_html_sanitizer.py`).
+- `X-Forwarded-Host` trust: `infra/cf-site-content.js` accepts it from any client (impact today: one public site can be requested via another hostname; no cache poisoning). Have `infra/cloudflare-worker/custom-domain-proxy.js` send a shared-secret header (Worker secret + a `__proxy_secret__` KVS key, never returned by `/api/admin/edge-kvs`, which already hides `__` keys) and ignore `X-Forwarded-Host` without it. Extend `infra/tests/edge-functions.test.mjs`.
+- `api/domains_handler.py`: list/get call Cloudflare once per non-`ACTIVE` domain per request while the UI polls every 10 s; skip the refresh if the row was checked in the last 30 s (store `last_checked_at`).
+- `infra/cloudfront.tf`: the `production` Admin SPA distribution has no `/media/*` behaviour while `staging` does — make them match.
+- Frontend: reused tenant pages inside `frontend/src/pages/administer-tenant.tsx` are double-padded with duplicate `<h1>`s; ESLint flags `react-refresh/only-export-components` in `frontend/src/context/tenant-scope.tsx`.
+- **Acceptance:** each item has a test where one is practical; all five §0 checks green.
+
+### `T-19`: Post-Deploy Runtime Verification (`[TODO]`, blocked by §6)
+- **Why:** these were only ever exercised locally with stubs.
+- **Scope (read-only checks against the deployed stack; report, do not fix in place):**
+  - `cf-preview-content.js` on real `cloudfront-js-2.0`: a fresh draft-preview link loads; a tampered token gets 403 (confirms `Buffer` + `crypto.createHmac` exist in the runtime and the derived key `sha256("<jwt secret>:9host-preview-v1")` matches `api/draft_handler.py`).
+  - `cf-site-content.js`: a published `{slug}.echo9.net/` serves HTML with root-relative links; an unmapped hostname and `/{tenant}/{site_id}/draft/index.html` return 404.
+  - Lambda bundle: `GET /api/health` works; CloudWatch shows no `MissingDependencyException` (awscrt/SigV4A for KVS writes) and no "falling back to get_user" warning (cryptography/RS256 JWKS).
+  - Publish a site and confirm its hostname appears in `GET /api/admin/edge-kvs`.
+  - Cloudflare for SaaS: add a test custom domain, reach `ACTIVE`, load it over HTTPS.
+  - Browser smoke on `app.echo9.net`: Cognito login, `TUSER` site-login (manager can edit), superadmin console incl. Edge & Domains panel.
+- **Acceptance:** a short pass/fail table appended to this section; each failure becomes its own ticket.
