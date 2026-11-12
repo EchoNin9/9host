@@ -24,7 +24,7 @@
 
 ### User Stories
 - **US-01 (Subdomain Site Viewing at `/`):** As a site visitor navigating to `https://<site-slug>.echo9.net/`, I immediately receive the static HTML of the site at `/` (with clean `/`, `/blog/`, `/events/`, `/media/...` links) in $<10\text{ ms}$ from CloudFront + S3 without loading the React Admin SPA or invoking Lambda/DynamoDB.
-- **US-02 (Landing Page at `(www.)echo9.net`):** As a visitor to `https://echo9.net` or `https://www.echo9.net`, I see the 9host landing page instead of redirecting to `tools.e9.cx`.
+- **US-02 (Landing Page at `(www.)echo9.net`):** As a visitor to `https://echo9.net` or `https://www.echo9.net`, I see the 9host landing page instead of redirecting to `tools.e9.cx`. **Decision (owner, 2026-11-11): `(www.)echo9.net` is its own website, not a 9host tenant site.** It is hosted outside the tenant system (on `E164B9WJ8ALT9F` or a dedicated distribution and bucket) and is never mapped in `HostMappingKVS`; `serve_landing_domain` stays `false` and `landing_site` stays `null`.
 - **US-03 (Admin SPA on `app.echo9.net` / `stage.echo9.net`):** As a Tenant Admin, Superadmin, or `TUSER` collaborator, I log into `https://app.echo9.net` (production) or `https://stage.echo9.net` (staging) to manage sites, content, domains, and users.
 - **US-04 (Custom Domains via Cloudflare for SaaS — Option B2):** As a Tenant Admin adding `myband.com` from ClouDNS or any registrar, I add a single `CNAME -> proxy.echonin9.com` (and TXT validation record if apex). Cloudflare automatically issues the SSL certificate and routes traffic through the fallback Worker to my 9host site at `https://myband.com/`.
 - **US-05 (Hybrid Cognito + `TUSER` Auth & Impersonation):** As a Tenant Admin authenticated via AWS Cognito, I can manage non-Cognito `TUSER` collaborators, custom `ROLE`s, and `GROUP`s; as a Superadmin impersonating a tenant, I can create, edit, and delete any site or content item without 403 errors.
@@ -53,7 +53,7 @@
 - Keys are lowercase hostnames:
   - Subdomain: `"jinks1.echo9.net"` -> `'{"tenant":"echo9","site_id":"a1b2c3d4"}'`
   - Custom domain: `"myband.com"` -> `'{"tenant":"echo9","site_id":"a1b2c3d4"}'`
-  - Bare landing domain: `"echo9.net"` / `"www.echo9.net"` -> `'{"tenant":"echo9","site_id":"<landing_site_id>"}'`
+  - ~~Bare landing domain: `"echo9.net"` / `"www.echo9.net"` -> `'{"tenant":"echo9","site_id":"<landing_site_id>"}'`~~ Superseded: the landing site is not in the KVS (see US-02).
 
 #### 1C. `infra/cf-site-content.js` (`cloudfront-js-2.0`)
 ```javascript
