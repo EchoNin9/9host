@@ -166,10 +166,10 @@ Each step is one PR, `agent{N} task T-31x: …`.
 | **T-31a** spike | Branch-only: add `@puckeditor/core` (pin the exact 0.23.x), render one `RichText` block with our TipTap field on React 19.2, lazy-load the route, record `vite build` chunk sizes. Go/no-go report. | Manual + build size numbers |
 | **T-31b** block core | `api/blocks/` (registry, validators, renderers, `link_href`, `rewrite_internal_hrefs`), `render_doc`, legacy wrap, `compile_site` integration behind flag, `blocks_css()` in every template | pytest goldens per block × live/draft; **byte-identical legacy bundle** for all existing compiler fixtures; AST purity test; XSS corpus through every `richtext`/`text`/`link` prop |
 | **T-31c** save path | `doc` in `content_handler.py` (validate, sanitize, size cap, dual-write `body`), sanitize-on-save for post `body`, `site.editor` flag, `_home` reserved path | Handler tests with `InMemoryTenantStore`: 400 paths, sanitized-on-store, dual-write, cross-tenant `media_id` ignored |
-| **T-31d** editor UI | `frontend/src/editor/` Puck config + React blocks mirroring Python, iframe canvas loading template CSS, page editor route behind `VITE_ENABLE_BLOCK_EDITOR` + `site.editor`, link and media pickers | Vitest: each block renders from golden JSON and the normalized DOM matches the golden HTML; `npm run build` |
+| **T-31d** editor UI | Template picker for new/existing sites is a full-page gallery with rendered previews (no side-slide `Sheet`/drawer); `frontend/src/editor/` Puck config + React blocks mirroring Python, iframe canvas loading template CSS, page editor route behind `VITE_ENABLE_BLOCK_EDITOR` + `site.editor`, link and media pickers | Vitest: each block renders from golden JSON and the normalized DOM matches the golden HTML; `npm run build` |
 | **T-31e** preview + home | Puck header Save/Preview wiring, `_home` editing, rich-text internal-link picker | pytest draft href rewrite; manual preview on stage |
 | **T-32a** template data | Version items, `TenantStore` template methods, admin handlers on store, preview endpoint, `seed_templates.py` → `V0001` | pytest: versioning, immutability, token validation, seed idempotency, superadmin-only |
-| **T-32b** template admin UI | `/admin/templates/:slug/edit`: tokens form, preset editing with the shared Puck config, allowed blocks, versions, sandboxed preview | Vitest form/token validation; build |
+| **T-32b** template admin UI | Remove the side-slide `Sheet` editor (name/description/tier + raw JSON preview) from `admin-templates.tsx`; editing is the full-page `/admin/templates/:slug/edit`: tokens form, preset editing with the shared Puck config, allowed blocks, versions, sandboxed preview | Vitest form/token validation; build |
 | **T-31f** cleanup | `backfill_page_docs.py` + CI step, flip default to `blocks`, later drop the dual-write and legacy branch | Backfill dry-run test; full suite |
 
 Run all four CLAUDE.md suites on every step. `node --test infra/tests/*.test.mjs` should stay green with no edge changes.
@@ -210,3 +210,5 @@ Run all four CLAUDE.md suites on every step. `node --test infra/tests/*.test.mjs
 7. **Embeds**: in scope for v1 (provider allowlist). Contact form: out.
 8. **Tier gating**: yes, some blocks Pro+, but deferred to `T-34`; v1 goal is working templates with no block gating.
 9. **Rollout**: all sites at once (all are owner-owned). The per-site opt-in flag stays only as a rollback switch; T-31f backfill runs right after T-31e.
+
+**UX rule (owner, 2026-11-12):** no side-slide sheet/drawer for template editing or template picking. Both are full-page routes with visual previews; raw JSON is never shown to users.
