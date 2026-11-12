@@ -18,6 +18,8 @@
 - **Auth:** Hybrid Cognito User Pool (`USER#{sub}` for Tenant Admins / Superadmins) + DynamoDB `TUSER` / `ROLE` / `GROUP` entities unified inside `RequestContext`.
 - **Frontend:** React + Vite + TypeScript + Tailwind CSS + Shadcn/UI.
 
+> **Next work starts here:** [`docs/RUNBOOK_POST_CUTOVER.md`](docs/RUNBOOK_POST_CUTOVER.md) (post-cutover tasks A–F, guardrails, live resource IDs).
+
 ## Architecture & Unattended Execution Documents
 
 Before starting work, read:
