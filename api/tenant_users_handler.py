@@ -1,5 +1,5 @@
 """
-Tenant users API — non-Cognito TenantUser (TUSER) CRUD (Task 1.46). Admin/manager only.
+Tenant users API — non-Cognito TenantUser (TUSER) CRUD (Task 1.46). Admin/manager, or a custom role with "users" (T-23).
 
 GET    /api/tenant/tusers              list
 POST   /api/tenant/tusers              create { username, password, display_name, role }
@@ -20,6 +20,7 @@ USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z
 BASE_PATH = "/api/tenant/tusers"
 MANAGE_ROLES = ("admin", "manager")
 ROLE_ERROR = "role must be manager, member, or an existing custom role."
+CUSTOM_ASSIGNABLE = ("editor", "member")  # T-23: all a custom-role caller may assign
 
 
 def _tuser_out(t: dict) -> dict:
@@ -68,7 +69,10 @@ def create_tuser(store, tenant_slug: str, body: dict) -> tuple[int, dict]:
 
 
 def tenant_users_handler(ctx: RequestContext) -> dict:
-    tenant_slug, _ = ctx.require_tenant_member(MANAGE_ROLES)
+    tenant_slug, caller_role = ctx.require_permission("users", MANAGE_ROLES)
+    body = ctx.json_body() if ctx.method in ("POST", "PUT") else {}
+    if caller_role not in MANAGE_ROLES and "role" in body and (body.get("role") or "").lower() not in CUSTOM_ASSIGNABLE:
+        return respond(403, {"error": "Custom roles may only assign: editor, member."})
     store = DynamoDBTenantStore()
     method = ctx.method
     parts = [p for p in ctx.path[len(BASE_PATH):].split("/") if p]
@@ -76,7 +80,7 @@ def tenant_users_handler(ctx: RequestContext) -> dict:
     if not parts and method == "GET":
         return respond(200, {"users": [_tuser_out(t) for t in store.list_tusers(tenant_slug)]})
     if not parts and method == "POST":
-        status, result = create_tuser(store, tenant_slug, ctx.json_body())
+        status, result = create_tuser(store, tenant_slug, body)
         return respond(status, {"user": _tuser_out(result)} if status == 201 else result)
     if len(parts) != 1 or method not in ("PUT", "DELETE"):
         return respond(405, {"error": "Method not allowed."})
@@ -89,7 +93,6 @@ def tenant_users_handler(ctx: RequestContext) -> dict:
         store.delete_tuser(tenant_slug, username)
         return respond(204)
 
-    body = ctx.json_body()
     if "role" in body:
         role = (body.get("role") or "").lower()
         if not _valid_role(store, tenant_slug, role):

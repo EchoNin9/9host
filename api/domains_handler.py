@@ -133,7 +133,7 @@ def domains_handler(ctx: RequestContext) -> dict:
 
     if method not in ("POST", "DELETE"):
         return respond(405, {"error": "Method not allowed."})
-    ctx.require_tenant_member(MANAGE_ROLES)
+    ctx.require_permission("domains", MANAGE_ROLES)
     if method == "POST" and not domain:
         return _create_domain(store, tenant_slug, ctx.json_body())
     item = store.get_domain(tenant_slug, domain) if domain else None

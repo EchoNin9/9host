@@ -203,7 +203,7 @@ def patch_tenant_handler(ctx: RequestContext) -> dict:
     PATCH /api/tenant — update module_overrides (Task 2.22). Requires admin/manager.
     Body: { "module_overrides": { "custom_domains": bool, "advanced_analytics": bool } }.
     """
-    tenant_slug, _ = ctx.require_tenant_member(("admin", "manager"))
+    tenant_slug, _ = ctx.require_permission("settings", ("admin", "manager"))
     table = DynamoDBTenantStore().table
 
     body = _parse_body(ctx.event) or {}
