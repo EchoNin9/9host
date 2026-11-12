@@ -1,7 +1,7 @@
 """
 Superadmin API — global user list and stats (Task 1.48).
 
-GET /api/admin/users — list all users across tenants, grouped by tenant, orphaned Cognito users
+GET /api/admin/users — list platform admins, all users across tenants grouped by tenant, orphaned Cognito users
 GET /api/admin/stats — platform stats: total_users, total_tenants, etc.
 """
 
@@ -37,7 +37,9 @@ def _query_all_users(table) -> list[dict]:
 def admin_users_handler(ctx: RequestContext) -> dict:
     """
     GET /api/admin/users — list all users across tenants.
-    Returns: { users_by_tenant: { tenant_slug: [user, ...] }, orphaned: [user, ...] }
+    Returns: { platform_admins: [user, ...], users_by_tenant: { tenant_slug: [user, ...] },
+               orphaned: [user, ...] }
+    platform_admins are Cognito superadmin-group members; they are never listed as orphaned.
     """
     ctx.require_superadmin()
 
@@ -89,35 +91,102 @@ def admin_users_handler(ctx: RequestContext) -> dict:
             users_by_tenant[tenant_slug] = []
         users_by_tenant[tenant_slug].append(user_obj)
 
-    # Orphaned: Cognito users with no tenant profile (optional, can be expensive)
-    orphaned = []
+    # Platform admins: members of the Cognito ``superadmin`` group (the group RequestContext's
+    # ``cognito:groups`` check uses). Listed separately and never treated as orphaned (T-20).
+    platform_admins: list[dict] = []
+    orphaned: list[dict] = []
     user_pool_id = os.environ.get("USER_POOL_ID", "")
     region = os.environ.get("AWS_REGION", "us-east-1")
     if user_pool_id:
+        client = boto3.client("cognito-idp", region_name=region)
+        superadmin_subs = _superadmin_users(client, user_pool_id, platform_admins)
+
+        orphan_candidates: list[dict] = []
         try:
-            client = boto3.client("cognito-idp", region_name=region)
             paginator = client.get_paginator("list_users")
             for page in paginator.paginate(UserPoolId=user_pool_id):
                 for u in page.get("Users", []):
-                    sub = u.get("Username") or ""
-                    attrs = {a.get("Name"): a.get("Value") for a in u.get("Attributes", [])}
-                    if attrs.get("sub"):
-                        sub = attrs["sub"]
+                    sub, attrs = _cognito_identity(u)
                     if sub and sub not in cognito_subs_in_db:
-                        orphaned.append({
+                        orphan_candidates.append({
                             "type": "cognito",
                             "sub": sub,
+                            "username": u.get("Username") or sub,
                             "email": attrs.get("email", ""),
                             "name": attrs.get("name", ""),
                             "role": None,
                         })
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
+        if superadmin_subs is None:
+            # ListUsersInGroup unavailable (e.g. IAM not yet granted): fall back to per-candidate
+            # group lookups, limited to the (few) users without a tenant profile.
+            superadmin_subs = set()
+            for cand in orphan_candidates:
+                if _user_in_superadmin_group(client, user_pool_id, cand["username"]):
+                    superadmin_subs.add(cand["sub"])
+                    platform_admins.append(_platform_admin(cand["sub"], cand["email"], cand["name"]))
+
+        for cand in orphan_candidates:
+            if cand["sub"] not in superadmin_subs:
+                cand.pop("username", None)
+                orphaned.append(cand)
+
+        # Flag platform admins who also hold tenant memberships.
+        for users in users_by_tenant.values():
+            for user in users:
+                if user.get("type") == "cognito" and user.get("sub") in superadmin_subs:
+                    user["is_superadmin"] = True
+
     return _json_response(200, {
+        "platform_admins": platform_admins,
         "users_by_tenant": users_by_tenant,
         "orphaned": orphaned,
     })
+
+
+SUPERADMIN_GROUP = "superadmin"  # infra/cognito.tf aws_cognito_user_group.superadmin
+
+
+def _cognito_identity(u: dict) -> tuple[str, dict]:
+    attrs = {a.get("Name"): a.get("Value") for a in u.get("Attributes", [])}
+    return attrs.get("sub") or u.get("Username") or "", attrs
+
+
+def _platform_admin(sub: str, email: str, name: str) -> dict:
+    return {
+        "type": "cognito",
+        "sub": sub,
+        "email": email,
+        "name": name,
+        "role": SUPERADMIN_GROUP,
+        "is_superadmin": True,
+    }
+
+
+def _superadmin_users(client, user_pool_id: str, out: list[dict]) -> set[str] | None:
+    """Members of the superadmin group via ListUsersInGroup (paginated). None if the call fails."""
+    found: list[dict] = []
+    try:
+        paginator = client.get_paginator("list_users_in_group")
+        for page in paginator.paginate(UserPoolId=user_pool_id, GroupName=SUPERADMIN_GROUP):
+            for u in page.get("Users", []):
+                sub, attrs = _cognito_identity(u)
+                if sub:
+                    found.append(_platform_admin(sub, attrs.get("email", ""), attrs.get("name", "")))
+    except Exception:  # noqa: BLE001
+        return None
+    out.extend(found)
+    return {u["sub"] for u in found}
+
+
+def _user_in_superadmin_group(client, user_pool_id: str, username: str) -> bool:
+    try:
+        resp = client.admin_list_groups_for_user(UserPoolId=user_pool_id, Username=username)
+    except Exception:  # noqa: BLE001
+        return False
+    return any((g.get("GroupName") or "").lower() == SUPERADMIN_GROUP for g in resp.get("Groups", []))
 
 
 def admin_stats_handler(ctx: RequestContext) -> dict:

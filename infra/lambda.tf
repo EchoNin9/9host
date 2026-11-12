@@ -86,7 +86,8 @@ resource "aws_iam_role_policy" "api_lambda" {
           "cognito-idp:GetUser",
           "cognito-idp:AdminGetUser",
           "cognito-idp:AdminListGroupsForUser",
-          "cognito-idp:ListUsers"
+          "cognito-idp:ListUsers",
+          "cognito-idp:ListUsersInGroup"
         ]
         Resource = aws_cognito_user_pool.main.arn
       },
