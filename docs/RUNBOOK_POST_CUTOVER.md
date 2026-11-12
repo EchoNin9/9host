@@ -6,11 +6,11 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 
 ## 1. Current state (verified 2026-11-12)
 
-- **Live:** `develop` and `main` are both deployed (PR #17, merge `440f83a`, 2026-11-12). Tasks A–F below are done except A (`jinks.ca` pending); outcomes in §5. **Next run: §7.**
+- **Live:** `develop` and `main` are both deployed (PR #17, merge `440f83a`, 2026-11-12). Tasks A–F and §7 items 1–5 are done; landing cutover done (§6 DONE). Baselines: pytest 360, vitest 43, edge 21. **Next run: §8.**
 - **Admin SPA:** `app.echo9.net` (prod) and `stage.echo9.net` (staging).
 - **Tenant sites:** `*.echo9.net` is served as static HTML by CloudFront `E1P9K5ZO6DTDWR` (`d2nqdv42n1qlhv.cloudfront.net`) via `cf-site-content.js` + KVS `9host-site-hosts-kvs` (`arn:aws:cloudfront::452644920012:key-value-store/10537886-08ea-4b05-87c9-68a1684e6f41`). Unmapped hosts return 404.
 - **Admin SPA distributions:** production `E26B25DDJUH6YE` (`d1y8o0nam8q0rq`), alias `app` only (`prod` retired, NXDOMAIN); staging `E1NLQ7KZ99HQJ5` (`d327su5s05gt98`).
-- **Landing (staging):** `preview.echo9.net` → CloudFront `EYLR0G6R8Z1BK` (`dggrw8k6efaha.cloudfront.net`), bucket `9host-landing`, synced from `landing/` by CI. Not a tenant site; never in the KVS.
+- **Landing (LIVE 2026-11-12):** `echo9.net`, `www.echo9.net` and `preview.echo9.net` → CloudFront `EYLR0G6R8Z1BK` (`dggrw8k6efaha.cloudfront.net`), bucket `9host-landing`, synced from `landing/` by CI. Not a tenant site; never in the KVS.
 - **Custom domains:** Cloudflare for SaaS on zone `echonin9.com` (fallback origin `proxy.echonin9.com`, Worker `9host-custom-domain-proxy`). Customers point `CNAME`/`ALIAS -> proxy.echonin9.com` plus a `_cf-custom-hostname` TXT.
   - Live: `oliverjinks.com` and `www.oliverjinks.com`.
   - Live: `jinks.ca` (ACTIVE 2026-11-12, KVS key present, 200). `www.jinks.ca` is not configured (no Cloudflare custom hostname, no KVS key).
@@ -253,3 +253,39 @@ Main merged from develop (PR #18) after owner review of stage + preview.
 - `T-30` **Admin SPA redesign (app/stage).** Current UX is awkward and the UI is ugly. Audit flows (sites, publish, pages/posts/events/media, domains, users, superadmin console), then redesign navigation, layout and visual system on shadcn/Tailwind. Supersedes `T-26` (mockups in `docs/ui-mockups.html` are a starting reference, not a spec). Owner reviews on stage before main.
 - `T-31` **WYSIWYG templates.** Refactor the site templates system (`api/templates/`, `SiteCompiler`) so tenants edit pages visually in a WYSIWYG editor that round-trips to the compiled static HTML. Must keep `compile_site` pure, HTML sanitization, root-relative links, and draft preview. Needs a design spike (editor library, content model/migration) before code.
 - `T-32` **WYSIWYG template admin.** Refactor the superadmin template admin section into a WYSIWYG interface for creating/editing platform templates; depends on `T-31`'s content model.
+
+### §6 landing cutover — DONE (2026-11-12, owner-approved)
+- `E164B9WJ8ALT9F`: removed `echo9.net`/`www.echo9.net` aliases (6 remain). The update was rejected because its access-log bucket `e9-vir-logs` no longer exists, so logging was disabled in the same update (it was already delivering nowhere). Its expired cert did not block the update (T-25 still open).
+- `infra/landing.tf`: aliases `preview`, `echo9.net`, `www.echo9.net` (`8e20512`); develop + main CI green (PR #19).
+- ClouDNS `echo9.net`: deleted WR `180304152` (@) → added ALIAS @ `935394382` → `dggrw8k6efaha.cloudfront.net` (TTL 300); deleted WR `180304155` (www) → added CNAME www `935394533` → same. MX/NS/TXT and `tools` untouched.
+- Verified: `https://echo9.net/` and `https://www.echo9.net/` 200 with the tools button; `tools.echo9.net` 301; tenant sites, app, preview 200. Invalidated `EYLR0G6R8Z1BK` `/*`.
+- Rollback: delete ALIAS `935394382` / CNAME `935394533`, recreate WR `@` and `www` → `https://tools.e9.cx` (301).
+- Note: `edge_records.py` does not manage `@`/`www`; they are hand-managed records.
+
+## 8. Next run (fresh Commander, from 2026-11-13)
+
+Same guardrails (§2) and workflow: one commit + push to `develop` per ticket, CI green before the next, smoke-check after every push (`jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `jinks.ca`, `app.echo9.net`, `echo9.net`, `www.echo9.net`, `preview.echo9.net`), never push to `main`. `echo9.net` / `www.echo9.net` are now LIVE production — landing changes ship to production on the owner's main merge, so review on `preview.echo9.net` first.
+
+Order:
+1. **`T-29` landing showcase redesign** (Opus + design-director skill). Files: `landing/` only. Acceptance: showcase-quality, responsive, light/dark, accessible (WCAG AA), fast (no heavy frameworks; plain static output synced by CI), tools.e9.cx button kept, no tenant data, custom 404 kept. Verify on `preview.echo9.net` with screenshots (claude-in-chrome if available) at desktop + phone width.
+2. **`T-30` Admin SPA redesign** (Opus + design-director). Start with a UX audit of `frontend/src` flows (sites, publish/rollback, pages/posts/events/media, domains, users/roles, superadmin console) written into `docs/T-30-ux-audit.md`, then implement the visual system + navigation on shadcn/Tailwind in small commits. Keep `FeatureGate`, `TenantScope`, `ApiClient` seams; vitest + build green. Owner reviews on `stage.echo9.net`.
+3. **`T-31`/`T-32` WYSIWYG** — design spike only this run: `docs/adr/0003-wysiwyg-templates.md` (editor library options, content model, sanitization and `compile_site` purity, migration of existing sites, template-admin UX). No code until the owner approves the ADR.
+
+Owner-only (do not do): `T-21` proxy-secret rollout (§7 status), `T-25` expired cert on `E164B9WJ8ALT9F`, `www.jinks.ca`, `develop` → `main` merges.
+
+### §8 status (2026-11-12, third Commander run)
+
+Items 1–3 done. Every CI push green; after each, `jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `jinks.ca`, `app.echo9.net`, `echo9.net`, `www.echo9.net`, `preview.echo9.net` returned 200. No `.tf` changes.
+
+| Item | Outcome | Commit |
+|---|---|---|
+| `T-29` landing | Redesign: serif/mono type, one vermilion signal colour, CSS/SVG hero, Edit→Compile→Serve band, modules, 5 layouts, domains, custom 404, `favicon.svg`, OG/canonical. No JS, ~40 KB, AA contrast both themes, reduced-motion respected. **Went LIVE on echo9.net/www via develop** (develop CI syncs `landing/` to the shared prod bucket; owner approved for bootstrap — see `T-33`). | `c04f424` |
+| `T-30` Admin SPA | Audit `docs/T-30-ux-audit.md`; tokens + Geist type, new shell/nav/breadcrumbs/user menu, ConfirmDialog, rollback dialog, publish-needs-template, flow fixes. Seams unchanged, no API changes, vitest 44. Verified on stage (desktop). Template sheet left for T-31d/T-32b. | `00a560b` |
+| `T-31`/`T-32` ADR | `docs/adr/0003-wysiwyg-templates.md` **Accepted** with owner answers: Puck (pinned) + TipTap, block-JSON doc rendered by pure Python registry, `_home` page doc, pin+deprecate template versions, drop tenant forks, embeds in / contact form out, all sites at once, no side-slide sheets. | `7f3d631`, `4496b3c`, `d98ea51`, `0e575f7` |
+| `T-31a` spike | GO. `@puckeditor/core@0.23.0` exact, React 19.2 OK, Puck in lazy chunk (~152 KB gz JS + 14 KB CSS). Entry +5.8 KB gz is TipTap 3.20.4→3.33.1 hoisting, not Puck — decide: npm `overrides` or bump app TipTap. Iframe needs template CSS. Drag/typing not browser-verified. Local branch `worktree-agent-a4aef99b10c37b60b`, not pushed. | `917ade4` (branch) |
+
+Incident: during the T-31a check a subagent reused the Commander's Chrome tab on stage and left the owner's session impersonating `jinks` (client-side localStorage only, no API write). Cleared by the Commander via "Stop impersonating".
+
+New tickets: `T-33` landing preview/prod split, `T-34` template tier gating, `T-35` T-30 follow-ups (see `AGENTS.md`).
+
+Next run: `T-31b` (block core, Python registry + golden fixtures) after the TipTap-version decision; `T-33` needs a reviewed `.tf` plan.

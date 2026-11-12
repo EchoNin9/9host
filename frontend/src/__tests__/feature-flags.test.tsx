@@ -12,7 +12,8 @@ import { TierContext } from "@/contexts/tier-context"
 vi.mock("@/hooks/use-tenant", () => ({
   useTenant: () => ({ tenantSlug: "test-tenant", tenantBasePath: "/test-tenant" }),
 }))
-vi.mock("@/context/tenant-scope-context", () => ({
+vi.mock("@/context/tenant-scope-context", async (orig) => ({
+  ...(await orig<object>()),
   useTenantScope: () => ({ tenantSlug: "test-tenant", isSuperadminImpersonating: false, api: {} }),
 }))
 vi.mock("@/hooks/use-tenant-role", () => ({

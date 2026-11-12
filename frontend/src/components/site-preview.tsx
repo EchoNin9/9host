@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react"
+import { NativeSelect } from "@/components/ui/native-select"
 import { ExternalLink, Loader2 } from "lucide-react"
 import {
   Sheet,
@@ -119,7 +120,7 @@ export function SitePreview({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="max-w-2xl overflow-y-auto">
+      <SheetContent className="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ExternalLink className="size-4" />
@@ -129,10 +130,10 @@ export function SitePreview({
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium">Template</label>
-            <select
+            <NativeSelect
+              className="mt-1.5"
               value={selectedTemplate}
               onChange={(e) => setSelectedTemplate(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
             >
               <option value="">Use site template</option>
               {templates.map((t) => (
@@ -140,7 +141,7 @@ export function SitePreview({
                   {t.name}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           {loading ? (
             <div className="flex items-center justify-center py-12">

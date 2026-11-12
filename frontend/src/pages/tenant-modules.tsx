@@ -6,9 +6,7 @@
  */
 
 import { useState } from "react"
-import { Link } from "react-router-dom"
 import {
-  Package,
   Globe,
   BarChart3,
   FileText,
@@ -30,9 +28,16 @@ import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { UpgradePrompt } from "@/components/upgrade-prompt"
+import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { LoadingState } from "@/components/page"
+import { TierBadge } from "@/components/status-badges"
+import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
+import { cn } from "@/lib/utils"
 import {
   ALL_MODULE_KEYS,
   getRequiredTier,
+  isBillingEnabled,
   type FeatureKey,
 } from "@/lib/feature-flags"
 
@@ -103,21 +108,17 @@ function TenantModules() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Package className="size-6" />
-          Modules
-        </h1>
-        <p className="text-muted-foreground">
-          Enable or disable features for {tenantSlug}. Some require a higher tier.
-        </p>
-      </div>
+    <TenantPage>
+      <TenantPageHeader
+        title="Modules"
+        description="Turn site features on or off for this tenant. Some modules are part of a higher tier."
+        meta={<TierBadge tier={tenant?.tier} />}
+      />
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <LoadingState label="Loading modules…" />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {ALL_MODULE_KEYS.map((key) => {
             const meta = MODULE_META[key]
             const Icon = meta.icon
@@ -130,52 +131,59 @@ function TenantModules() {
               tenant?.module_overrides?.[key] ??
               false
             const isSaving = savingKey === key
+            const switchId = `module-${key}`
+            const locked = !tierUnlocked && !enabled
 
             return (
-              <Card key={key} className="flex flex-col">
-                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Icon className="size-5 text-muted-foreground" />
-                    <CardTitle className="text-base">{meta.title}</CardTitle>
-                  </div>
+              <Card
+                key={key}
+                className="gap-3"
+              >
+                <CardHeader className="flex flex-row items-start gap-3">
                   <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                      requiredTier === "business"
-                        ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
-                        : requiredTier === "pro"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                          : "bg-muted text-muted-foreground"
-                    }`}
+                    className={cn(
+                      "flex size-9 shrink-0 items-center justify-center rounded-md border",
+                      enabled ? "border-primary/25 bg-brand-muted text-primary" : "bg-muted text-muted-foreground"
+                    )}
                   >
-                    {requiredTier}
+                    <Icon className="size-4" aria-hidden />
                   </span>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <CardTitle>
+                      <label htmlFor={switchId}>{meta.title}</label>
+                    </CardTitle>
+                    {requiredTier !== "free" && (
+                      <Badge mono tone={tierUnlocked ? "neutral" : "warning"}>
+                        {requiredTier}+
+                      </Badge>
+                    )}
+                  </div>
+                  {!locked && canEdit && (
+                    <Switch
+                      id={switchId}
+                      checked={enabled}
+                      onCheckedChange={(v) => handleToggle(key, v)}
+                      disabled={isSaving}
+                      aria-describedby={`${switchId}-desc`}
+                    />
+                  )}
                 </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-4">
-                  <CardDescription>{meta.description}</CardDescription>
-                  {!tierUnlocked && !enabled ? (
-                    <UpgradePrompt feature={key} />
-                  ) : canEdit ? (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        {enabled ? "Enabled" : "Disabled"}
-                      </span>
-                      <label className="relative inline-flex cursor-pointer items-center">
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={(e) =>
-                            handleToggle(key, e.target.checked)
-                          }
-                          disabled={isSaving}
-                          className="peer sr-only"
-                        />
-                        <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-muted-foreground/20 after:bg-background after:transition-all after:content-[''] peer-checked:bg-primary peer-checked:after:translate-x-full peer-checked:after:border-primary peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-ring peer-disabled:cursor-not-allowed peer-disabled:opacity-50" />
-                      </label>
-                    </div>
+                <CardContent className="flex flex-1 flex-col gap-3">
+                  <CardDescription id={`${switchId}-desc`}>{meta.description}</CardDescription>
+                  {locked ? (
+                    isBillingEnabled() ? (
+                      <UpgradePrompt feature={key} />
+                    ) : (
+                      <p className="mt-auto text-xs text-muted-foreground">
+                        Part of the {requiredTier.charAt(0).toUpperCase() + requiredTier.slice(1)} tier. A platform
+                        admin can change your plan.
+                      </p>
+                    )
                   ) : (
-                    <span className="text-sm text-muted-foreground">
-                      {enabled ? "Enabled" : "Disabled"} (view-only)
-                    </span>
+                    <p className="mt-auto text-xs text-muted-foreground" aria-live="polite">
+                      {isSaving ? "Saving…" : enabled ? "On" : "Off"}
+                      {!canEdit && " · view only"}
+                    </p>
                   )}
                 </CardContent>
               </Card>
@@ -183,15 +191,7 @@ function TenantModules() {
           })}
         </div>
       )}
-
-      <p className="text-sm text-muted-foreground">
-        Module overrides are also available in{" "}
-        <Link to="../settings" className="text-primary hover:underline">
-          Settings
-        </Link>
-        .
-      </p>
-    </div>
+    </TenantPage>
   )
 }
 

@@ -33,7 +33,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   }
   return (
     <Button variant="ghost" size="sm" onClick={copy} className="h-8 px-2">
-      {copied ? <Check className="size-4 text-green-600" /> : <Copy className="size-4" />}
+      {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
       <span className="sr-only">{label}</span>
     </Button>
   )
@@ -62,7 +62,7 @@ export function DomainSetupGuideDialog({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="max-w-lg overflow-y-auto">
+      <SheetContent className="sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>DNS Setup: {domain.domain}</SheetTitle>
         </SheetHeader>

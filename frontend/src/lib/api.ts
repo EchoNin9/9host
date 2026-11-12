@@ -639,6 +639,20 @@ export async function publishSite(
   return data?.publish ?? null
 }
 
+/** Roll the live site back to published v{N} (Task 1.96b). Admin/manager only. Throws with the backend error. */
+export async function rollbackSite(
+  api: TenantApi,
+  accessToken: string | null,
+  siteId: string,
+  version: number
+): Promise<{ version: number; rolled_back_at: string }> {
+  const path = `/api/tenant/sites/${enc(siteId)}/rollback?${new URLSearchParams({ version: String(version) })}`
+  const data = await callOrThrow<{ rollback: { version: number; rolled_back_at: string } }>(api, path, accessToken, {
+    method: "POST",
+  })
+  return data.rollback
+}
+
 // -----------------------------------------------------------------------------
 // Custom domains — Cloudflare for SaaS (Pro+ tier)
 // -----------------------------------------------------------------------------

@@ -1,12 +1,10 @@
 "use client"
 
 import { useState, useCallback, useEffect, useMemo } from "react"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Navigate } from "react-router-dom"
 import { fetchAuthSession } from "aws-amplify/auth"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -15,15 +13,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { EmptyState, LoadingState, Page, PageHeader } from "@/components/page"
+import { TierBadge } from "@/components/status-badges"
 import {
   fetchAdminTemplates,
   createAdminTemplate,
@@ -33,7 +26,7 @@ import {
 } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
-import { Pencil, Trash2 } from "lucide-react"
+import { Layers, Pencil, Plus, Trash2 } from "lucide-react"
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/
 const TIERS = ["FREE", "PRO", "BUSINESS", "VIP"] as const
@@ -93,7 +86,7 @@ function EditTemplateForm({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1"
+          className="mt-1.5"
         />
       </div>
       <div>
@@ -101,20 +94,20 @@ function EditTemplateForm({
         <Input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          className="mt-1"
+          className="mt-1.5"
         />
       </div>
       <div>
         <label className="text-sm font-medium">Tier required</label>
-        <select
+        <NativeSelect
+          className="mt-1.5"
           value={tierRequired}
           onChange={(e) => setTierRequired(e.target.value)}
-          className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
         >
           {TIERS.map((t) => (
             <option key={t} value={t}>{t}</option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
       <TemplatePreview template={{ ...template, name, description, tier_required: tierRequired }} />
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -154,7 +147,6 @@ function AdminTemplatesPage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleteSlug, setDeleteSlug] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
   const [sortBy, setSortBy] = useState<SortBy>("name")
 
   const load = useCallback(async () => {
@@ -178,9 +170,9 @@ function AdminTemplatesPage() {
 
   if (authLoading || superadminLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <span className="text-muted-foreground">Loading…</span>
-      </div>
+      <Page>
+        <LoadingState />
+      </Page>
     )
   }
 
@@ -243,81 +235,92 @@ function AdminTemplatesPage() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteSlug) return
-    setDeleting(true)
     const session = await fetchAuthSession()
     const token = session.tokens?.accessToken?.toString() ?? null
     const ok = await deleteAdminTemplate(token, deleteSlug)
-    setDeleting(false)
     setDeleteSlug(null)
     if (ok) void load()
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Platform templates</h1>
-          <p className="text-muted-foreground">
-            Manage site templates. Tier-gated for tenant site creation.
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>Add template</Button>
-      </div>
+    <Page>
+      <PageHeader
+        eyebrow="Platform"
+        title="Templates"
+        description="Site templates tenants can start from. The tier sets who can pick each one."
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New template
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-          ) : templates.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">No templates yet.</div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between border-b px-4 py-2">
-                <span className="text-sm text-muted-foreground">Sort by</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortBy)}
-                  className="h-8 rounded-md border border-input bg-transparent px-2 text-sm"
-                >
-                  <option value="name">Name</option>
-                  <option value="slug">Slug</option>
-                  <option value="tier">Tier</option>
-                </select>
-              </div>
-              <div className="divide-y">
+      <Card className="gap-0 py-0">
+        {loading ? (
+          <LoadingState className="p-5" label="Loading templates…" />
+        ) : templates.length === 0 ? (
+          <EmptyState className="m-5" icon={Layers} title="No templates yet" />
+        ) : (
+          <>
+            <div className="flex items-center justify-end gap-2 border-b px-5 py-3">
+              <label htmlFor="template-sort" className="text-sm text-muted-foreground">
+                Sort by
+              </label>
+              <NativeSelect
+                id="template-sort"
+                className="w-32"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+              >
+                <option value="name">Name</option>
+                <option value="slug">Slug</option>
+                <option value="tier">Tier</option>
+              </NativeSelect>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Template</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead className="hidden md:table-cell">Description</TableHead>
+                  <TableHead className="text-right">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {sortedTemplates.map((t) => (
-                  <div
-                    key={t.slug}
-                    className="flex items-center justify-between p-4"
-                  >
-                    <div>
-                      <span className="font-medium">{t.name}</span>
-                      <span className="ml-2 text-sm text-muted-foreground">
-                        ({t.slug}) · {t.tier_required}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditTemplate(t)}
-                      >
+                  <TableRow key={t.slug}>
+                    <TableCell>
+                      <span className="block font-medium">{t.name}</span>
+                      <span className="block font-mono text-xs text-muted-foreground">{t.slug}</span>
+                    </TableCell>
+                    <TableCell>
+                      <TierBadge tier={t.tier_required} />
+                    </TableCell>
+                    <TableCell className="hidden max-w-sm truncate text-muted-foreground md:table-cell">
+                      {t.description || "—"}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      <Button size="icon-sm" variant="ghost" onClick={() => setEditTemplate(t)} aria-label={`Edit ${t.name}`}>
                         <Pencil className="size-4" />
                       </Button>
                       <Button
-                        size="sm"
+                        size="icon-sm"
                         variant="ghost"
                         onClick={() => handleDeleteClick(t.slug)}
+                        aria-label={`Delete ${t.name}`}
                       >
-                        <Trash2 className="size-4" />
+                        <Trash2 className="size-4 text-destructive" />
                       </Button>
-                    </div>
-                  </div>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </div>
-            </>
-          )}
-        </CardContent>
+              </TableBody>
+            </Table>
+          </>
+        )}
       </Card>
 
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
@@ -337,7 +340,7 @@ function AdminTemplatesPage() {
                 }}
                 placeholder="my-template"
                 maxLength={60}
-                className="mt-1"
+                className="mt-1.5"
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 Lowercase letters, numbers, hyphens. Max 60 chars.
@@ -349,7 +352,7 @@ function AdminTemplatesPage() {
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
                 placeholder="My Template"
-                className="mt-1"
+                className="mt-1.5"
               />
             </div>
             <div>
@@ -358,20 +361,20 @@ function AdminTemplatesPage() {
                 value={createDesc}
                 onChange={(e) => setCreateDesc(e.target.value)}
                 placeholder="Optional"
-                className="mt-1"
+                className="mt-1.5"
               />
             </div>
             <div>
               <label className="text-sm font-medium">Tier required</label>
-              <select
+              <NativeSelect
+                className="mt-1.5"
                 value={createTier}
                 onChange={(e) => setCreateTier(e.target.value)}
-                className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
               >
                 {TIERS.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             {createError && <p className="text-sm text-destructive">{createError}</p>}
             <Button
@@ -403,29 +406,15 @@ function AdminTemplatesPage() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={!!deleteSlug} onOpenChange={(o) => !o && !deleting && setDeleteSlug(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete template &quot;{deleteSlug}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently remove the template. Sites already created from this template will keep their content, but new sites will no longer be able to use it.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              onClick={async () => {
-                await handleDeleteConfirm()
-              }}
-              disabled={deleting}
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ConfirmDialog
+        open={!!deleteSlug}
+        onOpenChange={(o) => !o && setDeleteSlug(null)}
+        title={`Delete template “${deleteSlug ?? ""}”?`}
+        description="This permanently removes the template. Sites already created from it keep their content, but new sites can no longer use it."
+        confirmLabel="Delete template"
+        onConfirm={handleDeleteConfirm}
+      />
+    </Page>
   )
 }
 

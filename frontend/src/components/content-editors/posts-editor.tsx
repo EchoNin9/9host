@@ -3,7 +3,9 @@
  * List posts, create/edit/delete. Draft vs Published. Publish flow.
  */
 import { useState, useCallback, useEffect, useRef } from "react"
-import { Plus, Pencil, Trash2 } from "lucide-react"
+import { EmptyState, LoadingState, Notice } from "@/components/page"
+import { Badge } from "@/components/ui/badge"
+import { Plus, Pencil, Trash2, Newspaper } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -108,22 +110,22 @@ export function PostsEditor({ siteId }: { siteId: string }) {
             <CardTitle>Posts</CardTitle>
             <CardDescription>Blog posts and updates. Draft vs Published.</CardDescription>
           </div>
-          <Button size="sm" onClick={handleCreate}>
+          <Button size="sm" variant="outline" onClick={handleCreate}>
             <Plus className="mr-2 size-4" />
             Add post
           </Button>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <LoadingState rows={2} />
           ) : posts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No posts yet. Add your first post.</p>
+            <EmptyState icon={Newspaper} title="No posts yet" description="Add your first post." />
           ) : (
             <ul className="space-y-2">
               {posts.map((post) => (
                 <li
                   key={post.id}
-                  className="flex items-center justify-between rounded-md border p-3"
+                  className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5 transition-colors hover:bg-accent/40"
                 >
                   <div>
                     <p className="font-medium">{post.title || "(Untitled)"}</p>
@@ -286,14 +288,12 @@ function PostFormSheet({
       if (!v && isDirty && !confirm("You have unsaved changes. Discard?")) return
       onOpenChange(v)
     }}>
-      <SheetContent aria-describedby={undefined} className="overflow-y-auto">
+      <SheetContent aria-describedby={undefined} className="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             {post ? "Edit post" : "Add post"}
             {isDirty && (
-              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-                Unsaved
-              </span>
+              <Badge tone="warning">Unsaved</Badge>
             )}
           </SheetTitle>
         </SheetHeader>
@@ -346,7 +346,7 @@ function PostFormSheet({
               </label>
             </div>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <Notice tone="danger">{error}</Notice>}
           <SheetFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

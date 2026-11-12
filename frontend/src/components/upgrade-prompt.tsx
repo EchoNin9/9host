@@ -14,33 +14,8 @@ import {
 import { Button } from "@/components/ui/button"
 import type { FeatureKey } from "@/lib/feature-flags"
 import { getRequiredTier, isBillingEnabled } from "@/lib/feature-flags"
+import { FEATURE_LABELS } from "@/lib/feature-labels"
 
-const FEATURE_LABELS: Record<FeatureKey, { title: string; description: string }> = {
-  custom_domains: {
-    title: "Custom domains",
-    description: "Add custom domains to your sites. Requires Pro or Business tier.",
-  },
-  advanced_analytics: {
-    title: "Advanced Analytics",
-    description: "View page views, visitors, and top pages. Requires Pro or Business tier.",
-  },
-  updates_blog: {
-    title: "Updates / Blog",
-    description: "Blog posts and news updates. Available on all tiers.",
-  },
-  events_shows: {
-    title: "Events & Shows",
-    description: "Events, tour dates, and shows. Available on all tiers.",
-  },
-  media_gallery: {
-    title: "Media Gallery",
-    description: "Image gallery and media library. Requires Pro or Business tier.",
-  },
-  branding: {
-    title: "Branding",
-    description: "Logo, colors, fonts, and favicon. Available on all tiers.",
-  },
-}
 
 export interface UpgradePromptProps {
   /** Feature that is locked */

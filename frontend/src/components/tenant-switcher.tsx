@@ -1,19 +1,39 @@
 "use client"
 
-import { ChevronsUpDown } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { Check, ChevronsUpDown, LayoutGrid } from "lucide-react"
+import { Link, useNavigate } from "react-router-dom"
 
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenants } from "@/hooks/use-tenants"
 import { useAuth } from "@/hooks/use-auth"
-import { Button } from "@/components/ui/button"
+import { useTier } from "@/hooks/use-tier"
+import { BrandMark } from "@/components/app-shell"
+import { TierBadge } from "@/components/status-badges"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 
+function SwitcherLabel({ name, slug }: { name: string; slug: string }) {
+  const tier = useTier()
+  return (
+    <>
+      <BrandMark />
+      <span className="grid min-w-0 flex-1 text-left leading-tight">
+        <span className="truncate text-sm font-semibold text-sidebar-foreground">{name}</span>
+        <span className="truncate font-mono text-[0.6875rem] text-muted-foreground">{slug}</span>
+      </span>
+      <TierBadge tier={tier} className="group-data-[collapsible=icon]:hidden" />
+    </>
+  )
+}
+
+/** Sidebar header: current tenant (name, slug, tier) with a menu to switch tenants. */
 function TenantSwitcher() {
   const { tenantSlug, getSwitchTenantUrl } = useTenant()
   const { tenants, loading } = useTenants()
@@ -21,9 +41,19 @@ function TenantSwitcher() {
   const navigate = useNavigate()
 
   if (!tenantSlug) return null
+  const current = tenants.find((t) => t.slug === tenantSlug)
+  const name = current?.name || tenantSlug
 
   if (isSiteUser) {
-    return <span className="px-2 py-2 font-semibold text-sidebar-foreground">{tenantSlug}</span>
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="flex items-center gap-2 p-2 group-data-[collapsible=icon]:p-0">
+            <SwitcherLabel name={name} slug={tenantSlug} />
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    )
   }
 
   const handleSwitch = (newSlug: string) => {
@@ -36,33 +66,45 @@ function TenantSwitcher() {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="flex h-auto items-center gap-2 px-2 py-2 font-semibold text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        >
-          <span>{tenantSlug}</span>
-          <ChevronsUpDown className="size-4 opacity-50" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[--radix-dropdown-menu-trigger-width]">
-        {loading ? (
-          <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
-        ) : (
-          tenants.map((t) => (
-            <DropdownMenuItem
-              key={t.slug}
-              onClick={() => handleSwitch(t.slug)}
-              className={t.slug === tenantSlug ? "bg-accent" : undefined}
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              aria-label={`Current tenant ${name}. Switch tenant`}
+              className="data-[state=open]:bg-sidebar-accent group-data-[collapsible=icon]:p-0!"
             >
-              {t.name || t.slug}
+              <SwitcherLabel name={name} slug={tenantSlug} />
+              <ChevronsUpDown className="size-4 text-muted-foreground" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-60">
+            <DropdownMenuLabel className="eyebrow py-1">Tenants</DropdownMenuLabel>
+            {loading ? (
+              <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
+            ) : (
+              tenants.map((t) => (
+                <DropdownMenuItem key={t.slug} onSelect={() => handleSwitch(t.slug)}>
+                  <span className="grid min-w-0 flex-1 leading-tight">
+                    <span className="truncate">{t.name || t.slug}</span>
+                    <span className="truncate font-mono text-[0.6875rem] text-muted-foreground">{t.slug}</span>
+                  </span>
+                  {t.slug === tenantSlug && <Check className="size-4 text-primary" aria-label="Current" />}
+                </DropdownMenuItem>
+              ))
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link to="/?choose=1">
+                <LayoutGrid className="size-4" />
+                All tenants
+              </Link>
             </DropdownMenuItem>
-          ))
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }
 

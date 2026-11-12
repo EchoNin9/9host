@@ -63,13 +63,18 @@ Full scope, files, and acceptance criteria for each are in runbook §7. `T-13`�
 - [x] `T-24`: ClouDNS provider read bug: upstream fix or move echo9.net edge records to an API script [agent1] — DONE `b9b544f`
 - [ ] `T-25`: (owner) Expired echo9.net cert on non-9host distribution E164B9WJ8ALT9F [owner]
 - [ ] ~~`T-26`~~: superseded by `T-30` (2026-11-12)
-- [ ] `T-27`: Drop the built-in `editor` role (owner decision 2026-11-12); stored `editor` reads as `member` [agent1/agent2]
+- [x] `T-27`: Drop the built-in `editor` role (owner decision 2026-11-12); stored `editor` reads as `member` [agent1/agent2] — DONE `ca81513`
 - [ ] `T-28`: CI test-function gate depends on `jinks4.echo9.net` staying mapped [agent1] — noted by owner
-- [ ] `T-29`: Showcase redesign of the landing page (`landing/`, preview.echo9.net) using high-quality design skills [agent2]
-- [ ] `T-30`: Redesign the Admin SPA (app/stage): fix awkward UX and dated UI; supersedes `T-26` [agent2]
-- [ ] `T-31`: Refactor the site templates system into a WYSIWYG editing interface [agent1/agent2]
-- [ ] `T-32`: Refactor the template admin section into a WYSIWYG interface [agent1/agent2]
+- [x] `T-29`: Showcase redesign of the landing page (`landing/`, preview.echo9.net) using high-quality design skills [agent2] — DONE `c04f424` (LIVE on echo9.net via develop, owner-approved)
+- [x] `T-30`: Redesign the Admin SPA (app/stage): fix awkward UX and dated UI; supersedes `T-26` [agent2] — DONE `00a560b` on stage (audit `docs/T-30-ux-audit.md`); app.echo9.net after owner merge
+- [ ] `T-31`: Refactor the site templates system into a WYSIWYG editing interface [agent1/agent2] — ADR-0003 ACCEPTED (`0e575f7`); `T-31a` spike GO (local branch `worktree-agent-a4aef99b10c37b60b` `917ade4`, not pushed); next `T-31b`
+- [ ] `T-32`: Refactor the template admin section into a WYSIWYG interface [agent1/agent2] — design in ADR-0003; full-page, no side sheet
+- [ ] `T-33`: Split landing preview from production: develop must deploy only to `preview.echo9.net`, prod `echo9.net`/`www` only from `main` (needs `.tf`: separate bucket/distribution or path) [agent1]
+- [ ] `T-34`: Template/block tier gating (Pro+ blocks via `tier_config.py` + `FeatureGate`); deferred until WYSIWYG templates work [agent1/agent2]
+- [ ] `T-35`: T-30 follow-ups: `GET /sites/{id}/versions` for the rollback list; invite account users by email; unsaved-changes guard → `ConfirmDialog`; `set-state-in-effect` lint debt; loading flashes (tenant badge shows FREE, user menu "Signed in ?"); tier shows Free when impersonating `jinks` but VIP otherwise [agent1/agent2]
 
 `T-21`–`T-24` outcomes, the owner's `T-21` proxy-secret rollout commands and new tickets `T-27`/`T-28`: runbook §7 status.
+
+Landing production cutover done 2026-11-12 (`echo9.net`/`www.echo9.net` → `9host-landing`); see runbook §6 DONE.
 
 Post-cutover runbook outcomes (A–F) and the landing production cutover steps: `docs/RUNBOOK_POST_CUTOVER.md` §5–§6.

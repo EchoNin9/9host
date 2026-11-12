@@ -1,7 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Pencil, Plus, Shield, Settings2, Trash2, User } from "lucide-react"
+import { NativeSelect } from "@/components/ui/native-select"
+import { Crown, Lock, Pencil, Plus, Settings2, Shield, Trash2, Users } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { EmptyState, LoadingState, Notice } from "@/components/page"
 import {
   Card,
   CardContent,
@@ -45,7 +50,20 @@ import {
   type TenantUser,
   type ModulePermissions,
 } from "@/lib/api"
-import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
+import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
+
+function Avatar({ label }: { label: string }) {
+  const parts = label.split(/[\s@._-]+/).filter(Boolean)
+  const text = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?"
+  return (
+    <span
+      aria-hidden
+      className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-muted font-mono text-[0.6875rem] font-semibold"
+    >
+      {text}
+    </span>
+  )
+}
 
 function PermissionsForm({
   user,
@@ -106,23 +124,15 @@ function PermissionsForm({
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : local ? (
-        <div className="space-y-3">
+        <div className="divide-y overflow-hidden rounded-md border">
           {MODULE_KEYS.map((key) => (
-            <div
+            <label
               key={key}
-              className="flex items-center justify-between rounded-lg border p-3"
+              className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 hover:bg-accent/50"
             >
-              <span className="capitalize">{key}</span>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={local[key]}
-                  onChange={() => handleToggle(key)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                <span className="text-sm">Allow</span>
-              </label>
-            </div>
+              <span className="text-sm capitalize">{key}</span>
+              <Switch checked={local[key]} onCheckedChange={() => handleToggle(key)} aria-label={`Allow ${key}`} />
+            </label>
           ))}
         </div>
       ) : null}
@@ -195,7 +205,7 @@ function AddTUserForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
         <label htmlFor="tuser-username" className="text-sm font-medium">
           Username
@@ -205,7 +215,7 @@ function AddTUserForm({
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="jane"
-          className="mt-1"
+          className="mt-1.5"
           autoComplete="username"
         />
         <p className="mt-1 text-xs text-muted-foreground">
@@ -222,7 +232,7 @@ function AddTUserForm({
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
-          className="mt-1"
+          className="mt-1.5"
           autoComplete="new-password"
           minLength={8}
         />
@@ -236,27 +246,27 @@ function AddTUserForm({
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Jane Doe"
-          className="mt-1"
+          className="mt-1.5"
         />
       </div>
       <div>
         <label htmlFor="tuser-role" className="text-sm font-medium">
           Role
         </label>
-        <select
+        <NativeSelect
+          className="mt-1.5"
           id="tuser-role"
           value={role}
           onChange={(e) => setRole(e.target.value)}
-          className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
         >
           {roleOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
-      {err && <p className="text-sm text-destructive">{err}</p>}
+      {err && <Notice tone="danger">{err}</Notice>}
       <SheetFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
@@ -323,7 +333,7 @@ function EditTUserForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
         <label className="text-sm font-medium">Username</label>
         <p className="mt-1 text-sm text-muted-foreground">{user.username}</p>
@@ -337,25 +347,25 @@ function EditTUserForm({
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder="Jane Doe"
-          className="mt-1"
+          className="mt-1.5"
         />
       </div>
       <div>
         <label htmlFor="edit-role" className="text-sm font-medium">
           Role
         </label>
-        <select
+        <NativeSelect
+          className="mt-1.5"
           id="edit-role"
           value={role}
           onChange={(e) => setRole(e.target.value)}
-          className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
         >
           {roleOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
       <div>
         <label htmlFor="edit-password" className="text-sm font-medium">
@@ -367,12 +377,12 @@ function EditTUserForm({
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Leave blank to keep current"
-          className="mt-1"
+          className="mt-1.5"
           autoComplete="new-password"
           minLength={8}
         />
       </div>
-      {err && <p className="text-sm text-destructive">{err}</p>}
+      {err && <Notice tone="danger">{err}</Notice>}
       <SheetFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
@@ -441,7 +451,7 @@ function AddRoleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
         <label htmlFor="role-name" className="text-sm font-medium">
           Role name
@@ -451,7 +461,7 @@ function AddRoleForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="writer"
-          className="mt-1"
+          className="mt-1.5"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           Alphanumeric, underscores, hyphens. Reserved: manager, member, admin, editor
@@ -459,27 +469,19 @@ function AddRoleForm({
       </div>
       <div>
         <label className="text-sm font-medium">Permissions</label>
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 divide-y overflow-hidden rounded-md border">
           {MODULE_KEYS.map((key) => (
-            <div
+            <label
               key={key}
-              className="flex items-center justify-between rounded-lg border p-3"
+              className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 hover:bg-accent/50"
             >
-              <span className="capitalize">{key}</span>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={permissions[key] ?? false}
-                  onChange={() => handleToggle(key)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                <span className="text-sm">Allow</span>
-              </label>
-            </div>
+              <span className="text-sm capitalize">{key}</span>
+              <Switch checked={permissions[key] ?? false} onCheckedChange={() => handleToggle(key)} aria-label={`Allow ${key}`} />
+            </label>
           ))}
         </div>
       </div>
-      {err && <p className="text-sm text-destructive">{err}</p>}
+      {err && <Notice tone="danger">{err}</Notice>}
       <SheetFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
@@ -533,34 +535,26 @@ function EditRoleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div>
         <label className="text-sm font-medium">Role name</label>
         <p className="mt-1 text-sm text-muted-foreground">{role.name}</p>
       </div>
       <div>
         <label className="text-sm font-medium">Permissions</label>
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 divide-y overflow-hidden rounded-md border">
           {MODULE_KEYS.map((key) => (
-            <div
+            <label
               key={key}
-              className="flex items-center justify-between rounded-lg border p-3"
+              className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 hover:bg-accent/50"
             >
-              <span className="capitalize">{key}</span>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={permissions[key] ?? false}
-                  onChange={() => handleToggle(key)}
-                  className="h-4 w-4 rounded border-input"
-                />
-                <span className="text-sm">Allow</span>
-              </label>
-            </div>
+              <span className="text-sm capitalize">{key}</span>
+              <Switch checked={permissions[key] ?? false} onCheckedChange={() => handleToggle(key)} aria-label={`Allow ${key}`} />
+            </label>
           ))}
         </div>
       </div>
-      {err && <p className="text-sm text-destructive">{err}</p>}
+      {err && <Notice tone="danger">{err}</Notice>}
       <SheetFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
@@ -592,201 +586,180 @@ function TenantUsers() {
   if (!canEdit) {
     return (
       <TenantPage>
-        <div>
-          <TenantPageTitle>Users</TenantPageTitle>
-          <p className="text-muted-foreground">
-            Admin or manager access required to view tenant users.
-          </p>
-        </div>
+        <TenantPageHeader title="Users & roles" />
+        <EmptyState
+          icon={Lock}
+          title="Admin or manager access required"
+          description="Ask a tenant admin if you need to manage who can sign in here."
+        />
       </TenantPage>
     )
   }
 
+  const memberCount = users.length + tusers.length
+
   return (
     <TenantPage>
-      <div className="flex items-center justify-between">
-        <div>
-          <TenantPageTitle>Users</TenantPageTitle>
-          <p className="text-muted-foreground">
-            Tenant members and their roles. Cognito users can configure module access.
-          </p>
-        </div>
-        <Button onClick={() => setAddUserOpen(true)}>
-          <Plus className="mr-2 size-4" />
-          Add user
-        </Button>
-      </div>
-
-      {(error || terror) && (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-destructive">{error || terror}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {(loading || tloading) ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Loading users…</p>
-          </CardContent>
-        </Card>
-      ) : users.length === 0 && tusers.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Tenant users</CardTitle>
-            <CardDescription>
-              No users in this tenant yet. Add a non-Cognito user or invite Cognito users.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {users.map((u) => {
-            const isOwner = tenant?.owner_sub != null && u.sub === tenant.owner_sub
-            return (
-              <Card key={`cognito-${u.sub}`}>
-                <CardHeader className="flex flex-row items-center justify-between py-4">
-                  <div>
-                    <CardTitle className="text-base">
-                      {u.name || u.email || u.sub}
-                    </CardTitle>
-                    <CardDescription>
-                      {u.email && u.email !== (u.name || u.sub) ? u.email : u.sub}
-                    </CardDescription>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isOwner && (
-                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-                        Owner
-                      </span>
-                    )}
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        u.role === "admin"
-                          ? "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
-                          : u.role === "manager"
-                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                            : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      <Shield className="size-3" />
-                      {u.role}
-                    </span>
-                    {!isOwner && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPermissionsUser(u)}
-                      >
-                        <Settings2 className="mr-1 size-4" />
-                        Permissions
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-              </Card>
-            )
-          })}
-          {tusers.map((u) => (
-            <Card key={`tuser-${u.username}`}>
-              <CardHeader className="flex flex-row items-center justify-between py-4">
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <User className="size-4 text-muted-foreground" />
-                    {u.display_name || u.username}
-                  </CardTitle>
-                  <CardDescription>
-                    {u.display_name ? u.username : `@${u.username}`}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      u.role === "manager"
-                        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {u.role}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditTUser(u)}
-                  >
-                    <Pencil className="mr-1 size-4" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setDeleteTUser(u)}
-                  >
-                    <Trash2 className="mr-1 size-4" />
-                    Delete
-                  </Button>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between py-4">
-          <div>
-            <CardTitle className="text-base">Custom roles</CardTitle>
-            <CardDescription>
-              Define roles with specific permissions. Assign to users when adding or editing.
-            </CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => setAddRoleOpen(true)}>
-            <Plus className="mr-2 size-4" />
-            Create role
+      <TenantPageHeader
+        title="Users & roles"
+        description="Members sign in with an Echo9 account. Site users sign in with a username you create here."
+        actions={
+          <Button onClick={() => setAddUserOpen(true)}>
+            <Plus className="size-4" />
+            Add site user
           </Button>
+        }
+      />
+
+      {(error || terror) && <Notice tone="danger">{error || terror}</Notice>}
+
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-row items-center justify-between border-b py-4">
+          <div>
+            <CardTitle>
+              Members <span className="tabular font-normal text-muted-foreground">{!(loading || tloading) && memberCount}</span>
+            </CardTitle>
+            <CardDescription>Everyone who can sign in to this tenant.</CardDescription>
+          </div>
         </CardHeader>
-        <CardContent>
-          {rolesLoading ? (
-            <p className="text-sm text-muted-foreground">Loading roles…</p>
-          ) : roles.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No custom roles. Create one to assign granular permissions.
-            </p>
+        <CardContent className="px-0">
+          {loading || tloading ? (
+            <LoadingState className="p-5" rows={2} label="Loading users…" />
+          ) : memberCount === 0 ? (
+            <EmptyState
+              className="m-5"
+              icon={Users}
+              title="No users yet"
+              description="Add a site user to give someone a username and password for this tenant."
+            />
           ) : (
-            <div className="space-y-2">
-              {roles.map((r) => (
-                <div
-                  key={r.name}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div>
-                    <span className="font-medium">{r.name}</span>
-                    <p className="text-xs text-muted-foreground">
-                      {MODULE_KEYS.filter((k) => r.permissions[k]).join(", ") || "No permissions"}
-                    </p>
+            <ul className="divide-y">
+              {users.map((u) => {
+                const isOwner = tenant?.owner_sub != null && u.sub === tenant.owner_sub
+                const display = u.name || u.email || u.sub
+                return (
+                  <li key={`cognito-${u.sub}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+                    <Avatar label={display} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">{display}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {u.email && u.email !== (u.name || u.sub) ? u.email : u.sub}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isOwner && (
+                        <Badge tone="warning">
+                          <Crown aria-hidden />
+                          Owner
+                        </Badge>
+                      )}
+                      <Badge tone={u.role === "admin" ? "brand" : u.role === "manager" ? "info" : "neutral"}>
+                        <Shield aria-hidden />
+                        {u.role}
+                      </Badge>
+                      <Badge mono>account</Badge>
+                    </div>
+                    <div className="flex w-full justify-end gap-1 sm:w-auto">
+                      {!isOwner && (
+                        <Button variant="ghost" size="sm" onClick={() => setPermissionsUser(u)}>
+                          <Settings2 className="size-4" />
+                          Permissions
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+              {tusers.map((u) => (
+                <li key={`tuser-${u.username}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+                  <Avatar label={u.display_name || u.username} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{u.display_name || u.username}</p>
+                    <p className="truncate font-mono text-xs text-muted-foreground">@{u.username}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditRole(r)}
-                    >
-                      <Pencil className="mr-1 size-4" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={u.role === "manager" ? "info" : "neutral"}>{u.role}</Badge>
+                    <Badge mono>site login</Badge>
+                  </div>
+                  <div className="flex w-full justify-end gap-1 sm:w-auto">
+                    <Button variant="ghost" size="sm" onClick={() => setEditTUser(u)}>
+                      <Pencil className="size-4" />
                       Edit
                     </Button>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDeleteRole(r)}
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => setDeleteTUser(u)}
+                      aria-label={`Delete ${u.display_name || u.username}`}
                     >
-                      <Trash2 className="mr-1 size-4" />
-                      Delete
+                      <Trash2 className="size-4 text-destructive" />
                     </Button>
                   </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 border-b py-4">
+          <div>
+            <CardTitle>Custom roles</CardTitle>
+            <CardDescription>
+              Bundles of module permissions you can assign to site users.
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setAddRoleOpen(true)}>
+            <Plus className="size-4" />
+            New role
+          </Button>
+        </CardHeader>
+        <CardContent className="px-0">
+          {rolesLoading ? (
+            <LoadingState className="p-5" rows={1} label="Loading roles…" />
+          ) : roles.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-muted-foreground">
+              No custom roles yet. Built-in roles are admin, manager and member.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {roles.map((r) => {
+                const allowed = MODULE_KEYS.filter((k) => r.permissions[k])
+                return (
+                  <li key={r.name} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-sm font-medium">{r.name}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {allowed.length ? (
+                          allowed.map((k) => (
+                            <Badge key={k} className="capitalize">
+                              {k}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No permissions</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setEditRole(r)}>
+                        <Pencil className="size-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setDeleteRole(r)}
+                        aria-label={`Delete role ${r.name}`}
+                      >
+                        <Trash2 className="size-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
           )}
         </CardContent>
       </Card>
@@ -797,9 +770,9 @@ function TenantUsers() {
       >
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Add user</SheetTitle>
+            <SheetTitle>Add site user</SheetTitle>
             <SheetDescription>
-              Create a non-Cognito user who can sign in with username and password.
+              They sign in at Site sign-in with this username and password — no Echo9 account needed.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">
@@ -844,38 +817,20 @@ function TenantUsers() {
         </SheetContent>
       </Sheet>
 
-      <Sheet
+      <ConfirmDialog
         open={!!deleteTUser}
         onOpenChange={(open) => !open && setDeleteTUser(null)}
-      >
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Delete user</SheetTitle>
-            <SheetDescription>
-              Remove {deleteTUser?.display_name || deleteTUser?.username} from this tenant? They will no longer be able to sign in.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-4 flex gap-2">
-            <Button variant="outline" onClick={() => setDeleteTUser(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={async () => {
-                if (!deleteTUser || !tenantSlug) return
-                const token = await getToken()
-                const ok = await deleteTenantTUser(api, token, deleteTUser.username)
-                if (ok) {
-                  refetchTUsers()
-                  setDeleteTUser(null)
-                }
-              }}
-            >
-              Delete
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+        title={`Delete ${deleteTUser?.display_name || deleteTUser?.username || "user"}?`}
+        description="They will no longer be able to sign in to this tenant."
+        confirmLabel="Delete user"
+        onConfirm={async () => {
+          if (!deleteTUser || !tenantSlug) return false
+          const token = await getToken()
+          const ok = await deleteTenantTUser(api, token, deleteTUser.username)
+          if (ok) refetchTUsers()
+          return ok
+        }}
+      />
 
       <Sheet
         open={addRoleOpen}
@@ -883,7 +838,7 @@ function TenantUsers() {
       >
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Create role</SheetTitle>
+            <SheetTitle>New role</SheetTitle>
             <SheetDescription>
               Define a custom role with specific module permissions.
             </SheetDescription>
@@ -926,38 +881,20 @@ function TenantUsers() {
         </SheetContent>
       </Sheet>
 
-      <Sheet
+      <ConfirmDialog
         open={!!deleteRole}
         onOpenChange={(open) => !open && setDeleteRole(null)}
-      >
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Delete role</SheetTitle>
-            <SheetDescription>
-              Remove role {deleteRole?.name}? This will fail if any users are assigned to it.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="mt-4 flex gap-2">
-            <Button variant="outline" onClick={() => setDeleteRole(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={async () => {
-                if (!deleteRole || !tenantSlug) return
-                const token = await getToken()
-                const ok = await deleteTenantRole(api, token, deleteRole.name)
-                if (ok) {
-                  refetchRoles()
-                  setDeleteRole(null)
-                }
-              }}
-            >
-              Delete
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
+        title={`Delete role ${deleteRole?.name ?? ""}?`}
+        description="This fails if any users are still assigned to the role."
+        confirmLabel="Delete role"
+        onConfirm={async () => {
+          if (!deleteRole || !tenantSlug) return false
+          const token = await getToken()
+          const ok = await deleteTenantRole(api, token, deleteRole.name)
+          if (ok) refetchRoles()
+          return ok
+        }}
+      />
 
       <Sheet
         open={!!permissionsUser}
@@ -965,15 +902,10 @@ function TenantUsers() {
       >
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>
-              Module permissions
-              {permissionsUser && (
-                <span className="font-normal text-muted-foreground">
-                  {" "}
-                  — {permissionsUser.name || permissionsUser.email || permissionsUser.sub}
-                </span>
-              )}
-            </SheetTitle>
+            <SheetTitle>Module permissions</SheetTitle>
+            <SheetDescription>
+              {permissionsUser?.name || permissionsUser?.email || permissionsUser?.sub}
+            </SheetDescription>
           </SheetHeader>
           <div className="mt-4">
             {permissionsUser && tenantSlug && (
