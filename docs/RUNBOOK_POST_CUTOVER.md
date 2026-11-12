@@ -39,7 +39,7 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
    - **`infra/cloudns`:** state is local and manages only the zone (`T-24`). The `echo9.net` edge records (`app`, `sites-origin`, `tools`, `preview`) are managed by `infra/cloudns/scripts/edge_records.py` (dry run by default; `--apply` to write; the dry run must show the intended change only). Pre-T-24 state backup: `infra/cloudns/terraform.tfstate.pre-T24.backup`.
 4. **ClouDNS edits:** allowed only on zone `echo9.net`, and only for the records named in a task. **Never read or edit `jinks.ca`** (owner's personal zone and a real-customer test). Never touch MX/NS/TXT mail records anywhere.
 5. **AWS:** `--profile echo9`, `us-east-1`, account `452644920012`. Only modify or delete resources named `9host*` or listed here.
-   - Do not touch `E164B9WJ8ALT9F` (landing/other domains), `E1S4CU3NV8WOAL` (URL shortener), or any non-9host distribution or certificate.
+   - Do not touch `E164B9WJ8ALT9F` (disabled 2026-11-12; deletion is `T-36`, owner sign-off), `E1S4CU3NV8WOAL` (URL shortener), or any non-9host distribution or certificate.
    - The local AWS CLI is old and lacks `cloudfront-keyvaluestore`; use boto3 from `.venv` for KVS.
 6. **Secrets:**
    - Cloudflare for SaaS credentials are in AWS secret `9host-cloudflare`; ClouDNS in `9host-cloudns`.
@@ -289,3 +289,9 @@ Incident: during the T-31a check a subagent reused the Commander's Chrome tab on
 New tickets: `T-33` landing preview/prod split, `T-34` template tier gating, `T-35` T-30 follow-ups (see `AGENTS.md`).
 
 Next run: `T-31b` (block core, Python registry + golden fixtures) after the TipTap-version decision; `T-33` needs a reviewed `.tf` plan.
+
+### Owner follow-ups done (2026-11-12, same run)
+- `develop` → `main`: PR #20, merge `9dc5dc4` (owner-approved); main CI green; app.echo9.net serves the T-30 SPA; all 8 sites 200.
+- `T-31a`: owner chose latest deps — TipTap 3.33.1 (all `@tiptap/*`), Puck 0.24.0 exact on the spike branch (`a47bbec`); single TipTap copy; vitest 44, build green; Puck lazy chunk 157.7 KB gz.
+- `T-21` proxy secret **rolled out** (Commander, owner-approved): Worker deployed (version `2a231778`), `PROXY_SECRET` set, `__proxy_secret__` KVS key written. Custom domains 200; forged `X-Forwarded-Host` to `sites-origin.echo9.net` → 404 within 20 s. Rollback: delete the KVS key (snippet in §7 status).
+- `E164B9WJ8ALT9F`: **disabled**; removed `echonin9.com`, `www.echonin9.com` (Cloudflare redirects them to GitHub) and `echo9.tech`, `www.echo9.tech` (no DNS). `echo9.ca` / `www.echo9.ca` remain attached (both already failed HTTPS on the 2022-expired cert). Owner plan: echo9.ca/echo9.tech become the business site in a separate project (`T-37`); delete distribution, cert and old origins after observation (`T-36`). Re-enable = set `Enabled=true` and restore aliases.

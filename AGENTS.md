@@ -57,20 +57,22 @@ Full scope, files, and acceptance criteria for each are in runbook §7. `T-13`�
 - [x] `T-18`: Small hardening (sanitizer `rel`, `X-Forwarded-Host` trust, Cloudflare poll throttle, admin console polish) [agent1/agent2] — DONE `53a27b4` (edge-function part reverted in 3394394/aa3ad44 → T-21; prod /media/* → T-22)
 - [x] `T-19`: Post-deploy runtime verification (edge functions, Lambda bundle, Cloudflare, browser) [all] — DONE `d8c90e2` (browser checks need owner)
 - [x] `T-20`: Superadmin users console: list platform admins (Cognito `superadmin` group, e.g. app.echo9.net admins) in their own section above tenant admins instead of under "Orphaned users" [agent1/agent2] — owner request 2026-11-12 — DONE `7d2c0d4`
-- [x] `T-21`: Re-land the X-Forwarded-Host proxy-secret edge check (verify with `aws cloudfront test-function`; add a CI test-function step) [agent1] — DONE `5f088e4`
+- [x] `T-21`: Re-land the X-Forwarded-Host proxy-secret edge check (verify with `aws cloudfront test-function`; add a CI test-function step) [agent1] — DONE `5f088e4`; **enforcement rolled out 2026-11-12** (Worker version `2a231778`, `PROXY_SECRET` set, `__proxy_secret__` KVS key written; forged X-Forwarded-Host → 404)
 - [x] `T-22`: `/media/*` cache behaviour on the production Admin SPA distribution [agent1] — DONE `55de689`
 - [x] `T-23`: Enforce remaining CustomRole permission keys (domains, analytics, settings, users) [agent1] — DONE `f068e73`
 - [x] `T-24`: ClouDNS provider read bug: upstream fix or move echo9.net edge records to an API script [agent1] — DONE `b9b544f`
-- [ ] `T-25`: (owner) Expired echo9.net cert on non-9host distribution E164B9WJ8ALT9F [owner]
+- [x] `T-25`: Expired cert on non-9host distribution E164B9WJ8ALT9F [owner] — superseded 2026-11-12: distribution **disabled**, aliases `echonin9.com`/`echo9.tech` (+www) removed; `echo9.ca`/`www.echo9.ca` left attached until `T-36`
 - [ ] ~~`T-26`~~: superseded by `T-30` (2026-11-12)
 - [x] `T-27`: Drop the built-in `editor` role (owner decision 2026-11-12); stored `editor` reads as `member` [agent1/agent2] — DONE `ca81513`
 - [ ] `T-28`: CI test-function gate depends on `jinks4.echo9.net` staying mapped [agent1] — noted by owner
 - [x] `T-29`: Showcase redesign of the landing page (`landing/`, preview.echo9.net) using high-quality design skills [agent2] — DONE `c04f424` (LIVE on echo9.net via develop, owner-approved)
 - [x] `T-30`: Redesign the Admin SPA (app/stage): fix awkward UX and dated UI; supersedes `T-26` [agent2] — DONE `00a560b` on stage (audit `docs/T-30-ux-audit.md`); app.echo9.net after owner merge
-- [ ] `T-31`: Refactor the site templates system into a WYSIWYG editing interface [agent1/agent2] — ADR-0003 ACCEPTED (`0e575f7`); `T-31a` spike GO (local branch `worktree-agent-a4aef99b10c37b60b` `917ade4`, not pushed); next `T-31b`
+- [ ] `T-31`: Refactor the site templates system into a WYSIWYG editing interface [agent1/agent2] — ADR-0003 ACCEPTED (`0e575f7`); `T-31a` spike GO (local branch `worktree-agent-a4aef99b10c37b60b` `917ade4` + `a47bbec` TipTap 3.33.1 / Puck 0.24.0, not pushed); next `T-31b`
 - [ ] `T-32`: Refactor the template admin section into a WYSIWYG interface [agent1/agent2] — design in ADR-0003; full-page, no side sheet
 - [ ] `T-33`: Split landing preview from production: develop must deploy only to `preview.echo9.net`, prod `echo9.net`/`www` only from `main` (needs `.tf`: separate bucket/distribution or path) [agent1]
 - [ ] `T-34`: Template/block tier gating (Pro+ blocks via `tier_config.py` + `FeatureGate`); deferred until WYSIWYG templates work [agent1/agent2]
+- [ ] `T-36`: (owner sign-off) Delete disabled `E164B9WJ8ALT9F` after an observation period, its expired cert `0c9db415-7a99-4933-864b-eb3967ffc397`, and its old origins: API Gateway `uc61iphvod`, S3 `e9lbp-blog.echon9ne.com`, `www.echon9ne.com`. No access logs existed, so confirm nothing broke first. Pre-change config: `get-distribution-config` backup taken 2026-11-12. Frees `echo9.ca`/`www.echo9.ca` aliases. [agent1]
+- [ ] `T-37`: (other project) `echo9.ca` / `echo9.tech` business site: own CloudFront dist, certs, DNS. Today `echo9.ca` apex is a broken ClouDNS redirect and `www.echo9.ca` points at the disabled E164 — clean up there. Not 9host scope. [owner]
 - [ ] `T-35`: T-30 follow-ups: `GET /sites/{id}/versions` for the rollback list; invite account users by email; unsaved-changes guard → `ConfirmDialog`; `set-state-in-effect` lint debt; loading flashes (tenant badge shows FREE, user menu "Signed in ?"); tier shows Free when impersonating `jinks` but VIP otherwise [agent1/agent2]
 
 `T-21`–`T-24` outcomes, the owner's `T-21` proxy-secret rollout commands and new tickets `T-27`/`T-28`: runbook §7 status.
