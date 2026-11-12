@@ -1,23 +1,15 @@
 """
 GET /api/tenant/analytics — placeholder analytics for Pro+ tier (2.8).
 
-Requires: tenant_slug (header/subdomain), Cognito auth, tenant membership, tier >= Pro.
+Requires: tenant membership and the advanced_analytics feature (Pro+ tier unless
+module_overrides turns it on/off).
 Returns: placeholder metrics for charts (page views, visitors, top pages).
 """
 
 import json
-import os
 from datetime import datetime, timedelta
 
-import boto3
-
-from auth_helpers import require_tenant_auth
-from dynamodb_helpers import get_tenant_item
-from middleware import extract_tenant_slug, with_tenant
-from tier_config import tiers_with_pro_features
-
-# Tiers that have advanced_analytics (Pro+), includes VIP (Task 1.82)
-ANALYTICS_TIERS = tiers_with_pro_features()
+from request_context import HttpError, RequestContext
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -52,38 +44,16 @@ def _generate_placeholder_analytics(tenant_slug: str) -> dict:
     }
 
 
-@with_tenant
-def get_analytics_handler(event: dict, context: dict) -> dict:
+def get_analytics_handler(ctx: RequestContext) -> dict:
     """
     GET /api/tenant/analytics — returns placeholder analytics for Pro+ tenants.
-    Requires tenant_slug (X-Tenant-Slug or subdomain), Cognito auth, tenant membership.
+    Requires tenant membership and the advanced_analytics feature (tier + module_overrides).
     """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
-
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-
-    # Get tenant to check tier
-    tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
-    tenant = tenant_resp.get("Item")
-    tier = (tenant or {}).get("tier", "FREE").upper()
-
-    if tier not in ANALYTICS_TIERS:
+    tenant_slug, _ = ctx.require_tenant_member()
+    try:
+        ctx.require_feature("advanced_analytics")
+    except HttpError:
+        tier = ((ctx.tenant_item or {}).get("tier") or "FREE").upper()
         return _json_response(
             403,
             {

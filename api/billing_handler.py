@@ -12,9 +12,8 @@ from datetime import datetime, timezone
 
 import boto3
 
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
 from dynamodb_helpers import get_tenant_item
-from middleware import with_tenant
+from request_context import RequestContext
 from stripe_helpers import get_stripe_api_key, get_stripe_price_id, stripe_configured
 
 logger = logging.getLogger(__name__)
@@ -47,8 +46,7 @@ def _update_tenant_stripe_customer(table, tenant_slug: str, stripe_customer_id: 
     )
 
 
-@with_tenant
-def billing_checkout_handler(event: dict, context: dict) -> dict:
+def billing_checkout_handler(ctx: RequestContext) -> dict:
     """
     POST /api/tenant/billing/checkout — create Stripe Checkout Session for subscription.
 
@@ -61,12 +59,7 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
     if not stripe_configured():
         return _json_response(503, {"error": "Billing is not configured."})
 
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
+    tenant_slug, _ = ctx.require_tenant_member(("admin", "manager"))
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -74,21 +67,6 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
 
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
 
     # VIP tier excluded from billing (Task 1.82 / Bug #6a)
     tenant = _get_tenant(table, tenant_slug)
@@ -98,7 +76,7 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
             {"error": "VIP tier does not require billing. You already have full features."},
         )
 
-    body = event.get("body") or "{}"
+    body = ctx.event.get("body") or "{}"
     if isinstance(body, str):
         try:
             body = json.loads(body)
@@ -147,8 +125,7 @@ def billing_checkout_handler(event: dict, context: dict) -> dict:
         return _json_response(502, {"error": "Payment provider error"})
 
 
-@with_tenant
-def billing_portal_handler(event: dict, context: dict) -> dict:
+def billing_portal_handler(ctx: RequestContext) -> dict:
     """
     POST /api/tenant/billing/portal — create Stripe Customer Portal session.
 
@@ -161,12 +138,7 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
     if not stripe_configured():
         return _json_response(503, {"error": "Billing is not configured."})
 
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
+    tenant_slug, _ = ctx.require_tenant_member(("admin", "manager"))
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -174,21 +146,6 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
 
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
 
     tenant = _get_tenant(table, tenant_slug)
     # VIP tier excluded from billing (Task 1.82 / Bug #6a)
@@ -204,7 +161,7 @@ def billing_portal_handler(event: dict, context: dict) -> dict:
             {"error": "No billing account. Subscribe first via checkout."},
         )
 
-    body = event.get("body") or "{}"
+    body = ctx.event.get("body") or "{}"
     if isinstance(body, str):
         try:
             body = json.loads(body)

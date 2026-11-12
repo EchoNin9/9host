@@ -33,16 +33,20 @@ def mock_stripe_config():
 
 
 @pytest.fixture
-def auth_mock(monkeypatch):
-    """Bypass auth helpers for billing tests."""
-    monkeypatch.setattr(
-        "billing_handler.require_tenant_auth",
-        lambda event, table, tenant_slug, region: (True, "sub_admin_123", "admin", True),
-    )
-    monkeypatch.setattr(
-        "billing_handler.require_tenant_admin_or_manager",
-        lambda table, sub, tenant_slug, event: (True, None),
-    )
+def auth_mock():
+    """Build an admin RequestContext for the event's X-Tenant-Slug (auth itself is tested elsewhere)."""
+    from request_context import Principal, RequestContext
+
+    def as_admin(event):
+        return RequestContext(
+            event=event,
+            principal=Principal(kind="cognito", identifier="sub_admin_123", email=None, is_superadmin=False),
+            tenant_slug=event["headers"]["x-tenant-slug"],
+            effective_role="admin",
+            is_impersonating=False,
+        )
+
+    return as_admin
 
 
 class TestBillingFeatureFlag:
@@ -58,7 +62,7 @@ class TestBillingFeatureFlag:
                 "cancel_url": "https://example.com/cancel",
             }),
         }
-        resp = billing_handler.billing_checkout_handler(event, {})
+        resp = billing_handler.billing_checkout_handler(auth_mock(event))
         assert resp["statusCode"] == 403
         data = json.loads(resp["body"])
         assert data.get("error") == "Billing is disabled"
@@ -71,7 +75,7 @@ class TestBillingFeatureFlag:
             "headers": {"x-tenant-slug": "tenant-free"},
             "body": json.dumps({"return_url": "https://example.com/settings"}),
         }
-        resp = billing_handler.billing_portal_handler(event, {})
+        resp = billing_handler.billing_portal_handler(auth_mock(event))
         assert resp["statusCode"] == 403
         data = json.loads(resp["body"])
         assert data.get("error") == "Billing is disabled"
@@ -109,7 +113,7 @@ class TestBillingCheckoutAndPortal:
                     "cancel_url": "https://echo9.net/cancel",
                 }),
             }
-            resp = billing_handler.billing_checkout_handler(event, {})
+            resp = billing_handler.billing_checkout_handler(auth_mock(event))
             assert resp["statusCode"] == 200
             data = json.loads(resp["body"])
             assert data["url"] == "https://checkout.stripe.com/pay/cs_test_123"
@@ -146,7 +150,7 @@ class TestBillingCheckoutAndPortal:
                 "cancel_url": "https://echo9.net/cancel",
             }),
         }
-        resp = billing_handler.billing_checkout_handler(event, {})
+        resp = billing_handler.billing_checkout_handler(auth_mock(event))
         assert resp["statusCode"] == 400
         data = json.loads(resp["body"])
         assert "VIP tier does not require billing" in data.get("error", "")
@@ -174,7 +178,7 @@ class TestBillingCheckoutAndPortal:
             "headers": {"x-tenant-slug": tenant_slug},
             "body": json.dumps({"return_url": "https://echo9.net/settings"}),
         }
-        resp = billing_handler.billing_portal_handler(event, {})
+        resp = billing_handler.billing_portal_handler(auth_mock(event))
         assert resp["statusCode"] == 400
         data = json.loads(resp["body"])
         assert "VIP tier does not require billing" in data.get("error", "")

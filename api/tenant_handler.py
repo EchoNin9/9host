@@ -18,9 +18,9 @@ import time
 
 import boto3
 
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
-from dynamodb_helpers import get_tenant_item, query_tenants_for_user
-from middleware import extract_tenant_slug, with_tenant
+from dynamodb_helpers import get_tenant_item
+from request_context import RequestContext
+from tenant_store import DynamoDBTenantStore
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -76,31 +76,14 @@ def _owner_email(owner_sub: str, region: str) -> str:
     return email
 
 
-@with_tenant
-def get_tenant_handler(event: dict, context: dict) -> dict:
+def get_tenant_handler(ctx: RequestContext) -> dict:
     """
-    GET /api/tenant — tenant metadata. Requires tenant_slug, Cognito auth, tenant membership.
+    GET /api/tenant — tenant metadata. Requires tenant membership.
     Returns name, tier, owner_sub (Task 1.26), etc.
     """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain (acme.echo9.net) or X-Tenant-Slug header."},
-        )
-
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
+    tenant_slug, _ = ctx.require_tenant_member()
+    table = DynamoDBTenantStore().table
     region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
 
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
     item = resp.get("Item")
@@ -160,35 +143,16 @@ def _parse_body(event: dict) -> dict | None:
     return body
 
 
-@with_tenant
-def put_tenant_handler(event: dict, context: dict) -> dict:
+def put_tenant_handler(ctx: RequestContext) -> dict:
     """
     PUT /api/tenant — transfer owner (Task 2.17). Requires current user to be owner.
     Body: { "owner_sub": "<new_owner_sub>" }. Only Cognito users can be owner.
     """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
+    tenant_slug, _ = ctx.require_tenant_member()
+    table = DynamoDBTenantStore().table
+    sub = ctx.principal.identifier
 
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    if not is_cognito:
+    if ctx.principal.kind != "cognito":
         return _json_response(
             403,
             {"error": "Only Cognito account owners can transfer ownership."},
@@ -206,7 +170,7 @@ def put_tenant_handler(event: dict, context: dict) -> dict:
             {"error": "Forbidden. Only the current owner can transfer ownership."},
         )
 
-    body = _parse_body(event) or {}
+    body = _parse_body(ctx.event) or {}
     new_owner = (body.get("owner_sub") or "").strip()
     if not new_owner:
         return _json_response(400, {"error": "owner_sub is required."})
@@ -234,42 +198,15 @@ def put_tenant_handler(event: dict, context: dict) -> dict:
     )
 
 
-@with_tenant
-def patch_tenant_handler(event: dict, context: dict) -> dict:
+def patch_tenant_handler(ctx: RequestContext) -> dict:
     """
     PATCH /api/tenant — update module_overrides (Task 2.22). Requires admin/manager.
     Body: { "module_overrides": { "custom_domains": bool, "advanced_analytics": bool } }.
     """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
+    tenant_slug, _ = ctx.require_tenant_member(("admin", "manager"))
+    table = DynamoDBTenantStore().table
 
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
-    body = _parse_body(event) or {}
+    body = _parse_body(ctx.event) or {}
     mo = body.get("module_overrides")
     if not isinstance(mo, dict):
         return _json_response(400, {"error": "module_overrides must be an object"})
@@ -341,12 +278,3 @@ def patch_tenant_handler(event: dict, context: dict) -> dict:
         },
     )
 
-
-def raw_handler(event: dict, context: dict) -> dict:
-    """
-    Example without decorator: manually extract tenant_slug.
-    """
-    tenant_slug = extract_tenant_slug(event)
-    event["tenant_slug"] = tenant_slug
-    # ... rest of handler
-    return {"statusCode": 200, "body": json.dumps({"tenant_slug": tenant_slug})}

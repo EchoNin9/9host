@@ -1,10 +1,11 @@
 """
 9host API Lambda handler — main entry point for API Gateway (HTTP API v2 proxy).
 
-Dispatches requests via a declarative route registry. Migrated handlers take a
+Dispatches requests via a declarative route registry. Authenticated handlers take a
 ``RequestContext`` (auth, tenant, effective role resolved once) and run inside
-``run_with_context``; legacy ``(event, context)`` handlers are called directly. Everything
-is wrapped in the safe error boundary (Bug #8: no tracebacks in 500s).
+``run_with_context``; the public site-login and Stripe webhook handlers take the raw
+``(event, context)``. Everything is wrapped in the safe error boundary (Bug #8: no
+tracebacks in 500s).
 
 ``/api/admin/tenants/{slug}/{sites|domains|users|tusers|roles}`` reuse the tenant handlers
 with an admin-impersonated RequestContext (superadmin only).
@@ -33,7 +34,6 @@ from billing_handler import billing_checkout_handler, billing_portal_handler
 from content_handler import ENTITIES as CONTENT_ENTITIES, content_handler
 from domains_handler import domains_handler
 from draft_handler import draft_token_handler
-from handler_example import get_tenant_handler, patch_tenant_handler, put_tenant_handler
 from publish_handler import draft_publish_handler, publish_handler
 from request_context import (
     CORS_HEADERS,
@@ -48,6 +48,7 @@ from rollback_handler import rollback_handler
 from site_auth_handler import site_login_handler
 from sites_handler import sites_handler
 from stripe_webhook_handler import stripe_webhook_handler
+from tenant_handler import get_tenant_handler, patch_tenant_handler, put_tenant_handler
 from tenant_store import DynamoDBTenantStore
 from tenant_templates_handler import tenant_templates_handler
 from tenant_users_handler import tenant_users_handler
@@ -137,7 +138,7 @@ def _route_admin_tenants(event, context, path, method):
         handler = {"GET": get_tenant_by_slug_handler, "PATCH": admin_patch_tenant_handler}.get(method)
     elif resource == "settings" and not rest:
         handler = {"GET": get_tenant_by_slug_handler, "PUT": admin_patch_tenant_handler}.get(method)
-    return handler(event, context, slug) if handler else respond(404, NOT_FOUND)
+    return run_with_context(event, lambda ctx: handler(ctx, slug)) if handler else respond(404, NOT_FOUND)
 
 
 def _route_admin_templates(event, context, path, method):
@@ -148,7 +149,7 @@ def _route_admin_templates(event, context, path, method):
     handler = {"GET": get_template_handler, "PUT": update_template_handler, "DELETE": delete_template_handler}.get(method)
     if not handler:
         return respond(405, {"error": "Method not allowed."})
-    return handler(event, context, slug_part.lower())
+    return run_with_context(event, lambda ctx: handler(ctx, slug_part.lower()))
 
 
 # ---------------------------------------------------------------------------
@@ -158,24 +159,24 @@ def _route_admin_templates(event, context, path, method):
 _EXACT_ROUTES = [
     ("GET", "/api/health", lambda e, c: respond(200, {"status": "ok", "service": "9host-api"})),
     ("POST", "/api/auth/site-login", site_login_handler),
-    ("GET", "/api/tenants", get_tenants_handler),
-    ("POST", "/api/tenants", self_serve_create_tenant_handler),
-    ("GET", "/api/validate-slug", validate_slug_handler),
-    ("GET", "/api/tenant", get_tenant_handler),
-    ("PUT", "/api/tenant", put_tenant_handler),
-    ("PATCH", "/api/tenant", patch_tenant_handler),
-    ("GET", "/api/tenant/analytics", get_analytics_handler),
-    ("POST", "/api/tenant/billing/checkout", billing_checkout_handler),
-    ("POST", "/api/tenant/billing/portal", billing_portal_handler),
-    ("GET", "/api/templates", get_templates_handler),
+    ("GET", "/api/tenants", _ctx(get_tenants_handler)),
+    ("POST", "/api/tenants", _ctx(self_serve_create_tenant_handler)),
+    ("GET", "/api/validate-slug", _ctx(validate_slug_handler)),
+    ("GET", "/api/tenant", _ctx(get_tenant_handler)),
+    ("PUT", "/api/tenant", _ctx(put_tenant_handler)),
+    ("PATCH", "/api/tenant", _ctx(patch_tenant_handler)),
+    ("GET", "/api/tenant/analytics", _ctx(get_analytics_handler)),
+    ("POST", "/api/tenant/billing/checkout", _ctx(billing_checkout_handler)),
+    ("POST", "/api/tenant/billing/portal", _ctx(billing_portal_handler)),
+    ("GET", "/api/templates", _ctx(get_templates_handler)),
     ("POST", "/api/webhooks/stripe", stripe_webhook_handler),
-    ("GET", "/api/admin/users", admin_global_users_handler),
-    ("GET", "/api/admin/stats", admin_stats_handler),
+    ("GET", "/api/admin/users", _ctx(admin_global_users_handler)),
+    ("GET", "/api/admin/stats", _ctx(admin_stats_handler)),
     ("GET", "/api/admin/edge-kvs", _ctx(edge_kvs_handler)),
-    ("GET", "/api/admin/tenants", list_all_tenants_handler),
-    ("POST", "/api/admin/tenants", create_tenant_handler),
-    ("GET", "/api/admin/templates", list_templates_handler),
-    ("POST", "/api/admin/templates", create_template_handler),
+    ("GET", "/api/admin/tenants", _ctx(list_all_tenants_handler)),
+    ("POST", "/api/admin/tenants", _ctx(create_tenant_handler)),
+    ("GET", "/api/admin/templates", _ctx(list_templates_handler)),
+    ("POST", "/api/admin/templates", _ctx(create_template_handler)),
 ]
 _EXACT_LOOKUP = {(m, p): h for m, p, h in _EXACT_ROUTES}
 
@@ -186,7 +187,7 @@ _PREFIX_ROUTES = [
     ("/api/tenant/users", lambda e, c, p, m: run_with_context(e, users_handler)),
     ("/api/tenant/tusers", lambda e, c, p, m: run_with_context(e, tenant_users_handler)),
     ("/api/tenant/roles", lambda e, c, p, m: run_with_context(e, roles_handler)),
-    ("/api/tenant/templates", lambda e, c, p, m: tenant_templates_handler(e, c)),
+    ("/api/tenant/templates", lambda e, c, p, m: run_with_context(e, tenant_templates_handler)),
     ("/api/admin/tenants/", _route_admin_tenants),
     ("/api/admin/templates/", _route_admin_templates),
 ]

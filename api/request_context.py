@@ -72,7 +72,6 @@ _jwks_cache: dict[str, tuple[float, dict]] = {}  # url -> (expires_at, jwks)
 def clear_jwks_cache() -> None:
     with _jwks_lock:
         _jwks_cache.clear()
-    _verified_superadmin.clear()
 
 
 def _get_jwks(url: str) -> dict:
@@ -292,14 +291,27 @@ def _cognito_principal_via_get_user(token: str, user_pool_id: str, region: str) 
     sub = attrs.get("sub") or resp.get("Username", "")
     if not sub:
         return None
-    from auth_helpers import is_superadmin
-
     return Principal(
         kind="cognito",
         identifier=sub,
         email=attrs.get("email"),
-        is_superadmin=is_superadmin(sub, user_pool_id, region=region),
+        is_superadmin=_in_superadmin_group(sub, user_pool_id, region),
     )
+
+
+def _in_superadmin_group(sub: str, user_pool_id: str, region: str) -> bool:
+    """Local-dev fallback only: Cognito group lookup (no verified ``cognito:groups`` claim)."""
+    if not user_pool_id:
+        return False
+    import boto3
+
+    try:
+        resp = boto3.client("cognito-idp", region_name=region).admin_list_groups_for_user(
+            UserPoolId=user_pool_id, Username=sub
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    return any((g.get("GroupName") or "").lower() == "superadmin" for g in resp.get("Groups", []))
 
 
 def _verify_tuser(token: str) -> Principal | None:
@@ -345,38 +357,12 @@ def authenticate(event: dict, region: str | None = None) -> Principal | None:
     if not claims:
         return None
     groups = [str(g).lower() for g in (claims.get("cognito:groups") or [])]
-    is_super = "superadmin" in groups
-    _remember_verified_superadmin(claims["sub"], is_super, claims.get("exp"))
     return Principal(
         kind="cognito",
         identifier=claims["sub"],
         email=claims.get("email"),
-        is_superadmin=is_super,
+        is_superadmin="superadmin" in groups,
     )
-
-
-# sub -> (expires_at, is_superadmin) from locally verified tokens, so the legacy
-# ``auth_helpers.is_superadmin(sub, ...)`` agrees with ``authenticate`` without a Cognito call.
-_verified_superadmin: dict[str, tuple[float, bool]] = {}
-
-
-def _remember_verified_superadmin(sub: str, is_super: bool, exp) -> None:
-    now = time.time()
-    for k in [k for k, (e, _) in _verified_superadmin.items() if e <= now]:
-        _verified_superadmin.pop(k, None)
-    try:
-        expires = min(float(exp), now + 3600)
-    except (TypeError, ValueError):
-        expires = now + 300
-    _verified_superadmin[sub] = (expires, is_super)
-
-
-def verified_superadmin(sub: str) -> bool | None:
-    """Superadmin flag from a token already verified in this container, else None (unknown)."""
-    hit = _verified_superadmin.get(sub)
-    if hit and hit[0] > time.time():
-        return hit[1]
-    return None
 
 
 # ---------------------------------------------------------------------------

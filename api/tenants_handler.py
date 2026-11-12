@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token
+from request_context import RequestContext
 from tenant_store import DynamoDBTenantStore
 from dynamodb_helpers import (
     get_tenant_item,
@@ -40,13 +40,18 @@ def _json_response(status: int, body: dict) -> dict:
     }
 
 
-def get_tenants_handler(event: dict, context: dict) -> dict:
+def _cognito_sub(ctx: RequestContext) -> str | None:
+    """Cognito sub of the caller; None for anonymous or TenantUser callers."""
+    p = ctx.principal
+    return p.identifier if p and p.kind == "cognito" else None
+
+
+def get_tenants_handler(ctx: RequestContext) -> dict:
     """
     GET /api/tenants — returns tenants for the authenticated user.
     Requires Authorization: Bearer <cognito_access_token>.
     """
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
+    sub = _cognito_sub(ctx)
     if not sub:
         return _json_response(401, {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."})
 
@@ -131,14 +136,15 @@ def _get_user_email_name(event: dict, region: str) -> tuple[str, str]:
         return "", ""
 
 
-def create_tenant_handler(event: dict, context: dict) -> dict:
+def create_tenant_handler(ctx: RequestContext) -> dict:
     """
     POST /api/tenants — self-serve tenant creation (Task 4.1).
     Any authenticated Cognito user can create a tenant. Tier is always FREE.
     Body: { "slug": string (max 60), "name"?: string }.
     """
+    event = ctx.event
     region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
+    sub = _cognito_sub(ctx)
     if not sub:
         return _json_response(
             401,

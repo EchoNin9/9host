@@ -297,9 +297,6 @@ def test_new_tenant_first_list_sites_skips_legacy_query(api, monkeypatch):
 
 
 def test_admin_created_tenant_has_migration_marker(api, monkeypatch):
-    import admin_handler
-
-    monkeypatch.setattr(admin_handler, "is_superadmin", lambda sub, pool, region="us-east-1": sub == "super-1")
     code, body = call("POST", "/api/admin/tenants", superadmin(api), tenant=None, body={"slug": "fresh2"})
     assert code == 201, body
     assert api.table.get_item(Key={"pk": "TENANT#fresh2", "sk": "MIGRATION#SITE_META"}).get("Item")
@@ -377,9 +374,6 @@ def test_admin_users_and_tusers_delegate(api):
 
 
 def test_admin_settings_put_updates_tier(api, monkeypatch):
-    import admin_handler
-
-    monkeypatch.setattr(admin_handler, "is_superadmin", lambda sub, pool, region="us-east-1": sub == "super-1")
     code, body = call("PUT", "/api/admin/tenants/acme/settings", superadmin(api), tenant=None, body={"tier": "BUSINESS"})
     assert code == 200 and body["tier"] == "BUSINESS"
 
@@ -505,9 +499,9 @@ def test_users_module_permission_round_trips(api):
 
 
 def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
-    import handler_example
+    import tenant_handler
 
-    handler_example._owner_email_cache.clear()
+    tenant_handler._owner_email_cache.clear()
     api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO", "name": "Acme", "owner_sub": "owner-1"})
     calls = []
 
@@ -516,12 +510,12 @@ def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
             calls.append(kw["Username"])
             return {"UserAttributes": [{"Name": "email", "Value": "o@acme.test"}]}
 
-    real = handler_example.boto3.client
+    real = tenant_handler.boto3.client
     monkeypatch.setattr(
-        handler_example.boto3, "client", lambda name, **kw: FakeCognito() if name == "cognito-idp" else real(name, **kw)
+        tenant_handler.boto3, "client", lambda name, **kw: FakeCognito() if name == "cognito-idp" else real(name, **kw)
     )
     now = [1000.0]
-    monkeypatch.setattr(handler_example, "_clock", lambda: now[0])
+    monkeypatch.setattr(tenant_handler, "_clock", lambda: now[0])
     for _ in range(2):
         code, body = call("GET", "/api/tenant", owner(api))
         assert code == 200 and body["owner_email"] == "o@acme.test"
@@ -529,4 +523,129 @@ def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
     now[0] += 301
     call("GET", "/api/tenant", owner(api))
     assert calls == ["owner-1", "owner-1"]
-    handler_example._owner_email_cache.clear()
+    tenant_handler._owner_email_cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# T-13: legacy-auth handlers migrated to RequestContext
+# ---------------------------------------------------------------------------
+
+MANAGER_ONLY_ROUTES = [
+    ("POST", "/api/tenant/billing/checkout", {"tier": "pro", "success_url": "https://x/s", "cancel_url": "https://x/c"}),
+    ("POST", "/api/tenant/billing/portal", {"return_url": "https://x/r"}),
+    ("PATCH", "/api/tenant", {"module_overrides": {"branding": True}}),
+    ("PUT", "/api/tenant", {"owner_sub": "owner-1"}),
+    ("POST", "/api/tenant/templates/fork", {"template_slug": "basic"}),
+    ("PUT", "/api/tenant/templates/mine", {"name": "X"}),
+    ("DELETE", "/api/tenant/templates/mine", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", MANAGER_ONLY_ROUTES)
+def test_tuser_member_forbidden_on_manager_routes(api, monkeypatch, method, path, body):
+    import billing_handler
+
+    monkeypatch.setenv("BILLING_ENABLED", "true")
+    monkeypatch.setattr(billing_handler, "stripe_configured", lambda: True)
+    api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TEMPLATE#mine", "name": "Mine"})
+    before = api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"]
+
+    code, resp = call(method, path, tuser(role="member"), body=body)
+    assert code == 403, resp
+    assert set(resp) == {"error"}
+    # Nothing was written.
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"] == before
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TEMPLATE#mine"}).get("Item")
+    # Same for a Cognito member, and for a TUSER token issued for another tenant.
+    DynamoDBTenantStore(api.table).put_member("acme", {"sub": "m-1", "role": "member", "name": "M"})
+    assert call(method, path, cognito(api.key, "m-1"), body=body)[0] == 403
+    assert call(method, path, tuser(role="manager", tenant="other"), body=body)[0] == 403
+
+
+def test_tuser_manager_passes_role_gate(api):
+    code, body = call("PATCH", "/api/tenant", tuser(role="manager"), body={"module_overrides": {"branding": True}})
+    assert code == 200 and body["module_overrides"] == {"branding": True}
+    code, body = call("PUT", "/api/tenant", tuser(role="manager"), body={"owner_sub": "owner-1"})
+    assert code == 403 and "Cognito" in body["error"]  # ownership transfer stays Cognito-owner only
+
+
+def test_analytics_respects_module_overrides(api):
+    code, body = call("GET", "/api/tenant/analytics", tuser(role="member"))
+    assert code == 200 and body["placeholder"] is True  # PRO tier, no override
+
+    api.table.update_item(
+        Key={"pk": "TENANT#acme", "sk": "TENANT"},
+        UpdateExpression="SET module_overrides = :mo",
+        ExpressionAttributeValues={":mo": {"advanced_analytics": False}},
+    )
+    code, body = call("GET", "/api/tenant/analytics", owner(api))
+    assert code == 403
+    assert body == {
+        "error": "Advanced Analytics requires Pro, Business, or VIP tier.",
+        "tier": "PRO",
+        "upgrade_required": True,
+    }
+
+    api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "FREE",
+                             "module_overrides": {"advanced_analytics": True}})
+    assert call("GET", "/api/tenant/analytics", owner(api))[0] == 200
+    assert call("GET", "/api/tenant/analytics")[0] == 401
+    assert call("GET", "/api/tenant/analytics", cognito(api.key, "stranger"))[0] == 403
+
+
+SUPERADMIN_ROUTES = [
+    ("GET", "/api/admin/users", None),
+    ("GET", "/api/admin/stats", None),
+    ("GET", "/api/admin/tenants", None),
+    ("POST", "/api/admin/tenants", {"slug": "newco"}),
+    ("GET", "/api/admin/tenants/acme", None),
+    ("PATCH", "/api/admin/tenants/acme", {"tier": "VIP"}),
+    ("GET", "/api/admin/tenants/acme/settings", None),
+    ("PUT", "/api/admin/tenants/acme/settings", {"tier": "VIP"}),
+    ("DELETE", "/api/admin/tenants/acme", None),
+    ("GET", "/api/admin/templates", None),
+    ("POST", "/api/admin/templates", {"slug": "tpl"}),
+    ("GET", "/api/admin/templates/basic", None),
+    ("PUT", "/api/admin/templates/basic", {"name": "X"}),
+    ("DELETE", "/api/admin/templates/basic", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", SUPERADMIN_ROUTES)
+def test_superadmin_routes_reject_non_superadmins(api, method, path, body):
+    api.table.put_item(Item={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic", "name": "Basic"})
+    assert call(method, path, tenant=None, body=body)[0] == 401
+    for token in (owner(api), tuser(role="admin")):
+        code, resp = call(method, path, token, body=body)
+        assert code == 403 and "Superadmin" in resp["error"], (code, resp)
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"]["tier"] == "PRO"
+    assert api.table.get_item(Key={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic"}).get("Item")
+    assert not api.table.get_item(Key={"pk": "TENANT#newco", "sk": "TENANT"}).get("Item")
+
+
+def test_superadmin_routes_use_verified_group_claim(api, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("no Cognito group lookup for a locally verified token")
+
+    monkeypatch.setattr(rc, "_in_superadmin_group", boom)
+    code, body = call("GET", "/api/admin/stats", superadmin(api), tenant=None)
+    assert code == 200 and body["total_tenants"] == 1
+    code, body = call("GET", "/api/admin/tenants", superadmin(api), tenant=None)
+    assert code == 200 and [t["slug"] for t in body["tenants"]] == ["acme"]
+    code, body = call("GET", "/api/admin/tenants/acme", superadmin(api), tenant=None)
+    assert code == 200 and body["tier"] == "PRO"
+
+
+def test_member_read_routes(api):
+    api.table.put_item(Item={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic", "name": "Basic"})
+    stranger = cognito(api.key, "stranger")
+    for path, query in [("/api/validate-slug", {"slug": "free-slug"}), ("/api/templates", None),
+                        ("/api/tenant/templates", None), ("/api/tenant", None)]:
+        assert call("GET", path, query=query)[0] == 401
+        assert call("GET", path, stranger, query=query)[0] == 403
+        assert call("GET", path, tuser(role="member"), query=query)[0] == 200
+    assert call("GET", "/api/validate-slug", owner(api), query={"slug": "acme"})[1] == {"available": False, "slug": "acme"}
+    assert [t["slug"] for t in call("GET", "/api/templates", owner(api))[1]["templates"]] == ["basic"]
+    code, body = call("GET", "/api/tenants", owner(api), tenant=None)
+    assert code == 200 and body["tenants"] == [{"slug": "acme", "name": "Acme", "role": "admin"}]
+    assert call("GET", "/api/tenants", tuser(), tenant=None)[0] == 401
