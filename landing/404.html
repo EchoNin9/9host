@@ -4,34 +4,58 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>Page not found · Echo9</title>
+  <title>Page not found · Echo9 · 9host</title>
+  <meta name="description" content="This page doesn’t exist on echo9.net.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0e12" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="site-header">
-    <nav class="nav" aria-label="Primary">
+    <nav class="nav wrap" aria-label="Primary">
       <a class="brand" href="/" aria-label="Echo9 · 9host home">
-        <span class="brand-cube" aria-hidden="true">e9</span>
-        <span>Echo9 · 9host</span>
+        <span class="brand-mark" aria-hidden="true">e9</span>
+        <span>Echo9 <span class="brand-sep" aria-hidden="true">/</span> 9host</span>
       </a>
       <ul class="nav-links">
         <li>
           <a class="tools-pill" href="https://tools.e9.cx" target="_blank" rel="noopener">⚡ Echo9 Tools (tools.e9.cx ↗)<span class="sr-only"> (opens in a new tab)</span></a>
         </li>
-        <li><a class="btn btn-dark" href="https://app.echo9.net">Sign in</a></li>
+        <li><a class="btn btn-ink btn-sm" href="https://app.echo9.net">Sign in</a></li>
       </ul>
     </nav>
   </header>
 
-  <main id="main" class="not-found">
-    <p class="eyebrow">404</p>
-    <h1>This page doesn’t exist.</h1>
-    <p class="lede">The address may be mistyped, or the page has moved.</p>
-    <div class="hero-actions">
-      <a class="btn btn-accent" href="/">Back to the home page</a>
+  <main id="main" class="not-found wrap">
+    <div>
+      <p class="eyebrow">Error 404</p>
+      <h1>Nothing was published <em>at this&nbsp;address.</em></h1>
+      <p class="lede">The link may be mistyped, or the page has moved. Everything else is where you left it.</p>
+      <div class="hero-actions">
+        <a class="btn btn-signal" href="/">Back to the home page</a>
+        <a class="btn btn-ghost" href="https://app.echo9.net">Sign in to the console</a>
+      </div>
     </div>
+    <pre class="nf-code" aria-hidden="true"><span class="ok">200</span>  /index.html
+<span class="ok">200</span>  /style.css
+<span class="miss">404</span>  <span class="miss">this page</span></pre>
   </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p><span class="brand-mark brand-mark-sm" aria-hidden="true">e9</span>&copy; Echo9 · 9host</p>
+      <ul class="footer-links" aria-label="Footer">
+        <li><a href="https://app.echo9.net">Console</a></li>
+        <li><a href="https://tools.e9.cx" target="_blank" rel="noopener">tools.e9.cx ↗<span class="sr-only"> (opens in a new tab)</span></a></li>
+      </ul>
+    </div>
+  </footer>
 </body>
 </html>

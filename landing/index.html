@@ -3,100 +3,234 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Echo9 · 9host — Static-first website publishing</title>
-  <meta name="description" content="9host by Echo9: design once, publish pure static HTML to the edge. Curated templates, content modules and custom domains with automatic TLS.">
-  <meta name="theme-color" content="#f6f5f2">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23181a20'/%3E%3Ctext x='16' y='21' font-family='monospace' font-size='14' fill='%23fff' text-anchor='middle'%3Ee9%3C/text%3E%3C/svg%3E">
+  <title>9host by Echo9 · Websites published as pure static HTML</title>
+  <meta name="description" content="9host by Echo9: build a site from curated layouts, run its blog, events, gallery and branding from one console, and publish it as pure static HTML to the edge, on your echo9.net subdomain or your own domain.">
+  <link rel="canonical" href="https://echo9.net/">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0e12" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Echo9 · 9host">
+  <meta property="og:title" content="9host · Websites published as pure static HTML">
+  <meta property="og:description" content="Curated layouts, built-in blog, events, gallery and branding, and custom domains with automatic TLS. Every publish is static HTML served from the edge.">
+  <meta property="og:url" content="https://echo9.net/">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="site-header">
-    <nav class="nav" aria-label="Primary">
+    <nav class="nav wrap" aria-label="Primary">
       <a class="brand" href="/" aria-label="Echo9 · 9host home">
-        <span class="brand-cube" aria-hidden="true">e9</span>
-        <span>Echo9 · 9host</span>
+        <span class="brand-mark" aria-hidden="true">e9</span>
+        <span>Echo9 <span class="brand-sep" aria-hidden="true">/</span> 9host</span>
       </a>
       <ul class="nav-links">
-        <li class="nav-anchor"><a href="#templates">Templates</a></li>
-        <li class="nav-anchor"><a href="#features">Features</a></li>
+        <li class="nav-anchor"><a href="#how">How it works</a></li>
+        <li class="nav-anchor"><a href="#modules">Modules</a></li>
+        <li class="nav-anchor"><a href="#domains">Domains</a></li>
         <li>
           <a class="tools-pill" href="https://tools.e9.cx" target="_blank" rel="noopener">⚡ Echo9 Tools (tools.e9.cx ↗)<span class="sr-only"> (opens in a new tab)</span></a>
         </li>
-        <li><a class="btn btn-dark" href="https://app.echo9.net">Sign in</a></li>
+        <li><a class="btn btn-ink btn-sm" href="https://app.echo9.net">Sign in</a></li>
       </ul>
     </nav>
   </header>
 
   <main id="main">
-    <section class="hero" aria-labelledby="hero-title">
+    <!-- Hero -->
+    <section class="hero wrap" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">Static-first website publishing</p>
-        <h1 id="hero-title">Design once, publish pure static HTML to the edge.</h1>
-        <p class="lede">Create sites from curated layouts, manage pages, blog updates, events and galleries in one editor, and serve instant static HTML on your own domain.</p>
+        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Static-first website hosting</p>
+        <h1 id="hero-title">Your whole website, published as <em>pure static&nbsp;HTML.</em></h1>
+        <p class="lede">Start from a curated layout, run pages, posts, events and galleries from one console, and publish to the edge. Visitors get plain HTML and CSS: no database behind the page, nothing to slow it down.</p>
         <div class="hero-actions">
-          <a class="btn btn-accent" href="https://app.echo9.net">Sign in to the console</a>
-          <a class="btn btn-outline" href="https://tools.e9.cx" target="_blank" rel="noopener">Launch Echo9 Tools ↗<span class="sr-only"> (opens in a new tab)</span></a>
+          <a class="btn btn-signal" href="https://app.echo9.net">Sign in to the console</a>
+          <a class="btn btn-ghost" href="https://tools.e9.cx" target="_blank" rel="noopener">Launch Echo9 Tools ↗<span class="sr-only"> (opens in a new tab)</span></a>
         </div>
       </div>
 
-      <figure class="showcase" id="templates">
-        <div class="showcase-head">
-          <span>Curated templates &amp; modules</span>
-          <span class="ok">Static HTML compiler</span>
+      <figure class="hero-art">
+        <div class="frame frame-back" aria-hidden="true">
+          <div class="frame-bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="url"><svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5.5" rx="1.2"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" fill="none"/></svg>yourdomain.com</span>
+          </div>
+          <div class="frame-body back-body">
+            <span class="ph ph-title"></span>
+            <span class="ph"></span><span class="ph ph-short"></span>
+          </div>
         </div>
-        <div class="showcase-preview">
-          <p class="showcase-top" aria-hidden="true"><span>Template preview</span><span>/index.html</span></p>
-          <h2 id="showcase-title">Editorial layouts with built-in content modules.</h2>
-          <p>Every publish compiles your pages, posts and event schedules into an immutable static HTML snapshot at the edge.</p>
-          <ul class="module-pills" aria-label="Content modules">
-            <li>Pages &amp; hero</li>
-            <li>Blog &amp; updates</li>
-            <li>Events &amp; shows</li>
-            <li>Media gallery</li>
-            <li>Custom branding</li>
-          </ul>
+
+        <div class="frame frame-front" aria-hidden="true">
+          <div class="frame-bar">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="url"><svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5.5" rx="1.2"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" fill="none"/></svg>your-site.echo9.net</span>
+          </div>
+          <div class="frame-body">
+            <div class="mini-nav"><b>Field&nbsp;Notes</b><span>Blog · Events · Gallery</span></div>
+            <p class="mini-title">Notes, shows &amp; photographs</p>
+            <div class="mini-grid">
+              <div class="mini-events">
+                <div class="mini-event"><span class="mini-date"><b>14</b>MAR</span><span class="ph"></span></div>
+                <div class="mini-event"><span class="mini-date"><b>02</b>APR</span><span class="ph ph-short"></span></div>
+                <div class="mini-event"><span class="mini-date"><b>19</b>APR</span><span class="ph"></span></div>
+              </div>
+              <div class="mini-gallery"><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
         </div>
-        <ul class="template-list" aria-label="Template families">
-          <li><span>Personal &amp; Tech</span><small>Portfolio / CV</small></li>
-          <li><span>Musician &amp; Band</span><small>Shows / releases</small></li>
-          <li><span>Professional Services</span><small>Practice / firm</small></li>
-          <li><span>Business</span><small>Landing / brand</small></li>
-        </ul>
-        <figcaption class="sr-only">Illustration of the template families and content modules available in 9host.</figcaption>
+
+        <div class="publish-chip" aria-hidden="true">
+          <span class="live-dot"></span>
+          <span>Published</span>
+          <code>v12 → current</code>
+        </div>
+        <figcaption class="sr-only">Illustration: a site at a your-site.echo9.net subdomain, with a blog, events and gallery, also served on a custom domain, marked as published version 12.</figcaption>
       </figure>
     </section>
 
-    <section class="features" id="features" aria-labelledby="features-title">
-      <h2 id="features-title" class="sr-only">Features</h2>
-      <article class="feature">
-        <p class="kicker">01 · Instant static delivery</p>
-        <h3>Served directly from the edge</h3>
-        <p>Published sites compile to clean static HTML and CSS, loading in milliseconds with no runtime database queries.</p>
-      </article>
-      <article class="feature">
-        <p class="kicker">02 · Self-serve custom domains</p>
-        <h3>Automatic TLS for your domain</h3>
-        <p>Connect a domain from any DNS provider with a single CNAME record. Certificates are provisioned and renewed for you.</p>
-      </article>
-      <article class="feature">
-        <p class="kicker">03 · Echo9 Tools</p>
-        <h3>One click to tools.e9.cx</h3>
-        <p>Echo9 utilities stay one click away in the header, and your sites are managed in the <a href="https://app.echo9.net">app.echo9.net</a> console.</p>
-      </article>
+    <!-- Pipeline: the one colour field -->
+    <section class="pipeline" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow eyebrow-on-signal">How it works</p>
+          <h2 id="how-title">From editor to edge in a single publish.</h2>
+        </div>
+        <ol class="stages">
+          <li class="stage">
+            <span class="stage-num">01</span>
+            <h3>Edit</h3>
+            <p>Write pages, posts and event listings, upload media and set your brand, all in the <a href="https://app.echo9.net">app.echo9.net</a> console.</p>
+            <code class="stage-path">app.echo9.net</code>
+          </li>
+          <li class="stage">
+            <span class="stage-num">02</span>
+            <h3>Compile</h3>
+            <p>Every page is rendered to plain HTML and CSS. Content is sanitized, and links are root-relative so the site works on any domain.</p>
+            <code class="stage-path">index.html · blog/ · events/</code>
+          </li>
+          <li class="stage">
+            <span class="stage-num">03</span>
+            <h3>Serve</h3>
+            <p>The result is an immutable, versioned snapshot served from the CDN edge. No database is queried when someone loads a page.</p>
+            <code class="stage-path">published/v12/ → current</code>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Modules -->
+    <section class="modules wrap" id="modules" aria-labelledby="modules-title">
+      <div class="section-head">
+        <p class="eyebrow">Content modules</p>
+        <h2 id="modules-title">Everything a real site needs, already built&nbsp;in.</h2>
+        <p class="section-lede">Every site starts with pages and a hero. Add the modules you need, and they publish as static pages with everything else.</p>
+      </div>
+
+      <div class="bento">
+        <article class="tile tile-blog">
+          <div class="tile-art art-blog" aria-hidden="true">
+            <div class="post"><span class="post-meta">Nov 03</span><span class="post-line"></span><span class="post-line short"></span></div>
+            <div class="post"><span class="post-meta">Oct 21</span><span class="post-line"></span><span class="post-line shorter"></span></div>
+            <div class="post"><span class="post-meta">Oct 09</span><span class="post-line"></span><span class="post-line short"></span></div>
+          </div>
+          <div class="tile-copy">
+            <h3>Blog &amp; updates</h3>
+            <p>Dated posts with their own pages and an index. Write in the console; readers get fast, plain HTML.</p>
+          </div>
+        </article>
+
+        <article class="tile tile-events">
+          <div class="tile-art art-events" aria-hidden="true">
+            <span class="cal"><b>14</b>MAR</span>
+            <span class="cal"><b>02</b>APR</span>
+            <span class="cal cal-hot"><b>19</b>APR</span>
+          </div>
+          <div class="tile-copy">
+            <h3>Events &amp; shows</h3>
+            <p>Tour dates, workshops, open days. Your listings compile into a schedule page each time you publish.</p>
+          </div>
+        </article>
+
+        <article class="tile tile-gallery">
+          <div class="tile-art art-gallery" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="tile-copy">
+            <h3>Media gallery</h3>
+            <p>Upload images once and arrange them into galleries.</p>
+          </div>
+        </article>
+
+        <article class="tile tile-brand">
+          <div class="tile-art art-brand" aria-hidden="true">
+            <span class="swatch s1"></span><span class="swatch s2"></span><span class="swatch s3"></span>
+            <span class="aa">Aa</span>
+          </div>
+          <div class="tile-copy">
+            <h3>Branding</h3>
+            <p>Your logo, colours and type, applied across every page.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Templates -->
+    <section class="templates wrap" aria-labelledby="templates-title">
+      <div class="section-head">
+        <p class="eyebrow">Curated layouts</p>
+        <h2 id="templates-title">Start from a layout made for your kind of&nbsp;site.</h2>
+      </div>
+      <ol class="template-index">
+        <li><span class="ti-num">01</span><span class="ti-name">Personal &amp; Tech</span><span class="ti-desc">Portfolio, projects, writing</span></li>
+        <li><span class="ti-num">02</span><span class="ti-name">Résumé</span><span class="ti-desc">Timeline, skills, print-friendly</span></li>
+        <li><span class="ti-num">03</span><span class="ti-name">Musician &amp; Band</span><span class="ti-desc">Shows, releases, press</span></li>
+        <li><span class="ti-num">04</span><span class="ti-name">Professional Services</span><span class="ti-desc">Practice, firm, studio</span></li>
+        <li><span class="ti-num">05</span><span class="ti-name">Business</span><span class="ti-desc">Landing page, brand</span></li>
+      </ol>
+    </section>
+
+    <!-- Domains -->
+    <section class="domains wrap" id="domains" aria-labelledby="domains-title">
+      <div class="domains-copy">
+        <p class="eyebrow">Domains &amp; TLS</p>
+        <h2 id="domains-title">Live on a subdomain today. On your own domain when you’re&nbsp;ready.</h2>
+        <p class="section-lede">Every site gets an address on echo9.net the moment it’s created. To use your own domain, add one CNAME record at any DNS provider. Certificates are issued and renewed for you.</p>
+      </div>
+      <ol class="ladder" aria-label="Site addresses">
+        <li class="rung">
+          <span class="rung-label">Included</span>
+          <code class="rung-host"><span class="dim">your-site</span>.echo9.net</code>
+          <span class="rung-note">HTTPS from the first publish</span>
+        </li>
+        <li class="rung rung-custom">
+          <span class="rung-label">Custom domain</span>
+          <code class="rung-host">yourdomain.com</code>
+          <span class="rung-record" aria-label="One DNS record: type CNAME"><b>CNAME</b> one record, any DNS provider</span>
+          <span class="rung-note">TLS certificate issued and renewed automatically</span>
+        </li>
+      </ol>
+    </section>
+
+    <!-- Closing -->
+    <section class="closing wrap" aria-labelledby="closing-title">
+      <h2 id="closing-title">Your next site is <em>static.</em></h2>
+      <a class="btn btn-signal" href="https://app.echo9.net">Sign in to the console</a>
     </section>
   </main>
 
   <footer class="site-footer">
-    <p>&copy; <span>Echo9</span> · 9host</p>
-    <ul class="footer-links" aria-label="Footer">
-      <li><a href="https://app.echo9.net">Console</a></li>
-      <li><a href="https://tools.e9.cx" target="_blank" rel="noopener">tools.e9.cx ↗<span class="sr-only"> (opens in a new tab)</span></a></li>
-    </ul>
+    <div class="wrap footer-inner">
+      <p><span class="brand-mark brand-mark-sm" aria-hidden="true">e9</span>&copy; Echo9 · 9host</p>
+      <ul class="footer-links" aria-label="Footer">
+        <li><a href="https://app.echo9.net">Console</a></li>
+        <li><a href="https://tools.e9.cx" target="_blank" rel="noopener">tools.e9.cx ↗<span class="sr-only"> (opens in a new tab)</span></a></li>
+      </ul>
+    </div>
   </footer>
 </body>
 </html>
