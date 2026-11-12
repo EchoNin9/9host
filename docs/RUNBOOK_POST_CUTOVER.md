@@ -253,3 +253,11 @@ Main merged from develop (PR #18) after owner review of stage + preview.
 - `T-30` **Admin SPA redesign (app/stage).** Current UX is awkward and the UI is ugly. Audit flows (sites, publish, pages/posts/events/media, domains, users, superadmin console), then redesign navigation, layout and visual system on shadcn/Tailwind. Supersedes `T-26` (mockups in `docs/ui-mockups.html` are a starting reference, not a spec). Owner reviews on stage before main.
 - `T-31` **WYSIWYG templates.** Refactor the site templates system (`api/templates/`, `SiteCompiler`) so tenants edit pages visually in a WYSIWYG editor that round-trips to the compiled static HTML. Must keep `compile_site` pure, HTML sanitization, root-relative links, and draft preview. Needs a design spike (editor library, content model/migration) before code.
 - `T-32` **WYSIWYG template admin.** Refactor the superadmin template admin section into a WYSIWYG interface for creating/editing platform templates; depends on `T-31`'s content model.
+
+### §6 landing cutover — DONE (2026-11-12, owner-approved)
+- `E164B9WJ8ALT9F`: removed `echo9.net`/`www.echo9.net` aliases (6 remain). The update was rejected because its access-log bucket `e9-vir-logs` no longer exists, so logging was disabled in the same update (it was already delivering nowhere). Its expired cert did not block the update (T-25 still open).
+- `infra/landing.tf`: aliases `preview`, `echo9.net`, `www.echo9.net` (`8e20512`); develop + main CI green (PR #19).
+- ClouDNS `echo9.net`: deleted WR `180304152` (@) → added ALIAS @ `935394382` → `dggrw8k6efaha.cloudfront.net` (TTL 300); deleted WR `180304155` (www) → added CNAME www `935394533` → same. MX/NS/TXT and `tools` untouched.
+- Verified: `https://echo9.net/` and `https://www.echo9.net/` 200 with the tools button; `tools.echo9.net` 301; tenant sites, app, preview 200. Invalidated `EYLR0G6R8Z1BK` `/*`.
+- Rollback: delete ALIAS `935394382` / CNAME `935394533`, recreate WR `@` and `www` → `https://tools.e9.cx` (301).
+- Note: `edge_records.py` does not manage `@`/`www`; they are hand-managed records.

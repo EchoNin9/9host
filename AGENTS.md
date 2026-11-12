@@ -72,4 +72,6 @@ Full scope, files, and acceptance criteria for each are in runbook §7. `T-13`�
 
 `T-21`–`T-24` outcomes, the owner's `T-21` proxy-secret rollout commands and new tickets `T-27`/`T-28`: runbook §7 status.
 
+Landing production cutover done 2026-11-12 (`echo9.net`/`www.echo9.net` → `9host-landing`); see runbook §6 DONE.
+
 Post-cutover runbook outcomes (A–F) and the landing production cutover steps: `docs/RUNBOOK_POST_CUTOVER.md` §5–§6.
