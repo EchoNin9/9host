@@ -8,6 +8,7 @@ hostnames (``CNAME -> proxy.echonin9.com``) managed through ``custom_domain_hand
 Cloudflare, HostMappingKVS and the DOMAIN# row in sync.
 """
 
+from datetime import datetime, timedelta, timezone
 from urllib.parse import unquote
 
 from cloudflare_saas import CloudflareAPIError, InvalidDomainError, validate_domain
@@ -17,17 +18,44 @@ from tenant_store import DynamoDBTenantStore
 
 BASE_PATH = "/api/tenant/domains"
 MANAGE_ROLES = ("admin", "manager")
+REFRESH_MIN_INTERVAL = timedelta(seconds=30)  # per-row Cloudflare status-poll throttle (T-18)
 
 
 def _cf_error(err: CloudflareAPIError) -> dict:
     return respond(err.http_status, err.to_response_body())
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _checked_recently(item: dict, now: datetime) -> bool:
+    """True if Cloudflare was polled for this row less than REFRESH_MIN_INTERVAL ago."""
+    raw = item.get("last_checked_at")
+    if not raw:
+        return False
+    try:
+        last = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return False
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return timedelta(0) <= now - last < REFRESH_MIN_INTERVAL
+
+
 def _refresh_pending(table, items: list[dict]) -> list[dict]:
-    """Poll Cloudflare for non-ACTIVE domains (best-effort; errors keep stored status)."""
+    """Poll Cloudflare for non-ACTIVE domains (best-effort; errors keep stored status).
+
+    The UI polls every 10 s, so a row checked within REFRESH_MIN_INTERVAL is served from
+    DynamoDB as-is (T-18). ``POST .../activate`` always re-checks.
+    """
+    now = _utcnow()
     for item in items:
-        if (item.get("status") or "").upper() != STATUS_ACTIVE or not item.get("cf_hostname_id"):
-            refresh_domain_status(table, item)
+        if (item.get("status") or "").upper() == STATUS_ACTIVE and item.get("cf_hostname_id"):
+            continue
+        if _checked_recently(item, now):
+            continue
+        refresh_domain_status(table, item)
     return items
 
 

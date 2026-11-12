@@ -8,13 +8,9 @@ DELETE /api/tenant/templates/{slug} — delete forked template
 """
 
 import json
-import os
 import re
 from datetime import datetime, timezone
 
-import boto3
-
-from auth_helpers import require_tenant_admin_or_manager, require_tenant_auth, role_is_admin_or_manager
 from dynamodb_helpers import (
     get_tenant_item,
     get_tenant_template_item,
@@ -23,11 +19,13 @@ from dynamodb_helpers import (
     query_tenant_templates,
     sk_template,
 )
-from middleware import with_tenant
+from request_context import RequestContext
+from tenant_store import DynamoDBTenantStore
 from tier_config import tier_rank as _tier_rank
 
 TEMPLATE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 PLATFORM_TENANT = "_platform"
+MANAGE_ROLES = ("admin", "manager")
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -53,58 +51,38 @@ def _template_to_response(item: dict) -> dict:
     }
 
 
-@with_tenant
-def tenant_templates_handler(event: dict, context: dict) -> dict:
+def tenant_templates_handler(ctx: RequestContext) -> dict:
     """Route tenant templates: fork, list, get, put, delete."""
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(400, {"error": "Missing tenant."})
+    tenant_slug, _ = ctx.require_tenant_member()
 
-    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
+    path = ctx.path
     prefix = "/api/tenant/templates"
     if not path.startswith(prefix):
         return _json_response(404, {"error": "Not found."})
 
-    method = (event.get("requestContext", {}).get("http", {}).get("method") or "GET").upper()
+    method = ctx.method
     suffix = path[len(prefix) :].strip("/")
+    table = DynamoDBTenantStore().table
 
     if suffix == "fork" and method == "POST":
-        return _fork_handler(event, context, tenant_slug)
+        ctx.require_tenant_member(MANAGE_ROLES)
+        return _fork_handler(ctx.event, table, tenant_slug)
     if not suffix and method == "GET":
-        return _list_handler(event, context, tenant_slug)
+        return _list_handler(table, tenant_slug)
     if suffix and "/" not in suffix and method == "GET":
-        return _get_handler(event, context, tenant_slug, suffix)
+        return _get_handler(table, tenant_slug, suffix)
     if suffix and "/" not in suffix and method == "PUT":
-        return _put_handler(event, context, tenant_slug, suffix)
+        ctx.require_tenant_member(MANAGE_ROLES)
+        return _put_handler(ctx.event, table, tenant_slug, suffix)
     if suffix and "/" not in suffix and method == "DELETE":
-        return _delete_handler(event, context, tenant_slug, suffix)
+        ctx.require_tenant_member(MANAGE_ROLES)
+        return _delete_handler(table, tenant_slug, suffix)
 
     return _json_response(404, {"error": "Not found."})
 
 
-def _fork_handler(event: dict, context: dict, tenant_slug: str) -> dict:
+def _fork_handler(event: dict, table, tenant_slug: str) -> dict:
     """POST /api/tenant/templates/fork — fork platform template. Pro+ only."""
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
     body = event.get("body")
     if isinstance(body, str):
         try:
@@ -161,42 +139,16 @@ def _fork_handler(event: dict, context: dict, tenant_slug: str) -> dict:
     return _json_response(201, {"template": _template_to_response(item)})
 
 
-def _list_handler(event: dict, context: dict, tenant_slug: str) -> dict:
+def _list_handler(table, tenant_slug: str) -> dict:
     """GET /api/tenant/templates — list tenant's forked templates."""
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-
     resp = table.query(**query_tenant_templates(tenant_slug))
     templates = [_template_to_response(item) for item in resp.get("Items", [])]
     templates.sort(key=lambda t: t["slug"])
     return _json_response(200, {"templates": templates})
 
 
-def _get_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> dict:
+def _get_handler(table, tenant_slug: str, slug: str) -> dict:
     """GET /api/tenant/templates/{slug}."""
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-
     resp = table.get_item(Key=get_tenant_template_item(tenant_slug, slug))
     item = resp.get("Item")
     if not item:
@@ -204,29 +156,8 @@ def _get_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> dic
     return _json_response(200, {"template": _template_to_response(item)})
 
 
-def _put_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> dict:
+def _put_handler(event: dict, table, tenant_slug: str, slug: str) -> dict:
     """PUT /api/tenant/templates/{slug} — update forked template."""
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
     resp = table.get_item(Key=get_tenant_template_item(tenant_slug, slug))
     item = resp.get("Item")
     if not item:
@@ -269,28 +200,7 @@ def _put_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> dic
     return _json_response(200, {"template": _template_to_response(updated_resp.get("Item", {}))})
 
 
-def _delete_handler(event: dict, context: dict, tenant_slug: str, slug: str) -> dict:
+def _delete_handler(table, tenant_slug: str, slug: str) -> dict:
     """DELETE /api/tenant/templates/{slug}."""
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-    region = os.environ.get("AWS_REGION", "us-east-1")
-
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-
-    if is_cognito:
-        ok, err = require_tenant_admin_or_manager(table, sub_or_username, tenant_slug, event)
-        if not ok:
-            return _json_response(403, {"error": err or "Forbidden."})
-    elif not role_is_admin_or_manager(role):
-        return _json_response(403, {"error": "Admin or manager role required."})
-
     table.delete_item(Key=get_tenant_template_item(tenant_slug, slug))
     return {"statusCode": 204, "headers": {"Content-Type": "application/json"}, "body": ""}

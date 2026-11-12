@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token, is_superadmin
 from dynamodb_helpers import get_template_item, pk_tenant, query_templates, sk_template
+from request_context import RequestContext
 from tier_config import is_valid_tier
 
 PLATFORM_TENANT = "_platform"
@@ -23,27 +23,6 @@ def _json_response(status: int, body: dict) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body),
     }
-
-
-def _require_superadmin(event: dict) -> tuple[str | None, dict | None]:
-    """Require authenticated superadmin. Returns (sub, None) if ok, (None, error_response) if not."""
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    user_pool_id = os.environ.get("USER_POOL_ID", "")
-
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return None, _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
-        )
-
-    if not is_superadmin(sub, user_pool_id, region=region):
-        return None, _json_response(
-            403,
-            {"error": "Forbidden. Superadmin access required."},
-        )
-
-    return sub, None
 
 
 def _parse_body(event: dict) -> dict | None:
@@ -61,11 +40,9 @@ def _parse_body(event: dict) -> dict | None:
 
 
 
-def list_templates_handler(event: dict, context: dict) -> dict:
+def list_templates_handler(ctx: RequestContext) -> dict:
     """GET /api/admin/templates — list all platform templates (superadmin)."""
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -97,13 +74,11 @@ def list_templates_handler(event: dict, context: dict) -> dict:
     return _json_response(200, {"templates": templates})
 
 
-def create_template_handler(event: dict, context: dict) -> dict:
+def create_template_handler(ctx: RequestContext) -> dict:
     """POST /api/admin/templates — create template (superadmin). Body: slug, name, description, tier_required, components."""
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
-    body = _parse_body(event) or {}
+    body = _parse_body(ctx.event) or {}
     slug = (body.get("slug") or "").strip().lower().replace(" ", "-")
     if not slug:
         return _json_response(400, {"error": "slug is required"})
@@ -155,11 +130,9 @@ def create_template_handler(event: dict, context: dict) -> dict:
     })
 
 
-def get_template_handler(event: dict, context: dict, slug: str) -> dict:
+def get_template_handler(ctx: RequestContext, slug: str) -> dict:
     """GET /api/admin/templates/{slug} — get template (superadmin)."""
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -184,13 +157,11 @@ def get_template_handler(event: dict, context: dict, slug: str) -> dict:
     })
 
 
-def update_template_handler(event: dict, context: dict, slug: str) -> dict:
+def update_template_handler(ctx: RequestContext, slug: str) -> dict:
     """PUT /api/admin/templates/{slug} — update template (superadmin)."""
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
-    body = _parse_body(event) or {}
+    body = _parse_body(ctx.event) or {}
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
         return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
@@ -258,11 +229,9 @@ def update_template_handler(event: dict, context: dict, slug: str) -> dict:
     })
 
 
-def delete_template_handler(event: dict, context: dict, slug: str) -> dict:
+def delete_template_handler(ctx: RequestContext, slug: str) -> dict:
     """DELETE /api/admin/templates/{slug} — remove template (superadmin)."""
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:

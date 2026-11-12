@@ -55,6 +55,8 @@ locals {
   cf_staging    = data.terraform_remote_state.infra.outputs.cloudfront_staging_domain
   cf_production = data.terraform_remote_state.infra.outputs.cloudfront_production_domain
   cf_sites      = data.terraform_remote_state.infra.outputs.cloudfront_sites_domain
+  # Runbook task F: standalone landing distribution (9host-landing); null until root infra applies
+  cf_landing = try(data.terraform_remote_state.infra.outputs.cloudfront_landing_domain, null)
 }
 
 # DNS zone per domain (echo9.net, echo9.ca)
@@ -90,16 +92,6 @@ resource "cloudns_dns_record" "stage" {
   name     = "stage"
   type     = "CNAME"
   value    = local.cf_staging
-  ttl      = 300
-}
-
-# prod.{domain} -> CloudFront production (per zone)
-resource "cloudns_dns_record" "prod" {
-  for_each = var.manage_records ? toset(local.domains) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "prod"
-  type     = "CNAME"
-  value    = local.cf_production
   ttl      = 300
 }
 
@@ -166,4 +158,15 @@ resource "cloudns_dns_record" "tools_redirect" {
   frame        = "0"
   savepath     = 0
   ttl          = 300
+}
+
+# Runbook task F: preview.echo9.net -> CloudFront 9host-landing (standalone landing staging).
+# Skipped until the root infra output cloudfront_landing_domain exists.
+resource "cloudns_dns_record" "landing_preview" {
+  for_each = var.manage_edge_records && local.cf_landing != null ? toset([var.primary_domain]) : []
+  zone     = cloudns_dns_zone.zone[each.key].domain
+  name     = "preview"
+  type     = "CNAME"
+  value    = local.cf_landing
+  ttl      = 300
 }

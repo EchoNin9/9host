@@ -5,7 +5,7 @@
  * 1. Subdomain: acme.echo9.net → acme
  * 2. Path: /acme/... or /{tenant}/... → acme
  *
- * Platform domains (stage.echo9.net, prod.echo9.net, www.echo9.net) have no tenant.
+ * Platform domains (the apex and app./stage./www./... — PLATFORM_SUBDOMAINS) have no tenant.
  */
 
 import { createContext } from "react";
@@ -20,6 +20,20 @@ function isValidSlug(slug: string): boolean {
 
 const SUPPORTED_DOMAINS = ["echo9.net", "echo9.ca"];
 
+/** Platform host labels; never tenant slugs. Mirrors api/reserved_slugs.py (T-18). */
+export const PLATFORM_SUBDOMAINS = [
+  "app",
+  "stage",
+  "prod",
+  "www",
+  "tools",
+  "sites-origin",
+  "proxy",
+  "preview",
+  "api",
+  "admin",
+] as const;
+
 export function extractTenantFromHost(hostname: string, domain?: string): string | null {
   const host = hostname.toLowerCase();
   const baseDomain =
@@ -27,12 +41,8 @@ export function extractTenantFromHost(hostname: string, domain?: string): string
     SUPPORTED_DOMAINS.find((d) => host === d || host.endsWith(`.${d}`)) ??
     "echo9.net";
 
-  const platformHosts = [
-    `stage.${baseDomain}`,
-    `prod.${baseDomain}`,
-    `www.${baseDomain}`,
-    baseDomain,
-  ];
+  if (host === baseDomain) return null;
+  const platformHosts = PLATFORM_SUBDOMAINS.map((label) => `${label}.${baseDomain}`);
   if (platformHosts.includes(host)) return null;
 
   const suffix = `.${baseDomain}`;

@@ -21,7 +21,7 @@ import handler
 import request_context as rc
 import secrets_cache
 import site_storage
-from tenant_store import DynamoDBTenantStore
+from tenant_store import DynamoDBTenantStore, entity_keys_domain
 
 ISSUER = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_dummy"  # conftest USER_POOL_ID
 KID = "kid-1"
@@ -46,11 +46,13 @@ def api(dynamodb_table, rsa_key, monkeypatch):
 
     removed: list[str] = []
     monkeypatch.setattr(site_storage, "delete_host_mapping", removed.append)
+    storage = site_storage.InMemorySiteStorage()
+    monkeypatch.setattr(site_storage, "default_storage", lambda: storage)
 
     dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO", "name": "Acme"})
     DynamoDBTenantStore(dynamodb_table).put_member("acme", {"sub": "owner-1", "role": "admin", "name": "Owner"})
     boto3.client("s3", region_name="us-east-1").create_bucket(Bucket="9host-media")
-    yield type("Api", (), {"table": dynamodb_table, "key": rsa_key, "removed_mappings": removed})
+    yield type("Api", (), {"table": dynamodb_table, "key": rsa_key, "removed_mappings": removed, "storage": storage})
     rc.clear_jwks_cache()
     secrets_cache.clear_cache()
 
@@ -252,6 +254,55 @@ def test_slug_change_and_delete_remove_kvs_mappings(api):
 
 
 # ---------------------------------------------------------------------------
+# T-14: S3 cleanup on site / tenant delete; migration marker on tenant create
+# ---------------------------------------------------------------------------
+
+
+def _seed_files(storage, *prefixes):
+    for prefix in prefixes:
+        for key in ("published/current/index.html", "draft/index.html"):
+            storage._put(f"{prefix}{key}", b"x", "text/html")
+
+
+def test_site_delete_empties_storage_prefix(api):
+    tok = owner(api)
+    gone, keep = create_site(api, slug="gone"), create_site(api, slug="keep")
+    _seed_files(api.storage, f"acme/{gone}/", f"acme/{keep}/", f"acme2/{gone}/")
+    assert call("DELETE", f"/api/tenant/sites/{gone}", tok) == (204, None)
+    assert not any(k.startswith(f"acme/{gone}/") for k in api.storage.objects)
+    assert any(k.startswith(f"acme/{keep}/") for k in api.storage.objects)
+    assert any(k.startswith(f"acme2/{gone}/") for k in api.storage.objects)  # other tenant untouched
+
+
+def test_tenant_delete_empties_storage_prefix(api):
+    site_id = create_site(api)
+    _seed_files(api.storage, f"acme/{site_id}/", "acme-other/s1/")
+    api.storage._put("acme/default.json", b"{}", "application/json")
+    assert call("DELETE", "/api/admin/tenants/acme", superadmin(api), tenant=None) == (204, None)
+    assert sorted(api.storage.objects) == ["acme-other/s1/draft/index.html", "acme-other/s1/published/current/index.html"]
+
+
+def test_new_tenant_first_list_sites_skips_legacy_query(api, monkeypatch):
+    tok = cognito(api.key, "founder-1")
+    code, body = call("POST", "/api/tenants", tok, tenant=None, body={"slug": "fresh"})
+    assert code == 201, body
+    prefixes: list[str] = []
+    real = DynamoDBTenantStore._query_prefix
+    monkeypatch.setattr(
+        DynamoDBTenantStore, "_query_prefix", lambda self, pk, p: prefixes.append(p) or real(self, pk, p)
+    )
+    code, body = call("GET", "/api/tenant/sites", tok, tenant="fresh")
+    assert code == 200 and body["sites"] == []
+    assert not any(p.startswith("SITE#") for p in prefixes), prefixes
+
+
+def test_admin_created_tenant_has_migration_marker(api, monkeypatch):
+    code, body = call("POST", "/api/admin/tenants", superadmin(api), tenant=None, body={"slug": "fresh2"})
+    assert code == 201, body
+    assert api.table.get_item(Key={"pk": "TENANT#fresh2", "sk": "MIGRATION#SITE_META"}).get("Item")
+
+
+# ---------------------------------------------------------------------------
 # Bug #4: media delete decrements storage with a floor at 0
 # ---------------------------------------------------------------------------
 
@@ -323,9 +374,6 @@ def test_admin_users_and_tusers_delegate(api):
 
 
 def test_admin_settings_put_updates_tier(api, monkeypatch):
-    import admin_handler
-
-    monkeypatch.setattr(admin_handler, "is_superadmin", lambda sub, pool, region="us-east-1": sub == "super-1")
     code, body = call("PUT", "/api/admin/tenants/acme/settings", superadmin(api), tenant=None, body={"tier": "BUSINESS"})
     assert code == 200 and body["tier"] == "BUSINESS"
 
@@ -363,10 +411,12 @@ def test_edge_kvs_superadmin_only_and_hides_internal_keys(api, monkeypatch):
     code, body = call("GET", "/api/admin/edge-kvs", superadmin(api), tenant=None)
     assert code == 200 and body == {"entries": [], "domains": []}
 
+    # Rows written after the byEntity backfill marker carry their GSI keys, as register_domain does (T-17).
     api.table.put_item(Item={"pk": "TENANT#acme", "sk": "DOMAIN#myband.com", "site_id": "s1", "status": "ACTIVE",
-                             "cf_status": "active", "ssl_status": "active"})
+                             "cf_status": "active", "ssl_status": "active",
+                             **entity_keys_domain("acme", "myband.com")})
     api.table.put_item(Item={"pk": "TENANT#zeta", "sk": "DOMAIN#zeta.org", "site_id": "z1",
-                             "status": "PENDING_VALIDATION"})
+                             "status": "PENDING_VALIDATION", **entity_keys_domain("zeta", "zeta.org")})
     fake = FakeKVS([
         {"Items": [
             {"Key": "__preview_jwt_secret__", "Value": "super-secret-key"},
@@ -451,9 +501,9 @@ def test_users_module_permission_round_trips(api):
 
 
 def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
-    import handler_example
+    import tenant_handler
 
-    handler_example._owner_email_cache.clear()
+    tenant_handler._owner_email_cache.clear()
     api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO", "name": "Acme", "owner_sub": "owner-1"})
     calls = []
 
@@ -462,12 +512,12 @@ def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
             calls.append(kw["Username"])
             return {"UserAttributes": [{"Name": "email", "Value": "o@acme.test"}]}
 
-    real = handler_example.boto3.client
+    real = tenant_handler.boto3.client
     monkeypatch.setattr(
-        handler_example.boto3, "client", lambda name, **kw: FakeCognito() if name == "cognito-idp" else real(name, **kw)
+        tenant_handler.boto3, "client", lambda name, **kw: FakeCognito() if name == "cognito-idp" else real(name, **kw)
     )
     now = [1000.0]
-    monkeypatch.setattr(handler_example, "_clock", lambda: now[0])
+    monkeypatch.setattr(tenant_handler, "_clock", lambda: now[0])
     for _ in range(2):
         code, body = call("GET", "/api/tenant", owner(api))
         assert code == 200 and body["owner_email"] == "o@acme.test"
@@ -475,4 +525,187 @@ def test_tenant_owner_email_cached_five_minutes(api, monkeypatch):
     now[0] += 301
     call("GET", "/api/tenant", owner(api))
     assert calls == ["owner-1", "owner-1"]
-    handler_example._owner_email_cache.clear()
+    tenant_handler._owner_email_cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# T-13: legacy-auth handlers migrated to RequestContext
+# ---------------------------------------------------------------------------
+
+MANAGER_ONLY_ROUTES = [
+    ("POST", "/api/tenant/billing/checkout", {"tier": "pro", "success_url": "https://x/s", "cancel_url": "https://x/c"}),
+    ("POST", "/api/tenant/billing/portal", {"return_url": "https://x/r"}),
+    ("PATCH", "/api/tenant", {"module_overrides": {"branding": True}}),
+    ("PUT", "/api/tenant", {"owner_sub": "owner-1"}),
+    ("POST", "/api/tenant/templates/fork", {"template_slug": "basic"}),
+    ("PUT", "/api/tenant/templates/mine", {"name": "X"}),
+    ("DELETE", "/api/tenant/templates/mine", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", MANAGER_ONLY_ROUTES)
+def test_tuser_member_forbidden_on_manager_routes(api, monkeypatch, method, path, body):
+    import billing_handler
+
+    monkeypatch.setenv("BILLING_ENABLED", "true")
+    monkeypatch.setattr(billing_handler, "stripe_configured", lambda: True)
+    api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TEMPLATE#mine", "name": "Mine"})
+    before = api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"]
+
+    code, resp = call(method, path, tuser(role="member"), body=body)
+    assert code == 403, resp
+    assert set(resp) == {"error"}
+    # Nothing was written.
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"] == before
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TEMPLATE#mine"}).get("Item")
+    # Same for a Cognito member, and for a TUSER token issued for another tenant.
+    DynamoDBTenantStore(api.table).put_member("acme", {"sub": "m-1", "role": "member", "name": "M"})
+    assert call(method, path, cognito(api.key, "m-1"), body=body)[0] == 403
+    assert call(method, path, tuser(role="manager", tenant="other"), body=body)[0] == 403
+
+
+def test_tuser_manager_passes_role_gate(api):
+    code, body = call("PATCH", "/api/tenant", tuser(role="manager"), body={"module_overrides": {"branding": True}})
+    assert code == 200 and body["module_overrides"] == {"branding": True}
+    code, body = call("PUT", "/api/tenant", tuser(role="manager"), body={"owner_sub": "owner-1"})
+    assert code == 403 and "Cognito" in body["error"]  # ownership transfer stays Cognito-owner only
+
+
+def test_analytics_respects_module_overrides(api):
+    code, body = call("GET", "/api/tenant/analytics", tuser(role="member"))
+    assert code == 200 and body["placeholder"] is True  # PRO tier, no override
+
+    api.table.update_item(
+        Key={"pk": "TENANT#acme", "sk": "TENANT"},
+        UpdateExpression="SET module_overrides = :mo",
+        ExpressionAttributeValues={":mo": {"advanced_analytics": False}},
+    )
+    code, body = call("GET", "/api/tenant/analytics", owner(api))
+    assert code == 403
+    assert body == {
+        "error": "Advanced Analytics requires Pro, Business, or VIP tier.",
+        "tier": "PRO",
+        "upgrade_required": True,
+    }
+
+    api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "FREE",
+                             "module_overrides": {"advanced_analytics": True}})
+    assert call("GET", "/api/tenant/analytics", owner(api))[0] == 200
+    assert call("GET", "/api/tenant/analytics")[0] == 401
+    assert call("GET", "/api/tenant/analytics", cognito(api.key, "stranger"))[0] == 403
+
+
+SUPERADMIN_ROUTES = [
+    ("GET", "/api/admin/users", None),
+    ("GET", "/api/admin/stats", None),
+    ("GET", "/api/admin/tenants", None),
+    ("POST", "/api/admin/tenants", {"slug": "newco"}),
+    ("GET", "/api/admin/tenants/acme", None),
+    ("PATCH", "/api/admin/tenants/acme", {"tier": "VIP"}),
+    ("GET", "/api/admin/tenants/acme/settings", None),
+    ("PUT", "/api/admin/tenants/acme/settings", {"tier": "VIP"}),
+    ("DELETE", "/api/admin/tenants/acme", None),
+    ("GET", "/api/admin/templates", None),
+    ("POST", "/api/admin/templates", {"slug": "tpl"}),
+    ("GET", "/api/admin/templates/basic", None),
+    ("PUT", "/api/admin/templates/basic", {"name": "X"}),
+    ("DELETE", "/api/admin/templates/basic", None),
+]
+
+
+@pytest.mark.parametrize("method,path,body", SUPERADMIN_ROUTES)
+def test_superadmin_routes_reject_non_superadmins(api, method, path, body):
+    api.table.put_item(Item={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic", "name": "Basic"})
+    assert call(method, path, tenant=None, body=body)[0] == 401
+    for token in (owner(api), tuser(role="admin")):
+        code, resp = call(method, path, token, body=body)
+        assert code == 403 and "Superadmin" in resp["error"], (code, resp)
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"]["tier"] == "PRO"
+    assert api.table.get_item(Key={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic"}).get("Item")
+    assert not api.table.get_item(Key={"pk": "TENANT#newco", "sk": "TENANT"}).get("Item")
+
+
+def test_superadmin_routes_use_verified_group_claim(api, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("no Cognito group lookup for a locally verified token")
+
+    monkeypatch.setattr(rc, "_in_superadmin_group", boom)
+    code, body = call("GET", "/api/admin/stats", superadmin(api), tenant=None)
+    assert code == 200 and body["total_tenants"] == 1
+    code, body = call("GET", "/api/admin/tenants", superadmin(api), tenant=None)
+    assert code == 200 and [t["slug"] for t in body["tenants"]] == ["acme"]
+    code, body = call("GET", "/api/admin/tenants/acme", superadmin(api), tenant=None)
+    assert code == 200 and body["tier"] == "PRO"
+
+
+def test_member_read_routes(api):
+    api.table.put_item(Item={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic", "name": "Basic"})
+    stranger = cognito(api.key, "stranger")
+    for path, query in [("/api/validate-slug", {"slug": "free-slug"}), ("/api/templates", None),
+                        ("/api/tenant/templates", None), ("/api/tenant", None)]:
+        assert call("GET", path, query=query)[0] == 401
+        assert call("GET", path, stranger, query=query)[0] == 403
+        assert call("GET", path, tuser(role="member"), query=query)[0] == 200
+    assert call("GET", "/api/validate-slug", owner(api), query={"slug": "acme"})[1] == {"available": False, "slug": "acme"}
+    assert [t["slug"] for t in call("GET", "/api/templates", owner(api))[1]["templates"]] == ["basic"]
+    code, body = call("GET", "/api/tenants", owner(api), tenant=None)
+    assert code == 200 and body["tenants"] == [{"slug": "acme", "name": "Acme", "role": "admin"}]
+    assert call("GET", "/api/tenants", tuser(), tenant=None)[0] == 401
+
+
+# ---------------------------------------------------------------------------
+# T-18: platform hostnames are reserved as tenant / site slugs
+# ---------------------------------------------------------------------------
+
+RESERVED = ["app", "stage", "prod", "www", "tools", "sites-origin", "proxy", "preview", "api", "admin"]
+
+
+def test_reserved_slug_constant_matches_spec():
+    from reserved_slugs import RESERVED_SLUGS
+
+    assert RESERVED_SLUGS == frozenset(RESERVED)
+
+
+@pytest.mark.parametrize("slug", RESERVED)
+def test_validate_slug_reports_reserved_unavailable(api, slug):
+    code, body = call("GET", "/api/validate-slug", owner(api), query={"slug": slug.upper()})
+    assert code == 200 and body == {"available": False, "slug": slug, "reason": "reserved"}
+
+
+@pytest.mark.parametrize("slug", RESERVED)
+def test_site_create_rejects_reserved_slug(api, slug):
+    code, body = call("POST", "/api/tenant/sites", owner(api), body={"name": "X", "slug": slug})
+    assert code == 400 and body["code"] == "slug_reserved", body
+    assert DynamoDBTenantStore(api.table).list_sites("acme") == []
+
+
+def test_site_create_rejects_reserved_slug_derived_from_name(api):
+    code, body = call("POST", "/api/tenant/sites", owner(api), body={"name": "Admin"})
+    assert code == 400 and body["code"] == "slug_reserved"
+
+
+def test_site_update_rejects_reserved_slug_but_legacy_site_keeps_its_own(api):
+    tok = owner(api)
+    site_id = create_site(api, slug="band")
+    code, body = call("PUT", f"/api/tenant/sites/{site_id}", tok, body={"slug": "app"})
+    assert code == 400 and body["code"] == "slug_reserved"
+    assert DynamoDBTenantStore(api.table).get_site("acme", site_id)["slug"] == "band"
+
+    # A site created before T-18 with a now-reserved slug can still be edited.
+    store = DynamoDBTenantStore(api.table)
+    store.put_site("acme", {**store.get_site("acme", site_id), "slug": "tools"})
+    code, body = call("PUT", f"/api/tenant/sites/{site_id}", tok, body={"name": "Renamed", "slug": "tools"})
+    assert code == 200, body
+    code, body = call("GET", "/api/validate-slug", tok, query={"slug": "tools", "exclude_site_id": site_id})
+    assert body == {"available": True, "slug": "tools"}
+    code, body = call("GET", "/api/validate-slug", tok, query={"slug": "tools"})
+    assert body["available"] is False
+
+
+@pytest.mark.parametrize("slug", ["app", "preview", "sites-origin"])
+def test_tenant_create_rejects_reserved_slug(api, slug):
+    code, body = call("POST", "/api/tenants", cognito(api.key, "founder-1"), tenant=None, body={"slug": slug})
+    assert code == 400 and body["code"] == "slug_reserved", body
+    code, body = call("POST", "/api/admin/tenants", superadmin(api), tenant=None, body={"slug": slug})
+    assert code == 400 and body["code"] == "slug_reserved", body
+    assert api.table.get_item(Key={"pk": f"TENANT#{slug}", "sk": "TENANT"}).get("Item") is None

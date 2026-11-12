@@ -78,6 +78,30 @@ def _is_dangerous_url(url: str) -> bool:
     return False
 
 
+# target values that stay in the current browsing context; anything else (``_blank`` or a
+# named window) opens a new one and gets rel="noopener noreferrer" (reverse tabnabbing).
+_SAME_CONTEXT_TARGETS = frozenset({"", "_self", "_parent", "_top"})
+_NEW_WINDOW_REL = ("noopener", "noreferrer")
+
+
+def _harden_link_rel(attrs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Ensure ``<a target=...>`` opening a new window carries ``rel="noopener noreferrer"``.
+
+    Existing rel tokens (e.g. ``nofollow``) are kept; duplicate rel attributes are merged.
+    """
+    target = next((v for n, v in attrs if n == "target"), None)
+    if target is None or target.strip().lower() in _SAME_CONTEXT_TARGETS:
+        return attrs
+    tokens: list[str] = []
+    for n, v in attrs:
+        if n == "rel":
+            tokens.extend(t for t in v.lower().split() if t not in tokens)
+    tokens.extend(t for t in _NEW_WINDOW_REL if t not in tokens)
+    out = [(n, v) for n, v in attrs if n != "rel"]
+    out.append(("rel", " ".join(tokens)))
+    return out
+
+
 class _SanitizingHTMLParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -125,6 +149,9 @@ class _SanitizingHTMLParser(HTMLParser):
                 continue
 
             clean_attrs.append((name_lower, val_str))
+
+        if tag_lower == "a":
+            clean_attrs = _harden_link_rel(clean_attrs)
 
         # Build attribute string
         attr_parts: list[str] = []

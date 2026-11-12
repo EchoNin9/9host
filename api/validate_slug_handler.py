@@ -5,15 +5,17 @@ Query param: slug (required)
 Query param: exclude_site_id (optional) — when editing, exclude current site from check.
 
 Requires tenant context (X-Tenant-Slug) and auth.
+
+Platform hostnames (``reserved_slugs.RESERVED_SLUGS``) are never available (T-18), except
+that a site being edited may keep a reserved slug it already has.
 """
 
 import json
-import os
-import boto3
 
-from auth_helpers import require_tenant_auth
 from dynamodb_helpers import slug_is_taken
-from middleware import with_tenant
+from request_context import RequestContext
+from reserved_slugs import is_reserved_slug
+from tenant_store import DynamoDBTenantStore
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -24,22 +26,12 @@ def _json_response(status: int, body: dict) -> dict:
     }
 
 
-@with_tenant
-def validate_slug_handler(event: dict, context: dict) -> dict:
+def validate_slug_handler(ctx: RequestContext) -> dict:
     """GET /api/validate-slug?slug={slug}&exclude_site_id={id}"""
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
-
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
+    tenant_slug, _ = ctx.require_tenant_member()
 
     # Parse query params (API Gateway v2: flat dict)
-    params = event.get("queryStringParameters") or {}
+    params = ctx.event.get("queryStringParameters") or {}
     slug = params.get("slug") or ""
     if isinstance(slug, list):
         slug = slug[0] if slug else ""
@@ -50,17 +42,12 @@ def validate_slug_handler(event: dict, context: dict) -> dict:
     if not slug or not slug.strip():
         return _json_response(400, {"error": "slug query param is required."})
 
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
+    normalized = slug.strip().lower()
+    store = DynamoDBTenantStore()
+    if is_reserved_slug(normalized):
+        own = store.get_site(tenant_slug, exclude_site_id) if exclude_site_id else None
+        if not (own and (own.get("slug") or "").lower() == normalized):
+            return _json_response(200, {"available": False, "slug": normalized, "reason": "reserved"})
 
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(
-            err_resp.get("statusCode", 401),
-            json.loads(err_resp.get("body", "{}")),
-        )
-
-    taken = slug_is_taken(table, slug, exclude_site_id=exclude_site_id or None)
-    return _json_response(200, {"available": not taken, "slug": slug.strip().lower()})
+    taken = slug_is_taken(store.table, slug, exclude_site_id=exclude_site_id or None)
+    return _json_response(200, {"available": not taken, "slug": normalized})

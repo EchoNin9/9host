@@ -165,18 +165,6 @@ class TestCognitoLocalJwks:
         p = rc.authenticate(make_event(cognito_token(rsa_key, groups=["SuperAdmin"])))
         assert p.is_superadmin is True
 
-    def test_legacy_is_superadmin_uses_verified_claim_without_cognito(self, rsa_key, monkeypatch):
-        import auth_helpers
-
-        def boom(*a, **k):
-            raise AssertionError("Cognito must not be called for a verified token")
-
-        monkeypatch.setattr("boto3.client", boom)
-        rc.authenticate(make_event(cognito_token(rsa_key, sub="boss", groups=["superadmin"])))
-        rc.authenticate(make_event(cognito_token(rsa_key, sub="pleb")))
-        assert auth_helpers.is_superadmin("boss", "us-east-1_dummy") is True
-        assert auth_helpers.is_superadmin("pleb", "us-east-1_dummy") is False
-
     def test_does_not_call_cognito_get_user(self, rsa_key, monkeypatch):
         def boom(*a, **k):
             raise AssertionError("get_user must not be called when JWKS is configured")
@@ -301,13 +289,6 @@ class TestImpersonation:
         assert ctx.is_impersonating is False
         assert ctx.effective_role is None
 
-    def test_legacy_require_tenant_auth_returns_admin(self, rsa_key, dynamodb_table):
-        from auth_helpers import require_tenant_auth
-
-        tok = cognito_token(rsa_key, sub="super-1", groups=["superadmin"])
-        ev = make_event(tok, {"x-impersonate-tenant": "acme"})
-        assert require_tenant_auth(ev, dynamodb_table, "acme") == (True, "super-1", "admin", True)
-
 
 # ---------------------------------------------------------------------------
 # Rejections
@@ -334,13 +315,6 @@ class TestRejections:
         with pytest.raises(rc.HttpError) as e:
             ctx.require_tenant_member(("admin", "manager"))
         assert e.value.status == 403
-
-    def test_legacy_require_tenant_auth_non_member(self, rsa_key, dynamodb_table):
-        from auth_helpers import require_tenant_auth
-
-        ev = make_event(cognito_token(rsa_key, sub="stranger"))
-        ok, err = require_tenant_auth(ev, dynamodb_table, "acme")
-        assert ok is None and err["statusCode"] == 403
 
     def test_require_superadmin(self, rsa_key):
         ctx = rc.build_request_context(make_event(cognito_token(rsa_key)))

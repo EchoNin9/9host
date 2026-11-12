@@ -17,7 +17,8 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { fetchAdminUsers, type AdminUserItem, type AdminUsersResponse } from "@/lib/api"
-import { ChevronDown, ChevronRight, UserRound } from "lucide-react"
+import { groupAdminUsers } from "@/lib/admin-users"
+import { ChevronDown, ChevronRight, ShieldCheck, UserRound } from "lucide-react"
 
 type SortDir = "a-z" | "z-a"
 
@@ -46,12 +47,13 @@ function AdminUsersPage() {
     void load()
   }, [])
 
+  const grouped = useMemo(() => groupAdminUsers(data), [data])
+
   const sortedTenantSlugs = useMemo(() => {
-    if (!data) return []
-    return Object.keys(data.users_by_tenant).sort((a, b) =>
+    return Object.keys(grouped.usersByTenant).sort((a, b) =>
       sortDir === "a-z" ? a.localeCompare(b) : b.localeCompare(a)
     )
-  }, [data, sortDir])
+  }, [grouped, sortDir])
 
   const sortUsers = (users: AdminUserItem[]) => {
     return [...users].sort((a, b) => {
@@ -77,7 +79,7 @@ function AdminUsersPage() {
         <div>
           <h1 className="text-2xl font-semibold">Users</h1>
           <p className="text-muted-foreground">
-            All users across tenants. Grouped by tenant.
+            Platform admins first, then all users across tenants grouped by tenant.
           </p>
         </div>
         <Button
@@ -88,6 +90,26 @@ function AdminUsersPage() {
           Sort: {sortDir === "a-z" ? "A–Z" : "Z–A"}
         </Button>
       </div>
+
+      {grouped.platformAdmins.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="size-5" />
+              Platform admins ({grouped.platformAdmins.length})
+            </CardTitle>
+            <CardDescription>
+              Members of the Cognito superadmin group. They manage the whole platform, above tenant
+              admins and site owners.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {sortUsers(grouped.platformAdmins).map((u) => (
+              <UserRow key={u.sub ?? u.username} user={u} tenantSlug={null} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -101,22 +123,22 @@ function AdminUsersPage() {
             <TenantUserGroup
               key={slug}
               tenantSlug={slug}
-              users={sortUsers(data!.users_by_tenant[slug] ?? [])}
+              users={sortUsers(grouped.usersByTenant[slug] ?? [])}
             />
           ))}
 
-          {data!.orphaned.length > 0 && (
+          {grouped.orphaned.length > 0 && (
             <Collapsible defaultOpen>
               <CollapsibleTrigger asChild>
                 <button className="flex w-full items-center gap-2 rounded-lg border p-3 text-left font-medium hover:bg-muted/50">
                   <ChevronRight className="size-4 collapse-icon" />
                   <UserRound className="size-4" />
-                  Orphaned users ({data!.orphaned.length})
+                  Orphaned users ({grouped.orphaned.length})
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <div className="ml-6 mt-2 space-y-2 border-l pl-4">
-                  {sortUsers(data!.orphaned).map((u) => (
+                  {sortUsers(grouped.orphaned).map((u) => (
                     <UserRow key={u.sub ?? u.username} user={u} tenantSlug={null} />
                   ))}
                 </div>
@@ -124,7 +146,7 @@ function AdminUsersPage() {
             </Collapsible>
           )}
 
-          {sortedTenantSlugs.length === 0 && data!.orphaned.length === 0 && (
+          {sortedTenantSlugs.length === 0 && grouped.orphaned.length === 0 && (
             <p className="text-sm text-muted-foreground">No users yet.</p>
           )}
         </CardContent>
@@ -188,7 +210,15 @@ function UserRow({ user, tenantSlug }: { user: AdminUserItem; tenantSlug: string
         >
           {user.type}
         </span>
-        <span className="ml-2 text-xs text-muted-foreground">({user.role})</span>
+        {user.is_superadmin && (
+          <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 font-mono text-xs font-semibold text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+            <ShieldCheck className="size-3" />
+            superadmin
+          </span>
+        )}
+        {user.role && !(user.is_superadmin && user.role === "superadmin") && (
+          <span className="ml-2 text-xs text-muted-foreground">({user.role})</span>
+        )}
       </div>
       {tenantSlug && (
         <Button variant="outline" size="sm" asChild>

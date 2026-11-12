@@ -6,9 +6,9 @@
 # ------------------------------------------------------------------------------
 
 locals {
-  # All Admin SPA hostnames: stage.*, prod.* (cutover compat) and T-08 app.* per domain
+  # All Admin SPA hostnames: stage.* and app.* per domain
   acm_domains = flatten([
-    for d in var.domains : ["stage.${d}", "prod.${d}", "app.${d}"]
+    for d in var.domains : ["stage.${d}", "app.${d}"]
   ])
   # Task 1.78: Wildcard for sites/tenant routing (*.echo9.net, *.echo9.ca)
   # T-08: + bare landing apex (echo9.net). www.echo9.net is covered by *.echo9.net.

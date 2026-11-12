@@ -26,7 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { UpgradePrompt } from "@/components/upgrade-prompt"

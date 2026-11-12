@@ -8,9 +8,20 @@ bySiteSlug GSI.
 Bug #3 (SITE# sort-key collision): site metadata is written to SK=SITE_META#{id} and
 mirrored to legacy SK=SITE#{id} (expand-contract). list_sites reads SITE_META# only. Tenants
 whose sites exist only as legacy SITE#{id} rows are backfilled once (lazily) on the first
-list_sites call, after which a MIGRATION#SITE_META marker row skips the legacy read.
+list_sites call, after which a MIGRATION#SITE_META marker row skips the legacy read. New
+tenants get the marker at creation (mark_site_meta_migrated), so they never read SITE#.
+
+T-14: update_site writes changed fields only (DynamoDB UpdateItem SET on SITE_META# and its
+SITE# mirror in one transaction), so concurrent writers to different fields never lose updates.
 
 Bug #4: adjust_storage_bytes uses ADD / conditional SET instead of the invalid greatest().
+
+T-17: tenant (sk=TENANT) and custom-domain (sk=DOMAIN#{d}) rows carry byEntity GSI keys
+(gsi3pk ENTITY#TENANT / ENTITY#DOMAIN, see entity_keys_*), so the superadmin lists
+(list_all_tenants, list_all_domains) are GSI Queries. Rows written before T-17 are indexed once
+by backfill_by_entity: run by scripts/backfill_by_entity.py in CI and, as a safety net, lazily on
+the first superadmin list when the MIGRATION#BY_ENTITY marker (platform partition) is absent.
+That one-off backfill is the only Scan left in this module.
 """
 
 from __future__ import annotations
@@ -49,6 +60,9 @@ from dynamodb_helpers import (
 
 CONTENT_TYPES = ("PAGE", "POST", "EVENT", "MEDIA")
 SITE_META_MIGRATION_SK = "MIGRATION#SITE_META"
+BY_ENTITY_MIGRATION_SK = "MIGRATION#BY_ENTITY"  # in the TENANT#_platform partition
+ENTITY_TENANT = "ENTITY#TENANT"
+ENTITY_DOMAIN = "ENTITY#DOMAIN"
 _KEY_ATTRS = frozenset(
     {"pk", "sk", "gsi1pk", "gsi1sk", "gsi2pk", "gsi2sk", "gsi3pk", "gsi3sk", "gsi4pk", "gsi4sk"}
 )
@@ -64,6 +78,8 @@ class TenantStore(Protocol):
     def list_sites(self, tenant_slug: str) -> list[dict]: ...
     def get_site(self, tenant_slug: str, site_id: str) -> dict | None: ...
     def put_site(self, tenant_slug: str, site: dict) -> dict: ...
+    def update_site(self, tenant_slug: str, site_id: str, updates: dict) -> dict: ...
+    def mark_site_meta_migrated(self, tenant_slug: str) -> None: ...
     def delete_site_cascade(self, tenant_slug: str, site_id: str) -> None: ...
     def resolve_site_slug(self, site_slug: str) -> dict | None: ...
 
@@ -79,11 +95,35 @@ class TenantStore(Protocol):
     def list_tusers(self, tenant_slug: str) -> list[dict]: ...
     def list_roles(self, tenant_slug: str) -> list[dict]: ...
     # get/put/delete_{member,tuser,role}, get/put_permissions, list/get_domain, get_template,
-    # plus the explicit global lookups: domain_owner (byDomain GSI), list_all_domains
-    # (superadmin scan) and delete_tenant_cascade.
+    # put_tenant, plus the explicit global lookups: domain_owner (byDomain GSI),
+    # list_all_tenants / list_all_domains (byEntity GSI, superadmin), backfill_by_entity and
+    # delete_tenant_cascade.
 
 
 # --- pure key / item helpers -------------------------------------------------
+
+def entity_keys_tenant(tenant_slug: str) -> dict:
+    """byEntity GSI attributes for a tenant metadata row (sk=TENANT)."""
+    return {"gsi3pk": ENTITY_TENANT, "gsi3sk": pk_tenant(tenant_slug)}
+
+
+def entity_keys_domain(tenant_slug: str, domain: str) -> dict:
+    """byEntity GSI attributes for a custom-domain row (sk=DOMAIN#{domain})."""
+    return {"gsi3pk": ENTITY_DOMAIN, "gsi3sk": f"{pk_tenant(tenant_slug)}#DOMAIN#{domain.lower()}"}
+
+
+def _entity_keys_for_row(item: dict) -> dict | None:
+    """byEntity keys a tenant or domain row should carry; None for any other row."""
+    pk, sk = item.get("pk", ""), item.get("sk", "")
+    if not pk.startswith("TENANT#"):
+        return None
+    slug = pk[len("TENANT#"):]
+    if sk == sk_tenant():
+        return entity_keys_tenant(slug)
+    if sk.startswith("DOMAIN#"):
+        return entity_keys_domain(slug, sk[len("DOMAIN#"):])
+    return None
+
 
 def _content_type(content_type: str) -> str:
     ct = (content_type or "").upper()
@@ -142,10 +182,63 @@ class _StoreBase:
     def _query_prefix(self, pk: str, sk_prefix: str) -> list[dict]:
         raise NotImplementedError
 
+    def _update_site_rows(self, pk: str, site_id: str, updates: dict) -> bool:
+        """Atomically SET `updates` on SITE_META#{id} and SITE#{id}. False if either row is missing."""
+        raise NotImplementedError
+
+    def _query_entity(self, entity: str) -> list[dict]:
+        """All rows in byEntity partition `entity`, ordered by gsi3sk."""
+        raise NotImplementedError
+
+    def _scan_unindexed_entity_rows(self) -> list[dict]:
+        """Tenant/domain rows lacking gsi3pk (one-off backfill only; the sole Scan)."""
+        raise NotImplementedError
+
+    def _set_attrs_if_exists(self, pk: str, sk: str, attrs: dict) -> None:
+        """SET `attrs` on an existing row; silently skip a row deleted meanwhile."""
+        raise NotImplementedError
+
     # Tenant
     def get_tenant(self, tenant_slug: str) -> dict | None:
         item = self._get(pk_tenant(tenant_slug), sk_tenant())
         return {**_strip(item), "slug": tenant_slug} if item else None
+
+    def put_tenant(self, tenant_slug: str, tenant: dict) -> dict:
+        """Write the tenant metadata row with its byEntity GSI keys."""
+        body = {k: v for k, v in _strip(tenant).items() if k != "slug"}
+        self._put({**body, "pk": pk_tenant(tenant_slug), "sk": sk_tenant(), **entity_keys_tenant(tenant_slug)})
+        return {**body, "slug": tenant_slug}
+
+    # Superadmin cross-tenant lists (explicit bypass; byEntity GSI, no Scan once backfilled)
+    def backfill_by_entity(self, dry_run: bool = False) -> dict:
+        """Index pre-T-17 tenant/domain rows in byEntity and write the migration marker.
+        Idempotent. Returns {"tenants": n, "domains": n} rows (to be) updated."""
+        counts = {"tenants": 0, "domains": 0}
+        for row in self._scan_unindexed_entity_rows():
+            keys = _entity_keys_for_row(row)
+            if keys is None:
+                continue
+            counts["tenants" if row["sk"] == sk_tenant() else "domains"] += 1
+            if not dry_run:
+                self._set_attrs_if_exists(row["pk"], row["sk"], keys)
+        if not dry_run:
+            self._put({"pk": pk_tenant(PLATFORM_TENANT), "sk": BY_ENTITY_MIGRATION_SK})
+        return counts
+
+    def _ensure_by_entity_backfill(self) -> None:
+        if self._get(pk_tenant(PLATFORM_TENANT), BY_ENTITY_MIGRATION_SK) is None:
+            self.backfill_by_entity()
+
+    def list_all_tenants(self) -> list[dict]:
+        """Every tenant metadata row (stripped, plus "slug"), ordered by slug."""
+        self._ensure_by_entity_backfill()
+        rows = self._query_entity(ENTITY_TENANT)
+        return [{**_strip(r), "slug": r["pk"][len("TENANT#"):]} for r in rows if r.get("sk") == sk_tenant()]
+
+    def list_all_domains(self) -> list[dict]:
+        """Every custom-domain row across tenants, with pk/sk (see list_domains)."""
+        self._ensure_by_entity_backfill()
+        return [r for r in self._query_entity(ENTITY_DOMAIN) if r.get("sk", "").startswith("DOMAIN#")]
 
     # Sites
     def list_sites(self, tenant_slug: str) -> list[dict]:
@@ -183,6 +276,26 @@ class _StoreBase:
         self._put(meta)
         self._put(legacy)
         return _site_out(meta)
+
+    def update_site(self, tenant_slug: str, site_id: str, updates: dict) -> dict:
+        """Field-level update of an existing site (no read-modify-write). Raises KeyError if the
+        site does not exist. Slug changes need the bySiteSlug GSI attrs: use put_site."""
+        updates = {k: v for k, v in updates.items() if k not in _KEY_ATTRS and k not in ("id", "entity_type")}
+        if "slug" in updates:
+            raise ValueError("update_site cannot change slug; use put_site")
+        pk = pk_tenant(tenant_slug)
+        if updates and not self._update_site_rows(pk, site_id, updates):
+            # Legacy-only site: get_site backfills SITE_META#, then retry once.
+            if self.get_site(tenant_slug, site_id) is None or not self._update_site_rows(pk, site_id, updates):
+                raise KeyError(site_id)
+        site = self.get_site(tenant_slug, site_id)
+        if site is None:
+            raise KeyError(site_id)
+        return site
+
+    def mark_site_meta_migrated(self, tenant_slug: str) -> None:
+        """Write the MIGRATION#SITE_META marker (new tenants have no legacy SITE# rows)."""
+        self._put({"pk": pk_tenant(tenant_slug), "sk": SITE_META_MIGRATION_SK})
 
     def delete_site_cascade(self, tenant_slug: str, site_id: str) -> None:
         pk = pk_tenant(tenant_slug)
@@ -345,6 +458,56 @@ class DynamoDBTenantStore(_StoreBase):
         assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
         return self._query(KeyConditionExpression=Key("pk").eq(pk) & Key("sk").begins_with(sk_prefix))
 
+    def _query_entity(self, entity: str) -> list[dict]:
+        return self._query(IndexName="byEntity", KeyConditionExpression=Key("gsi3pk").eq(entity))
+
+    def _scan_unindexed_entity_rows(self) -> list[dict]:
+        kwargs: dict[str, Any] = {
+            "FilterExpression": "begins_with(pk, :t) AND (sk = :tenant OR begins_with(sk, :d)) "
+                                "AND attribute_not_exists(gsi3pk)",
+            "ExpressionAttributeValues": {":t": "TENANT#", ":tenant": sk_tenant(), ":d": "DOMAIN#"},
+        }
+        resp = self.table.scan(**kwargs)
+        items = resp.get("Items", [])
+        while "LastEvaluatedKey" in resp:
+            resp = self.table.scan(**kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
+            items.extend(resp.get("Items", []))
+        return items
+
+    def _set_attrs_if_exists(self, pk: str, sk: str, attrs: dict) -> None:
+        assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        try:
+            self.table.update_item(
+                Key={"pk": pk, "sk": sk},
+                UpdateExpression="SET " + ", ".join(f"#k{i} = :v{i}" for i in range(len(attrs))),
+                ConditionExpression="attribute_exists(pk)",
+                ExpressionAttributeNames={f"#k{i}": k for i, k in enumerate(attrs)},
+                ExpressionAttributeValues={f":v{i}": v for i, v in enumerate(attrs.values())},
+            )
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                raise
+
+    def _update_site_rows(self, pk: str, site_id: str, updates: dict) -> bool:
+        assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        update = {
+            "TableName": self.table.name,
+            "UpdateExpression": "SET " + ", ".join(f"#k{i} = :v{i}" for i in range(len(updates))),
+            "ConditionExpression": "attribute_exists(pk)",
+            "ExpressionAttributeNames": {f"#k{i}": k for i, k in enumerate(updates)},
+            "ExpressionAttributeValues": {f":v{i}": v for i, v in enumerate(updates.values())},
+        }
+        try:
+            self.table.meta.client.transact_write_items(TransactItems=[
+                {"Update": {**update, "Key": {"pk": pk, "sk": sk}}} for sk in (sk_site_meta(site_id), sk_site(site_id))
+            ])
+        except ClientError as e:
+            reasons = e.response.get("CancellationReasons") or []
+            if any(r.get("Code") == "ConditionalCheckFailed" for r in reasons):
+                return False
+            raise
+        return True
+
     def update_tenant(self, tenant_slug: str, updates: dict) -> dict:
         updates = {k: v for k, v in updates.items() if k not in _KEY_ATTRS}
         if not updates:
@@ -352,6 +515,7 @@ class DynamoDBTenantStore(_StoreBase):
             if tenant is None:
                 raise KeyError(tenant_slug)
             return tenant
+        updates.update(entity_keys_tenant(tenant_slug))  # self-heal byEntity index on every update
         names = {f"#k{i}": k for i, k in enumerate(updates)}
         values = {f":v{i}": v for i, v in enumerate(updates.values())}
         try:
@@ -418,20 +582,6 @@ class DynamoDBTenantStore(_StoreBase):
         items = resp.get("Items", [])
         return items[0]["pk"][len("TENANT#"):] if items else None
 
-    def list_all_domains(self) -> list[dict]:
-        """Explicit superadmin cross-tenant bypass (GET /api/admin/edge-kvs). Paginated Scan:
-        no GSI enumerates DOMAIN# rows (missing index: byEntity partition "ENTITY#DOMAIN")."""
-        kwargs: dict[str, Any] = {
-            "FilterExpression": "begins_with(pk, :t) AND begins_with(sk, :d)",
-            "ExpressionAttributeValues": {":t": "TENANT#", ":d": "DOMAIN#"},
-        }
-        resp = self.table.scan(**kwargs)
-        items = resp.get("Items", [])
-        while "LastEvaluatedKey" in resp:
-            resp = self.table.scan(**kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
-            items.extend(resp.get("Items", []))
-        return items
-
     def delete_tenant_cascade(self, tenant_slug: str) -> None:
         """Delete every row in the TENANT#{slug} partition (superadmin tenant delete)."""
         rows = self._query(KeyConditionExpression=Key("pk").eq(pk_tenant(tenant_slug)))
@@ -460,11 +610,37 @@ class InMemoryTenantStore(_StoreBase):
         assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
         return [dict(v) for (p, s), v in sorted(self.items.items()) if p == pk and s.startswith(sk_prefix)]
 
+    def _query_entity(self, entity: str) -> list[dict]:
+        rows = [dict(v) for v in self.items.values() if v.get("gsi3pk") == entity]
+        return sorted(rows, key=lambda r: r.get("gsi3sk", ""))
+
+    def _scan_unindexed_entity_rows(self) -> list[dict]:
+        return [
+            dict(v) for (p, s), v in sorted(self.items.items())
+            if p.startswith("TENANT#") and (s == sk_tenant() or s.startswith("DOMAIN#")) and "gsi3pk" not in v
+        ]
+
+    def _set_attrs_if_exists(self, pk: str, sk: str, attrs: dict) -> None:
+        assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        if (pk, sk) in self.items:
+            self.items[(pk, sk)].update(attrs)
+
+    def _update_site_rows(self, pk: str, site_id: str, updates: dict) -> bool:
+        assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        rows = [self.items.get((pk, sk)) for sk in (sk_site_meta(site_id), sk_site(site_id))]
+        if any(r is None for r in rows):
+            return False
+        for row in rows:
+            row.update(updates)
+        return True
+
     def update_tenant(self, tenant_slug: str, updates: dict) -> dict:
         item = self.items.get((pk_tenant(tenant_slug), sk_tenant()))
         if item is None:
             raise KeyError(tenant_slug)
-        item.update({k: v for k, v in updates.items() if k not in _KEY_ATTRS})
+        updates = {k: v for k, v in updates.items() if k not in _KEY_ATTRS}
+        if updates:
+            item.update({**updates, **entity_keys_tenant(tenant_slug)})  # mirror DynamoDB self-heal
         return {**_strip(item), "slug": tenant_slug}
 
     def adjust_storage_bytes(self, tenant_slug: str, delta_bytes: int) -> int:
@@ -487,9 +663,6 @@ class InMemoryTenantStore(_StoreBase):
             if item.get("gsi2pk") == gsi2pk_domain(domain):
                 return pk[len("TENANT#"):]
         return None
-
-    def list_all_domains(self) -> list[dict]:
-        return [dict(v) for (p, s), v in sorted(self.items.items()) if p.startswith("TENANT#") and s.startswith("DOMAIN#")]
 
     def delete_tenant_cascade(self, tenant_slug: str) -> None:
         for key in [k for k in self.items if k[0] == pk_tenant(tenant_slug)]:

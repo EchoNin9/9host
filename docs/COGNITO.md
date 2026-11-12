@@ -31,7 +31,7 @@ const cognitoConfig = {
 - **Name:** 9host-frontend
 - **Type:** Public (no secret) — SPA with PKCE
 - **Grant:** Authorization code
-- **Callback URLs:** stage.echo9.net, prod.echo9.net, localhost:5173, localhost:5173/auth/callback
+- **Callback URLs:** stage.echo9.net, app.echo9.net, localhost:5173, localhost:5173/auth/callback
 
 ## Groups
 

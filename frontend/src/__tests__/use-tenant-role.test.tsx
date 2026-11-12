@@ -6,7 +6,7 @@ vi.mock("aws-amplify/auth", () => ({
     Promise.resolve({ tokens: { accessToken: { toString: () => "cog" } } }),
 }))
 vi.mock("@/hooks/use-tenant", () => ({ useTenant: () => ({ tenantSlug: "acme" }) }))
-vi.mock("@/context/tenant-scope", () => ({
+vi.mock("@/context/tenant-scope-context", () => ({
   useTenantScope: () => ({ isSuperadminImpersonating: false }),
 }))
 

@@ -30,6 +30,7 @@ import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useDomains } from "@/hooks/use-domains"
 import { useSites } from "@/hooks/use-sites"
 import type { Domain } from "@/lib/api"
+import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
 
 function DomainForm({
   onSubmit,
@@ -359,9 +360,9 @@ function TenantDomains() {
   const isVip = (tenant?.tier?.toLowerCase() ?? "") === "vip"
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <TenantPage>
       <div>
-        <h1 className="text-2xl font-semibold">Domains</h1>
+        <TenantPageTitle>Domains</TenantPageTitle>
         <p className="text-muted-foreground">
           Custom domains for {tenantSlug} (Pro+)
         </p>
@@ -374,7 +375,7 @@ function TenantDomains() {
           <DomainsContent />
         </FeatureGate>
       )}
-    </div>
+    </TenantPage>
   )
 }
 

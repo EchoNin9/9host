@@ -17,7 +17,7 @@ from request_context import RequestContext, respond
 
 
 def draft_token_handler(ctx: RequestContext) -> dict:
-    _, tenant_slug, site_id, site = load_site(ctx, "draft-token", CONTENT_ROLES)
+    _, tenant_slug, site_id, site = load_site(ctx, "draft-token", CONTENT_ROLES, "sites")
     site_slug = (site.get("slug") or "").strip()
     if not site_slug:
         return respond(400, {"error": "Site has no slug."})

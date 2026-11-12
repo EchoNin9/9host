@@ -19,7 +19,7 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle"
 
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { TenantSwitcher } from "@/components/tenant-switcher"

@@ -144,7 +144,7 @@ function AdministerTenantPage() {
         ))}
       </nav>
 
-      <TenantScopeProvider tenantSlug={slug} basePath={basePath} isSuperadminImpersonating>
+      <TenantScopeProvider tenantSlug={slug} basePath={basePath} isSuperadminImpersonating embedded>
         <TenantTierProvider>
           {siteId ? (
             <SiteContentEditor />

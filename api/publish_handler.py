@@ -118,11 +118,13 @@ def _active_custom_domains(store, tenant_slug: str, site_id: str) -> list[str]:
     ]
 
 
-def _update_site(store, tenant_slug: str, site_id: str, site_item: dict, **fields) -> None:
-    """Persist site metadata changes through TenantStore (keeps SITE_META# + SITE# in sync)."""
-    site = store.get_site(tenant_slug, site_id) or ({**site_item, "id": site_id} if site_item else None)
-    if site:
-        store.put_site(tenant_slug, {**site, **fields})
+def _update_site(store, tenant_slug: str, site_id: str, **fields) -> None:
+    """Field-level, atomic site metadata update (SITE_META# + SITE# mirror; T-14).
+    A site deleted concurrently is left deleted."""
+    try:
+        store.update_site(tenant_slug, site_id, fields)
+    except KeyError:
+        pass
 
 
 def _publish_site(
@@ -153,7 +155,7 @@ def _publish_site(
     if hostnames:
         storage.sync_host_mapping(tenant_slug, site_id, hostnames)  # best-effort: never fails a publish
     _update_site(
-        store, tenant_slug, site_id, site_item,
+        store, tenant_slug, site_id,
         status="published", published_at=now, published_version=result["version"], updated_at=now,
     )
     return result
@@ -194,14 +196,18 @@ def _rollback_site(
     result = storage.rollback(tenant_slug, site_id, version, now=now)
     if result is None:
         return None
-    _update_site(DynamoDBTenantStore(table), tenant_slug, site_id, {}, published_version=version, updated_at=now)
+    _update_site(DynamoDBTenantStore(table), tenant_slug, site_id, published_version=version, updated_at=now)
     return result
 
 
-def load_site(ctx: RequestContext, action: str, roles: tuple[str, ...]):
+def load_site(ctx: RequestContext, action: str, roles: tuple[str, ...], module: str | None = None):
     """Shared prelude for /api/tenant/sites/{id}/{action}: role check + site lookup.
+    With ``module``, a custom role holding that permission also passes (T-15).
     Returns (store, tenant_slug, site_id, site); raises HttpError (401/403/404)."""
-    tenant_slug, _ = ctx.require_tenant_member(roles)
+    if module:
+        tenant_slug, _ = ctx.require_permission(module, roles)
+    else:
+        tenant_slug, _ = ctx.require_tenant_member(roles)
     parts = [p for p in ctx.path[len("/api/tenant/sites/"):].split("/") if p]
     if len(parts) != 2 or parts[1] != action:
         raise HttpError(404, "Not found.")
@@ -226,7 +232,7 @@ def _compile_inputs(store, tenant_slug: str, site: dict) -> tuple[dict, dict, st
 
 def draft_publish_handler(ctx: RequestContext) -> dict:
     """POST /api/tenant/sites/{id}/draft-publish — render draft to S3 draft/ (Task 1.116)."""
-    store, tenant_slug, site_id, site = load_site(ctx, "draft-publish", CONTENT_ROLES)
+    store, tenant_slug, site_id, site = load_site(ctx, "draft-publish", CONTENT_ROLES, "sites")
     template, features, media_base = _compile_inputs(store, tenant_slug, site)
     result = _draft_publish_site(store.table, _s3(), tenant_slug, site_id, site, template, media_base, features)
     return respond(200, {"draft": result})

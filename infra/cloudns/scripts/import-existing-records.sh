@@ -26,7 +26,6 @@ echo "Import commands (run from infra/cloudns/):"
 echo "$RECORDS" | jq -r --arg z "$ZONE" '
   .[] | select(.type == "CNAME") |
   if .host == "stage" then "  tofu import cloudns_dns_record.stage \($z)/\(.id)"
-  elif .host == "prod" then "  tofu import cloudns_dns_record.prod \($z)/\(.id)"
   elif (.host | test("^_[a-f0-9]+\\.")) then
     if (.host | endswith(".stage")) then "  tofu import \"cloudns_dns_record.acm_validation[\\\"stage.\($z)\\\"]\" \($z)/\(.id)"
     else "  tofu import \"cloudns_dns_record.acm_validation[\\\"prod.\($z)\\\"]\" \($z)/\(.id)"

@@ -19,6 +19,7 @@ from cloudns_helpers import add_site_cname, delete_site_cname
 from custom_domain_handler import remove_domain
 from publish_handler import _base_domain
 from request_context import RequestContext, respond
+from reserved_slugs import is_reserved_slug, reserved_slug_error
 from tenant_store import DynamoDBTenantStore
 from tier_config import tier_rank
 
@@ -81,6 +82,8 @@ def _create_site(store, tenant_slug: str, body: dict) -> dict:
         slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-")) or str(uuid.uuid4())[:8]
     if not SITE_SLUG_PATTERN.match(slug):
         return respond(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+    if is_reserved_slug(slug):
+        return respond(400, reserved_slug_error(slug))
     if _slug_taken(store, slug):
         return respond(409, {"error": "Slug is already taken.", "slug": slug})
     if template_id:
@@ -109,6 +112,8 @@ def _update_site(store, tenant_slug: str, site_id: str, body: dict) -> dict:
         s = str(body["slug"]).strip().lower()
         if not SITE_SLUG_PATTERN.match(s):
             return respond(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+        if s != old_slug and is_reserved_slug(s):  # a legacy site may keep its slug
+            return respond(400, reserved_slug_error(s))
         if _slug_taken(store, s, site_id):
             return respond(409, {"error": "Slug is already taken.", "slug": s})
         site["slug"] = s
@@ -160,6 +165,7 @@ def _delete_site(store, tenant_slug: str, site_id: str) -> dict:
             remove_domain(store.table, row)  # Cloudflare hostname + KVS key + row
         except CloudflareAPIError:
             site_storage.delete_host_mapping(row["sk"][len("DOMAIN#"):])  # row kept for retry
+    site_storage.default_storage().delete_files(tenant_slug, site_id)  # before rows: a failure stays retryable
     store.delete_site_cascade(tenant_slug, site_id)
     slug = site.get("slug", "")
     if slug:

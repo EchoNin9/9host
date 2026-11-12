@@ -13,7 +13,7 @@ variable "aws_region" {
 # Set to false when records already exist in CloudNS and import fails (provider bug with priority field).
 # Records will be managed manually. Zone is still managed by Terraform.
 variable "manage_records" {
-  description = "Create/manage DNS records (ACM validation, stage, prod). Set false if records exist and import fails."
+  description = "Create/manage DNS records (ACM validation, stage, wildcard). Set false if records exist and import fails."
   type        = bool
   default     = true
 }

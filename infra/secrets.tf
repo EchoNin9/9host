@@ -38,7 +38,7 @@ resource "aws_secretsmanager_secret" "stripe" {
 }
 
 resource "aws_secretsmanager_secret_version" "stripe" {
-  secret_id     = aws_secretsmanager_secret.stripe.id
+  secret_id = aws_secretsmanager_secret.stripe.id
   secret_string = jsonencode({
     secret_key     = "REPLACE_ME"
     webhook_secret = "REPLACE_ME"

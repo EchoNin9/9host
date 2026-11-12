@@ -152,3 +152,35 @@ class TestSanitizeHtmlXSSVectors:
         assert "Unclosed paragraph" in res
         assert "bold" in res
         # Unclosed tag should not raise exceptions
+
+
+class TestSanitizeHtmlLinkRel:
+    """T-18: links that open a new window get rel="noopener noreferrer" (reverse tabnabbing)."""
+
+    def test_target_blank_without_rel_gets_noopener_noreferrer(self):
+        res = sanitize_html('<a href="https://x.example" target="_blank">x</a>')
+        assert res == '<a href="https://x.example" target="_blank" rel="noopener noreferrer">x</a>'
+
+    def test_existing_rel_tokens_kept_and_merged(self):
+        res = sanitize_html('<a href="https://x.example" rel="nofollow" target="_BLANK">x</a>')
+        assert res == '<a href="https://x.example" target="_BLANK" rel="nofollow noopener noreferrer">x</a>'
+
+    def test_rel_opener_cannot_defeat_hardening(self):
+        res = sanitize_html('<a href="/" target="_blank" rel="opener">x</a>')
+        assert 'rel="opener noopener noreferrer"' in res
+        assert res.count("rel=") == 1
+
+    def test_named_window_target_also_hardened(self):
+        assert 'rel="noopener noreferrer"' in sanitize_html('<a href="/" target="popup">x</a>')
+
+    @pytest.mark.parametrize("html", [
+        '<a href="/">x</a>',
+        '<a href="/" target="_self">x</a>',
+        '<a href="/" target="_top">x</a>',
+    ])
+    def test_same_window_links_untouched(self, html):
+        assert sanitize_html(html) == html
+
+    def test_already_hardened_link_unchanged(self):
+        html = '<a href="https://echo9.net" target="_blank" rel="noopener noreferrer">Echo9</a>'
+        assert sanitize_html(html) == html

@@ -2,7 +2,7 @@
 
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenants } from "@/hooks/use-tenants"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { getAuthMode, readSiteToken } from "@/lib/api-client"
 
 /** Role claim from the site-login JWT. Display only; the backend stays the authority. */

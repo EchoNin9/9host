@@ -40,7 +40,7 @@ import {
   type ContentEvent,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 
 export function EventsEditor({ siteId }: { siteId: string }) {
   const { tenantSlug } = useTenant()

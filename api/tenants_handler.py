@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 
 import boto3
 
-from auth_helpers import get_sub_from_access_token
+from reserved_slugs import is_reserved_slug, reserved_slug_error
+from request_context import RequestContext
+from tenant_store import DynamoDBTenantStore
 from dynamodb_helpers import (
     get_tenant_item,
     gsi1pk_user,
@@ -39,13 +41,18 @@ def _json_response(status: int, body: dict) -> dict:
     }
 
 
-def get_tenants_handler(event: dict, context: dict) -> dict:
+def _cognito_sub(ctx: RequestContext) -> str | None:
+    """Cognito sub of the caller; None for anonymous or TenantUser callers."""
+    p = ctx.principal
+    return p.identifier if p and p.kind == "cognito" else None
+
+
+def get_tenants_handler(ctx: RequestContext) -> dict:
     """
     GET /api/tenants — returns tenants for the authenticated user.
     Requires Authorization: Bearer <cognito_access_token>.
     """
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
+    sub = _cognito_sub(ctx)
     if not sub:
         return _json_response(401, {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."})
 
@@ -130,14 +137,15 @@ def _get_user_email_name(event: dict, region: str) -> tuple[str, str]:
         return "", ""
 
 
-def create_tenant_handler(event: dict, context: dict) -> dict:
+def create_tenant_handler(ctx: RequestContext) -> dict:
     """
     POST /api/tenants — self-serve tenant creation (Task 4.1).
     Any authenticated Cognito user can create a tenant. Tier is always FREE.
     Body: { "slug": string (max 60), "name"?: string }.
     """
+    event = ctx.event
     region = os.environ.get("AWS_REGION", "us-east-1")
-    sub = get_sub_from_access_token(event, region=region)
+    sub = _cognito_sub(ctx)
     if not sub:
         return _json_response(
             401,
@@ -157,6 +165,8 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
             400,
             {"error": "slug must be lowercase alphanumeric and hyphen (e.g. acme-corp, my-band)"},
         )
+    if is_reserved_slug(slug):  # tenant slugs are {slug}.{domain} hosts too (T-18)
+        return _json_response(400, reserved_slug_error(slug))
 
     if not name:
         name = slug.replace("-", " ").title()
@@ -182,17 +192,16 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
     email, user_name = _get_user_email_name(event, region)
 
     # Create tenant (Task 1.88: storage_used_bytes default 0). Self-serve: tier = FREE only.
-    tenant_item = {
-        "pk": pk_tenant(slug),
-        "sk": sk_tenant(),
+    store = DynamoDBTenantStore(table)
+    store.put_tenant(slug, {  # byEntity GSI keys included (T-17)
         "name": name,
         "tier": "FREE",
         "owner_sub": sub,
         "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
-    }
-    table.put_item(Item=tenant_item)
+    })
+    store.mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership
     profile_item = {

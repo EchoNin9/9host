@@ -50,6 +50,7 @@ JWKS_TTL_SECONDS = 3600  # 1 hour
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$")
 _ADMIN_TENANT_PATH_RE = re.compile(r"^/api/admin/tenants/([^/]+)(?:/|$)")
+BUILTIN_ROLES = frozenset({"admin", "manager", "editor", "member"})
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +73,6 @@ _jwks_cache: dict[str, tuple[float, dict]] = {}  # url -> (expires_at, jwks)
 def clear_jwks_cache() -> None:
     with _jwks_lock:
         _jwks_cache.clear()
-    _verified_superadmin.clear()
 
 
 def _get_jwks(url: str) -> dict:
@@ -119,6 +119,7 @@ class RequestContext:
     effective_role: str | None  # "admin" | "manager" | "editor" | "member" | custom role
     is_impersonating: bool
     tenant_item: dict | None = None  # Cached tenant METADATA row when loaded
+    _custom_permissions: dict | None = field(default=None, repr=False, compare=False)
     _table: Any = field(default=None, repr=False, compare=False)
 
     @property
@@ -166,6 +167,25 @@ class RequestContext:
         if min_roles and self.effective_role not in {r.lower() for r in min_roles}:
             raise HttpError(403, f"Forbidden. Requires role: {', '.join(min_roles)}.")
         return self.tenant_slug, self.effective_role
+
+    def require_permission(self, module: str, roles: tuple[str, ...]) -> tuple[str, str]:
+        """Like ``require_tenant_member(roles)``, but a tenant-defined CustomRole
+        (``ROLE#{name}``, T-15) also passes when its ``permissions[module]`` is true.
+        Built-in roles are checked against ``roles`` only; the ROLE# row is read at most once."""
+        tenant_slug, role = self.require_tenant_member()
+        if role in {r.lower() for r in roles}:
+            return tenant_slug, role
+        if role not in BUILTIN_ROLES:
+            perms = self._custom_permissions
+            if perms is None:
+                item = _get_table(self._table).get_item(
+                    Key={"pk": f"TENANT#{tenant_slug}", "sk": f"ROLE#{role}"}
+                ).get("Item") or {}
+                perms = item.get("permissions") if isinstance(item.get("permissions"), dict) else {}
+                object.__setattr__(self, "_custom_permissions", perms)
+            if perms.get(module) is True:
+                return tenant_slug, role
+        raise HttpError(403, f"Forbidden. Requires role: {', '.join(roles)} or '{module}' permission.")
 
     def require_feature(self, feature_key: str) -> None:
         """Raise 403 unless the tenant's tier (+ module_overrides) grants ``feature_key``."""
@@ -292,14 +312,27 @@ def _cognito_principal_via_get_user(token: str, user_pool_id: str, region: str) 
     sub = attrs.get("sub") or resp.get("Username", "")
     if not sub:
         return None
-    from auth_helpers import is_superadmin
-
     return Principal(
         kind="cognito",
         identifier=sub,
         email=attrs.get("email"),
-        is_superadmin=is_superadmin(sub, user_pool_id, region=region),
+        is_superadmin=_in_superadmin_group(sub, user_pool_id, region),
     )
+
+
+def _in_superadmin_group(sub: str, user_pool_id: str, region: str) -> bool:
+    """Local-dev fallback only: Cognito group lookup (no verified ``cognito:groups`` claim)."""
+    if not user_pool_id:
+        return False
+    import boto3
+
+    try:
+        resp = boto3.client("cognito-idp", region_name=region).admin_list_groups_for_user(
+            UserPoolId=user_pool_id, Username=sub
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    return any((g.get("GroupName") or "").lower() == "superadmin" for g in resp.get("Groups", []))
 
 
 def _verify_tuser(token: str) -> Principal | None:
@@ -345,38 +378,12 @@ def authenticate(event: dict, region: str | None = None) -> Principal | None:
     if not claims:
         return None
     groups = [str(g).lower() for g in (claims.get("cognito:groups") or [])]
-    is_super = "superadmin" in groups
-    _remember_verified_superadmin(claims["sub"], is_super, claims.get("exp"))
     return Principal(
         kind="cognito",
         identifier=claims["sub"],
         email=claims.get("email"),
-        is_superadmin=is_super,
+        is_superadmin="superadmin" in groups,
     )
-
-
-# sub -> (expires_at, is_superadmin) from locally verified tokens, so the legacy
-# ``auth_helpers.is_superadmin(sub, ...)`` agrees with ``authenticate`` without a Cognito call.
-_verified_superadmin: dict[str, tuple[float, bool]] = {}
-
-
-def _remember_verified_superadmin(sub: str, is_super: bool, exp) -> None:
-    now = time.time()
-    for k in [k for k, (e, _) in _verified_superadmin.items() if e <= now]:
-        _verified_superadmin.pop(k, None)
-    try:
-        expires = min(float(exp), now + 3600)
-    except (TypeError, ValueError):
-        expires = now + 300
-    _verified_superadmin[sub] = (expires, is_super)
-
-
-def verified_superadmin(sub: str) -> bool | None:
-    """Superadmin flag from a token already verified in this container, else None (unknown)."""
-    hit = _verified_superadmin.get(sub)
-    if hit and hit[0] > time.time():
-        return hit[1]
-    return None
 
 
 # ---------------------------------------------------------------------------

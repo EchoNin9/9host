@@ -175,10 +175,15 @@ export interface AdminUserItem {
   email?: string | null
   name?: string
   display_name?: string
-  role: string
+  /** Tenant role; "superadmin" for platform admins; null for orphaned users. */
+  role: string | null
+  /** True for members of the Cognito superadmin group (platform admins). */
+  is_superadmin?: boolean
 }
 
 export interface AdminUsersResponse {
+  /** Platform admins (Cognito superadmin group); absent on older APIs. */
+  platform_admins?: AdminUserItem[]
   users_by_tenant: Record<string, AdminUserItem[]>
   orphaned: AdminUserItem[]
 }

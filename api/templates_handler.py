@@ -6,13 +6,10 @@ Requires tenant_slug, Cognito auth, tenant membership.
 """
 
 import json
-import os
 
-import boto3
-
-from auth_helpers import require_tenant_auth
 from dynamodb_helpers import get_tenant_item, query_templates, query_tenant_templates
-from middleware import with_tenant
+from request_context import RequestContext
+from tenant_store import DynamoDBTenantStore
 from tier_config import tier_rank as _tier_rank
 
 
@@ -24,30 +21,12 @@ def _json_response(status: int, body: dict) -> dict:
     }
 
 
-@with_tenant
-def get_templates_handler(event: dict, context: dict) -> dict:
+def get_templates_handler(ctx: RequestContext) -> dict:
     """
     GET /api/templates — list templates available to tenant (tier-filtered).
     """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
-
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
-
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
+    tenant_slug, _ = ctx.require_tenant_member()
+    table = DynamoDBTenantStore().table
 
     # Get tenant tier
     resp = table.get_item(Key=get_tenant_item(tenant_slug))

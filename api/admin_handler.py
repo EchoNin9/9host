@@ -15,11 +15,11 @@ from datetime import datetime, timezone
 import boto3
 
 import site_storage
-from auth_helpers import get_sub_from_access_token, is_superadmin
 from cloudflare_saas import CloudflareAPIError
 from custom_domain_handler import remove_domain
+from reserved_slugs import is_reserved_slug, reserved_slug_error
 from request_context import RequestContext, respond
-from tenant_store import DynamoDBTenantStore
+from tenant_store import DynamoDBTenantStore, entity_keys_tenant
 from tier_config import VALID_TIERS
 from dynamodb_helpers import (
     get_tenant_item,
@@ -29,7 +29,6 @@ from dynamodb_helpers import (
     gsi3sk_user,
     pk_tenant,
     query_by_site_slug,
-    sk_tenant,
     sk_user_profile,
 )
 
@@ -40,29 +39,6 @@ def _json_response(status: int, body: dict) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body),
     }
-
-
-def _require_superadmin(event: dict) -> tuple[str | None, dict | None]:
-    """
-    Require authenticated superadmin. Returns (sub, None) if ok, (None, error_response) if not.
-    """
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    user_pool_id = os.environ.get("USER_POOL_ID", "")
-
-    sub = get_sub_from_access_token(event, region=region)
-    if not sub:
-        return None, _json_response(
-            401,
-            {"error": "Unauthorized. Provide Authorization: Bearer <access_token>."},
-        )
-
-    if not is_superadmin(sub, user_pool_id, region=region):
-        return None, _json_response(
-            403,
-            {"error": "Forbidden. Superadmin access required."},
-        )
-
-    return sub, None
 
 
 # Slug: lowercase alphanumeric + hyphen, max 60 chars
@@ -110,15 +86,14 @@ def _get_user_email_name(event: dict, region: str) -> tuple[str, str]:
         return "", ""
 
 
-def create_tenant_handler(event: dict, context: dict) -> dict:
+def create_tenant_handler(ctx: RequestContext) -> dict:
     """
     POST /api/admin/tenants — create a new tenant (superadmin only).
     Body: { "slug": string (max 60), "name": string, "tier": "FREE"|"PRO"|"BUSINESS" }.
     Creates Tenant, User profile (creator as admin), and membership (GSI byUser).
     """
-    sub, err = _require_superadmin(event)
-    if err:
-        return err
+    sub = ctx.require_superadmin().identifier
+    event = ctx.event
 
     body = _parse_body(event) or {}
     slug = (body.get("slug") or "").strip().lower().replace(" ", "-")
@@ -134,6 +109,8 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
             400,
             {"error": "slug must be lowercase alphanumeric and hyphen (e.g. acme-corp, my-band)"},
         )
+    if is_reserved_slug(slug):  # tenant slugs are {slug}.{domain} hosts too (T-18)
+        return _json_response(400, reserved_slug_error(slug))
     if tier not in VALID_TIERS:
         return _json_response(400, {"error": "tier must be FREE, PRO, BUSINESS, or VIP"})
 
@@ -162,17 +139,16 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
     email, user_name = _get_user_email_name(event, region)
 
     # Create tenant (Task 1.88: storage_used_bytes default 0)
-    tenant_item = {
-        "pk": pk_tenant(slug),
-        "sk": sk_tenant(),
+    store = DynamoDBTenantStore(table)
+    store.put_tenant(slug, {  # byEntity GSI keys included (T-17)
         "name": name,
         "tier": tier,
         "owner_sub": sub,
         "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
-    }
-    table.put_item(Item=tenant_item)
+    })
+    store.mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership
     profile_item = {
@@ -204,13 +180,11 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
     )
 
 
-def list_all_tenants_handler(event: dict, context: dict) -> dict:
+def list_all_tenants_handler(ctx: RequestContext) -> dict:
     """
     GET /api/admin/tenants — list all tenants (superadmin only).
     """
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -219,28 +193,17 @@ def list_all_tenants_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Superadmin cross-tenant bypass. Scan kept: no GSI indexes tenant items (missing an
-    # "ENTITY#TENANT" byEntity partition); byEntity only covers USER/TUSER rows.
-    scan_kwargs = {
-        "FilterExpression": "begins_with(pk, :prefix) AND sk = :sk",
-        "ExpressionAttributeValues": {":prefix": "TENANT#", ":sk": "TENANT"},
-    }
-    resp = table.scan(**scan_kwargs)
-    items = resp.get("Items", [])
-    while "LastEvaluatedKey" in resp:
-        resp = table.scan(**scan_kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
-        items.extend(resp.get("Items", []))
-
-    tenants = []
-    for item in items:
-        slug = item.get("pk", "").replace("TENANT#", "")
-        if slug:
-            tenants.append({
-                "slug": slug,
-                "name": item.get("name", slug),
-                "tier": item.get("tier", "FREE"),
-                "owner_sub": item.get("owner_sub"),
-            })
+    # Superadmin cross-tenant bypass via the byEntity GSI (ENTITY#TENANT), no Scan (T-17).
+    tenants = [
+        {
+            "slug": t["slug"],
+            "name": t.get("name", t["slug"]),
+            "tier": t.get("tier", "FREE"),
+            "owner_sub": t.get("owner_sub"),
+        }
+        for t in DynamoDBTenantStore(table).list_all_tenants()
+        if t["slug"]
+    ]
 
     # Sort by slug
     tenants.sort(key=lambda t: t["slug"])
@@ -261,13 +224,11 @@ def _parse_body(event: dict) -> dict | None:
     return body
 
 
-def get_tenant_by_slug_handler(event: dict, context: dict, tenant_slug: str) -> dict:
+def get_tenant_by_slug_handler(ctx: RequestContext, tenant_slug: str) -> dict:
     """
     GET /api/admin/tenants/{slug} — get any tenant by slug (superadmin only).
     """
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -302,14 +263,12 @@ def get_tenant_by_slug_handler(event: dict, context: dict, tenant_slug: str) -> 
     )
 
 
-def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
+def patch_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
     """
     PATCH /api/admin/tenants/{slug} — update tier, name, module_overrides (superadmin only).
     Body: { "tier"?: "FREE"|"PRO"|"BUSINESS", "name"?: string, "module_overrides"?: map }.
     """
-    _, err = _require_superadmin(event)
-    if err:
-        return err
+    ctx.require_superadmin()
 
     table_name = os.environ.get("DYNAMODB_TABLE")
     if not table_name:
@@ -323,7 +282,7 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
     if not item:
         return _json_response(404, {"error": f"Tenant not found: {tenant_slug}"})
 
-    body = _parse_body(event) or {}
+    body = _parse_body(ctx.event) or {}
     updates = []
     expr_vals = {}
     expr_names = {}
@@ -371,6 +330,10 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     updates.append("updated_at = :u")
     expr_vals[":u"] = now
+    # Self-heal the byEntity index entry (T-17).
+    for attr, value in entity_keys_tenant(tenant_slug).items():
+        updates.append(f"{attr} = :{attr}")
+        expr_vals[f":{attr}"] = value
 
     update_expr = "SET " + ", ".join(updates)
     kwargs = {
@@ -418,6 +381,7 @@ def delete_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
     for site in store.list_sites(tenant_slug):
         if site.get("slug"):
             site_storage.delete_host_mapping(f"{site['slug']}.{_base_domain()}")
+    site_storage.default_storage().delete_files(tenant_slug)  # before rows: a failure stays retryable
     store.delete_tenant_cascade(tenant_slug)
     return respond(204)
 

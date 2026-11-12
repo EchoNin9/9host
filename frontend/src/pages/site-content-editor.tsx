@@ -2,7 +2,7 @@ import { Link, useParams, Navigate } from "react-router-dom"
 import { useState } from "react"
 import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload, LayoutTemplate, Globe } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { useSites } from "@/hooks/use-sites"
 import { getToken, fetchDraftPublish, fetchDraftToken, publishSite } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ import { EventsEditor } from "@/components/content-editors/events-editor"
 import { MediaEditor } from "@/components/content-editors/media-editor"
 import { BrandingEditor } from "@/components/content-editors/branding-editor"
 import { TemplateSelector } from "@/components/content-editors/template-selector"
+import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
 
 /**
  * Content editor shell (Task 2.90).
@@ -97,25 +98,25 @@ function SiteContentEditor() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <TenantPage>
         <p className="text-sm text-muted-foreground">Loading…</p>
-      </div>
+      </TenantPage>
     )
   }
 
   if (!site) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <TenantPage>
         <p className="text-sm text-muted-foreground">Site not found.</p>
         <Button asChild variant="outline">
           <Link to={`${base}/sites`}>Back to sites</Link>
         </Button>
-      </div>
+      </TenantPage>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <TenantPage>
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -123,7 +124,7 @@ function SiteContentEditor() {
               <Link to={`${base}/sites`}>← Sites</Link>
             </Button>
           </div>
-          <h1 className="mt-2 text-2xl font-semibold">{site.name}</h1>
+          <TenantPageTitle className="mt-2">{site.name}</TenantPageTitle>
           <p className="text-muted-foreground">
             Content editor — {site.slug || site.id}
           </p>
@@ -253,7 +254,7 @@ function SiteContentEditor() {
           <TemplateSelector site={site!} onSaved={refetch} />
         </TabsContent>
       </Tabs>
-    </div>
+    </TenantPage>
   )
 }
 
