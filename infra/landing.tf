@@ -11,7 +11,7 @@
 # ------------------------------------------------------------------------------
 
 locals {
-  landing_aliases = ["preview.${var.domains[0]}"]
+  landing_aliases = ["preview.${var.domains[0]}", var.domains[0], "www.${var.domains[0]}"]
 
   # AWS managed cache policy "Managed-CachingOptimized" (fixed, account-independent ID).
   # Referenced by ID instead of a data source so CI needs no cloudfront:ListCachePolicies.
