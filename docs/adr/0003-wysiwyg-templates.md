@@ -1,6 +1,6 @@
 # ADR-0003: WYSIWYG Page Editing and Template Admin on a Structured Block Model
 
-- **Status:** Proposed
+- **Status:** Accepted (owner, 2026-11-12; see Owner Answers)
 - **Date:** 2026-11-12
 - **Deciders:** Adam (owner approval required before any code — `docs/RUNBOOK_POST_CUTOVER.md` §T-31/T-32)
 - **Tickets:** `T-31` (tenant WYSIWYG), `T-32` (superadmin template admin; depends on `T-31`'s content model)
@@ -205,8 +205,8 @@ Run all four CLAUDE.md suites on every step. `node --test infra/tests/*.test.mjs
 2. **Home page**: reserved `_home` page doc.
 3. **Posts**: TipTap rich text in v1 (recommendation accepted).
 4. **Template CSS**: confirmed — tokens + presets only, no raw CSS for superadmins.
-5. **Template upgrades**: pending owner confirmation of: pin `template_version`; retire by *deprecating* (not selectable for new sites, "update available" banner, no delete while pinned); superadmin bulk "upgrade all sites to vN".
-6. **Tenant forks**: pending owner confirmation of: drop forks (per-site token overrides replace them).
+5. **Template upgrades**: confirmed — pin `template_version`; retire by *deprecating* (not selectable for new sites, "update available" banner, no delete while pinned); superadmin bulk "upgrade all sites to vN".
+6. **Tenant forks**: confirmed — drop forks and the `/api/tenant/templates` fork endpoints (per-site token overrides replace them).
 7. **Embeds**: in scope for v1 (provider allowlist). Contact form: out.
 8. **Tier gating**: yes, some blocks Pro+, but deferred to `T-34`; v1 goal is working templates with no block gating.
 9. **Rollout**: all sites at once (all are owner-owned). The per-site opt-in flag stays only as a rollback switch; T-31f backfill runs right after T-31e.
