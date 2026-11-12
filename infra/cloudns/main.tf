@@ -93,16 +93,6 @@ resource "cloudns_dns_record" "stage" {
   ttl      = 300
 }
 
-# prod.{domain} -> CloudFront production (per zone)
-resource "cloudns_dns_record" "prod" {
-  for_each = var.manage_records ? toset(local.domains) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "prod"
-  type     = "CNAME"
-  value    = local.cf_production
-  ttl      = 300
-}
-
 # Task 1.78: *.{domain} -> CloudFront sites (tenant + site subdomains)
 resource "cloudns_dns_record" "wildcard" {
   for_each = var.manage_records ? toset(local.domains) : []
