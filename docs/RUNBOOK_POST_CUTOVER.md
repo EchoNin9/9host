@@ -6,11 +6,11 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 
 ## 1. Current state (verified 2026-11-12)
 
-- **Live:** `develop` and `main` are both deployed (PR #17, merge `440f83a`, 2026-11-12). Tasks A–F below are done except A (`jinks.ca` pending); outcomes in §5. **Next run: §7.**
+- **Live:** `develop` and `main` are both deployed (PR #17, merge `440f83a`, 2026-11-12). Tasks A–F and §7 items 1–5 are done; landing cutover done (§6 DONE). Baselines: pytest 360, vitest 43, edge 21. **Next run: §8.**
 - **Admin SPA:** `app.echo9.net` (prod) and `stage.echo9.net` (staging).
 - **Tenant sites:** `*.echo9.net` is served as static HTML by CloudFront `E1P9K5ZO6DTDWR` (`d2nqdv42n1qlhv.cloudfront.net`) via `cf-site-content.js` + KVS `9host-site-hosts-kvs` (`arn:aws:cloudfront::452644920012:key-value-store/10537886-08ea-4b05-87c9-68a1684e6f41`). Unmapped hosts return 404.
 - **Admin SPA distributions:** production `E26B25DDJUH6YE` (`d1y8o0nam8q0rq`), alias `app` only (`prod` retired, NXDOMAIN); staging `E1NLQ7KZ99HQJ5` (`d327su5s05gt98`).
-- **Landing (staging):** `preview.echo9.net` → CloudFront `EYLR0G6R8Z1BK` (`dggrw8k6efaha.cloudfront.net`), bucket `9host-landing`, synced from `landing/` by CI. Not a tenant site; never in the KVS.
+- **Landing (LIVE 2026-11-12):** `echo9.net`, `www.echo9.net` and `preview.echo9.net` → CloudFront `EYLR0G6R8Z1BK` (`dggrw8k6efaha.cloudfront.net`), bucket `9host-landing`, synced from `landing/` by CI. Not a tenant site; never in the KVS.
 - **Custom domains:** Cloudflare for SaaS on zone `echonin9.com` (fallback origin `proxy.echonin9.com`, Worker `9host-custom-domain-proxy`). Customers point `CNAME`/`ALIAS -> proxy.echonin9.com` plus a `_cf-custom-hostname` TXT.
   - Live: `oliverjinks.com` and `www.oliverjinks.com`.
   - Live: `jinks.ca` (ACTIVE 2026-11-12, KVS key present, 200). `www.jinks.ca` is not configured (no Cloudflare custom hostname, no KVS key).
@@ -261,3 +261,14 @@ Main merged from develop (PR #18) after owner review of stage + preview.
 - Verified: `https://echo9.net/` and `https://www.echo9.net/` 200 with the tools button; `tools.echo9.net` 301; tenant sites, app, preview 200. Invalidated `EYLR0G6R8Z1BK` `/*`.
 - Rollback: delete ALIAS `935394382` / CNAME `935394533`, recreate WR `@` and `www` → `https://tools.e9.cx` (301).
 - Note: `edge_records.py` does not manage `@`/`www`; they are hand-managed records.
+
+## 8. Next run (fresh Commander, from 2026-11-13)
+
+Same guardrails (§2) and workflow: one commit + push to `develop` per ticket, CI green before the next, smoke-check after every push (`jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `jinks.ca`, `app.echo9.net`, `echo9.net`, `www.echo9.net`, `preview.echo9.net`), never push to `main`. `echo9.net` / `www.echo9.net` are now LIVE production — landing changes ship to production on the owner's main merge, so review on `preview.echo9.net` first.
+
+Order:
+1. **`T-29` landing showcase redesign** (Opus + design-director skill). Files: `landing/` only. Acceptance: showcase-quality, responsive, light/dark, accessible (WCAG AA), fast (no heavy frameworks; plain static output synced by CI), tools.e9.cx button kept, no tenant data, custom 404 kept. Verify on `preview.echo9.net` with screenshots (claude-in-chrome if available) at desktop + phone width.
+2. **`T-30` Admin SPA redesign** (Opus + design-director). Start with a UX audit of `frontend/src` flows (sites, publish/rollback, pages/posts/events/media, domains, users/roles, superadmin console) written into `docs/T-30-ux-audit.md`, then implement the visual system + navigation on shadcn/Tailwind in small commits. Keep `FeatureGate`, `TenantScope`, `ApiClient` seams; vitest + build green. Owner reviews on `stage.echo9.net`.
+3. **`T-31`/`T-32` WYSIWYG** — design spike only this run: `docs/adr/0003-wysiwyg-templates.md` (editor library options, content model, sanitization and `compile_site` purity, migration of existing sites, template-admin UX). No code until the owner approves the ADR.
+
+Owner-only (do not do): `T-21` proxy-secret rollout (§7 status), `T-25` expired cert on `E164B9WJ8ALT9F`, `www.jinks.ca`, `develop` → `main` merges.
