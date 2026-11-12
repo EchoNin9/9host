@@ -366,7 +366,8 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:DeleteFunction",
       "cloudfront:PublishFunction",
       "cloudfront:DescribeFunction",
-      "cloudfront:ListFunctions"
+      "cloudfront:ListFunctions",
+      "cloudfront:TestFunction" # T-21: CI smoke-tests the DEVELOPMENT stage before publishing
     ]
     resources = ["*"]
   }

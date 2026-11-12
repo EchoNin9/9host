@@ -6,6 +6,12 @@
  *   Host or X-Forwarded-Host (Cloudflare SaaS Worker) looked up in KVS:
  *     "<host>" -> {"tenant","site_id"}                    -> /{tenant}/{site_id}/published/current/...
  *
+ * X-FORWARDED-HOST TRUST (T-18): once the KVS key "__proxy_secret__" exists, X-Forwarded-Host
+ * is only honoured when the request also carries X-9host-Proxy-Secret equal to it (sent by
+ * infra/cloudflare-worker/custom-domain-proxy.js from its PROXY_SECRET Worker secret);
+ * otherwise the Host header is used. While the key is absent (rollout), X-Forwarded-Host is
+ * trusted as before. The secret header is removed from the request either way.
+ *
  * FAIL CLOSED: a request is only ever forwarded to S3 after being rewritten under
  * /{tenant}/{site_id}/published/current/. Unmapped hosts, missing/failing KVS,
  * malformed mappings and any URI containing a ".." segment (raw or %2e-encoded)
@@ -15,6 +21,9 @@
  * Directories resolve to index.html; extensionless paths to {path}/index.html.
  */
 import cf from 'cloudfront';
+
+var PROXY_SECRET_KEY = '__proxy_secret__';
+var PROXY_SECRET_HEADER = 'x-9host-proxy-secret';
 
 var TENANT_RE = /^[a-z0-9_-]+$/;
 var SITE_RE = /^[a-zA-Z0-9_-]+$/;
@@ -65,6 +74,31 @@ function headerValue(headers, name) {
     return (h && h.value) ? String(h.value) : '';
 }
 
+// Length-checked, constant-time-ish string comparison (no early exit on first mismatch).
+function secretEquals(a, b) {
+    if (!a || !b || a.length !== b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) {
+        diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return diff === 0;
+}
+
+// Expected proxy secret from KVS, or '' when the key is absent / KVS unavailable (rollout mode).
+// NOTE (T-21): the cloudfront-js-2.0 runtime rejects `await` inside call arguments or
+// compound expressions (e.g. String(await x)) with a SyntaxError at load time, which fails
+// EVERY request. Only use `await` as the whole right-hand side of a plain assignment.
+async function expectedProxySecret() {
+    if (!kvsHandle) return '';
+    var raw = '';
+    try {
+        raw = await kvsHandle.get(PROXY_SECRET_KEY);
+    } catch (e) {
+        raw = '';  // key absent (get() throws) -> enforcement not enabled yet
+    }
+    return raw ? String(raw) : '';
+}
+
 async function handler(event) {
     var request = event.request;
     var headers = request.headers || {};
@@ -82,9 +116,17 @@ async function handler(event) {
         return request;
     }
 
-    // 2. Effective hostname: X-Forwarded-Host (Cloudflare for SaaS Worker) or Host
+    // 2. Effective hostname: X-Forwarded-Host (Cloudflare for SaaS Worker, if trusted) or Host
     var host = headerValue(headers, 'host').toLowerCase().split(':')[0];
     var fwdHost = headerValue(headers, 'x-forwarded-host').toLowerCase().split(',')[0].trim().split(':')[0];
+    var presentedSecret = headerValue(headers, PROXY_SECRET_HEADER);
+    if (headers[PROXY_SECRET_HEADER]) delete headers[PROXY_SECRET_HEADER];
+    if (fwdHost) {
+        var expectedSecret = await expectedProxySecret();
+        if (expectedSecret && !secretEquals(presentedSecret, expectedSecret)) {
+            fwdHost = '';
+        }
+    }
     var effectiveHost = fwdHost || host;
 
     // 3. Resolve {tenant, site_id} via CloudFront KeyValueStore (get() throws on a missing key).
