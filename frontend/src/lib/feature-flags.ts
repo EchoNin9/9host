@@ -17,6 +17,9 @@ export function isBillingEnabled(): boolean {
   return import.meta.env.VITE_ENABLE_BILLING === "true";
 }
 
+/** Block (Puck) editor kill switch (ADR-0003, T-31a spike). Defaults to false. */
+export const BLOCK_EDITOR_ENABLED = import.meta.env.VITE_ENABLE_BLOCK_EDITOR === "true";
+
 export type FeatureTier = "free" | "pro" | "business" | "vip";
 
 /** Feature keys aligned with saas-architecture.mdc (Task 2.89: + content modules) */

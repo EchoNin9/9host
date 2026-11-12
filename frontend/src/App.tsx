@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet, Route, BrowserRouter, Routes, useParams, useSearchParams } from "react-router-dom"
-import { useCallback, useEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowRight, Plus, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,6 +40,10 @@ import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import { TenantScopeProvider } from "@/context/tenant-scope"
 import { createTenantWithError, getToken } from "@/lib/api"
+import { BLOCK_EDITOR_ENABLED } from "@/lib/feature-flags"
+
+// T-31a spike: Puck lives in its own lazy chunk and is only routed behind the flag.
+const EditorSpike = lazy(() => import("@/pages/editor-spike"))
 
 /**
  * Tenant dashboard shell (/:tenantSlug/*). Resource views get their API client from
@@ -284,6 +288,16 @@ function AppRoutes() {
         <Route path="analytics" element={<TenantAnalytics />} />
         <Route path="sites" element={<TenantSites />} />
         <Route path="sites/:siteId/edit" element={<SiteContentEditor />} />
+        {BLOCK_EDITOR_ENABLED && (
+          <Route
+            path="sites/:siteId/editor-spike"
+            element={
+              <Suspense fallback={<LoadingState rows={3} label="Loading editor…" />}>
+                <EditorSpike />
+              </Suspense>
+            }
+          />
+        )}
         <Route path="domains" element={<TenantDomains />} />
         <Route path="users" element={<TenantUsers />} />
         <Route path="modules" element={<TenantModules />} />
