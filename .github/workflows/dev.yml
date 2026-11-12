@@ -134,3 +134,11 @@ jobs:
           if [ -n "$DIST_SITES" ]; then
             aws cloudfront create-invalidation --distribution-id "$DIST_SITES" --paths "/*"
           fi
+
+      # Runbook task F: standalone landing site (9host-landing, not a tenant site / no KVS)
+      - name: Sync landing site to S3 + invalidate
+        run: |
+          LANDING_BUCKET=$(cd infra && tofu output -raw s3_landing_bucket)
+          LANDING_DIST=$(cd infra && tofu output -raw cloudfront_landing_distribution_id)
+          aws s3 sync landing/ "s3://${LANDING_BUCKET}/" --delete
+          aws cloudfront create-invalidation --distribution-id "$LANDING_DIST" --paths "/*"

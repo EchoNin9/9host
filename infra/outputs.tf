@@ -170,3 +170,21 @@ output "cloudns_secret_arn" {
   description = "ARN of Secrets Manager secret for CloudNS credentials. Set value via: aws secretsmanager put-secret-value --secret-id 9host-cloudns --secret-string '{\"auth_id\":12345,\"password\":\"xxx\"}'"
   value       = aws_secretsmanager_secret.cloudns.arn
 }
+
+# ------------------------------------------------------------------------------
+# Runbook task F: standalone landing website (9host-landing)
+# ------------------------------------------------------------------------------
+output "s3_landing_bucket" {
+  description = "S3 bucket for the standalone landing site (aws s3 sync landing/ s3://this-bucket/ --delete)"
+  value       = aws_s3_bucket.landing.id
+}
+
+output "cloudfront_landing_distribution_id" {
+  description = "CloudFront 9host-landing distribution ID (cache invalidation)"
+  value       = aws_cloudfront_distribution.landing.id
+}
+
+output "cloudfront_landing_domain" {
+  description = "CloudFront 9host-landing domain (CNAME preview.{domain} -> this in CloudNS)"
+  value       = aws_cloudfront_distribution.landing.domain_name
+}
