@@ -76,9 +76,9 @@ resource "aws_iam_role" "github_production" {
 # ------------------------------------------------------------------------------
 data "aws_iam_policy_document" "deploy" {
   statement {
-    sid    = "ACM"
-    effect = "Allow"
-    actions = ["acm:*"]
+    sid       = "ACM"
+    effect    = "Allow"
+    actions   = ["acm:*"]
     resources = ["*"]
   }
 
@@ -378,14 +378,24 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:DescribeKeyValueStore",
       "cloudfront:UpdateKeyValueStore",
       "cloudfront:DeleteKeyValueStore",
-      "cloudfront:ListKeyValueStores",
+      "cloudfront:ListKeyValueStores"
+    ]
+    # T-16: management actions stay on "*" (create/list cannot be scoped to a not-yet-known KVS ARN)
+    resources = ["*"]
+  }
+
+  # T-16: data-plane key access scoped to the 9host KVS only
+  statement {
+    sid    = "CloudFrontKeyValueStoreKeys"
+    effect = "Allow"
+    actions = [
       "cloudfront-keyvaluestore:DescribeKeyValueStore",
       "cloudfront-keyvaluestore:GetKey",
       "cloudfront-keyvaluestore:PutKey",
       "cloudfront-keyvaluestore:DeleteKey",
       "cloudfront-keyvaluestore:ListKeys"
     ]
-    resources = ["*"]
+    resources = [aws_cloudfront_key_value_store.site_hosts.arn]
   }
 }
 
