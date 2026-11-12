@@ -2,7 +2,7 @@
 CloudflareSaaSAdapter (T-07, SPEC §3 Module 1E).
 
 Custom domains are provisioned as Cloudflare for SaaS *custom hostnames* on the
-``echo9.net`` zone. The tenant points ``CNAME <domain> -> proxy.echo9.net``; Cloudflare
+``echonin9.com`` zone (the Cloudflare for SaaS zone). The tenant points ``CNAME <domain> -> proxy.echonin9.com``; Cloudflare
 issues the certificate and the fallback Worker forwards traffic to the public sites
 CloudFront distribution with ``X-Forwarded-Host``.
 
@@ -32,7 +32,7 @@ from typing import Callable, Protocol
 logger = logging.getLogger(__name__)
 
 CF_API_BASE = "https://api.cloudflare.com/client/v4"
-CNAME_TARGET = "proxy.echo9.net"
+CNAME_TARGET = "proxy.echonin9.com"
 DEFAULT_SECRET_ID = "9host-cloudflare"
 HTTP_TIMEOUT_SECONDS = 10
 
@@ -126,9 +126,14 @@ class CustomDomainPort(Protocol):
 # ---------------------------------------------------------------------------
 
 
+# The Cloudflare zone that owns CNAME_TARGET; tenants must never claim hostnames in it.
+SAAS_ZONE = CNAME_TARGET.split(".", 1)[1]
+
+
 def _platform_domains() -> list[str]:
     raw = os.environ.get("DOMAINS") or "echo9.net,echo9.ca"
-    return [d.strip().lower().rstrip(".") for d in raw.split(",") if d.strip()]
+    domains = [d.strip().lower().rstrip(".") for d in raw.split(",") if d.strip()]
+    return domains + [SAAS_ZONE]
 
 
 def validate_domain(domain: str) -> str:

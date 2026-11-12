@@ -1,6 +1,6 @@
 /**
  * Domain Setup Guide (DNS wizard) — Cloudflare for SaaS custom hostnames.
- * The tenant adds one CNAME → proxy.echo9.net plus the TXT validation record(s)
+ * The tenant adds one CNAME → proxy.echonin9.com plus the TXT validation record(s)
  * returned by the API (hostname ownership and/or SSL). Rendered inside the
  * custom_domains FeatureGate on the Domains page.
  */
@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import type { Domain } from "@/lib/api"
 
-const PROXY_CNAME_TARGET = "proxy.echo9.net"
+const PROXY_CNAME_TARGET = "proxy.echonin9.com"
 
 interface DomainSetupGuideProps {
   domain: Domain

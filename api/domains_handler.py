@@ -4,7 +4,7 @@ Domains API — GET/POST/DELETE /api/tenant/domains[/{domain}[/activate]]
 
 Custom domains require the ``custom_domains`` feature (Pro+ tier or module override); an
 impersonating superadmin bypasses the tier gate. Domains are Cloudflare for SaaS custom
-hostnames (``CNAME -> proxy.echo9.net``) managed through ``custom_domain_handler``, which keeps
+hostnames (``CNAME -> proxy.echonin9.com``) managed through ``custom_domain_handler``, which keeps
 Cloudflare, HostMappingKVS and the DOMAIN# row in sync.
 """
 

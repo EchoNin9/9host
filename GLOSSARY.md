@@ -13,7 +13,7 @@ An isolated customer account identified by a unique, immutable `tenant_slug` (e.
 A website belonging to a `Tenant`, identified by `site_id` (UUID) and a globally unique `site_slug` (e.g., `jinks1` -> `jinks1.echo9.net`). Stored in DynamoDB and compiled into static HTML assets in S3 (`9host-sites`) under `{tenant_slug}/{site_id}/`.
 
 ### CustomHostname
-A tenant-owned external domain (e.g., `myband.com` or `www.myband.com`) bound to a specific `Site`. Provisioned and SSL-terminated via **Cloudflare for SaaS** on the `echo9.net` zone (`CNAME -> proxy.echo9.net`), forwarded to the 9host Public Sites CloudFront distribution with `X-Forwarded-Host`, and mapped to `{tenant_slug}/{site_id}` in `HostMappingKVS`.
+A tenant-owned external domain (e.g., `myband.com` or `www.myband.com`) bound to a specific `Site`. Provisioned and SSL-terminated via **Cloudflare for SaaS** on the `echo9.net` zone (`CNAME -> proxy.echonin9.com`), forwarded to the 9host Public Sites CloudFront distribution with `X-Forwarded-Host`, and mapped to `{tenant_slug}/{site_id}` in `HostMappingKVS`.
 
 ---
 

@@ -38,3 +38,7 @@ api/.venv/
 
 *.tfvars
 !*.tfvars.example
+
+# Local secrets (never commit)
+.env
+.env.*

@@ -92,7 +92,7 @@ agent1 task 1.11, 1.12: CloudNS provider + DNS records for echo9.net
 ## Important Patterns
 
 - **Split Edge Routing**: `app.echo9.net` / `stage.echo9.net` serve the React Admin SPA; `*.echo9.net` and `(www.)echo9.net` serve static HTML directly from `S3-9host-sites` at `/` via `cf-site-content.js` + CloudFront KeyValueStore (`9host-site-hosts-kvs`).
-- **Custom Domains (Cloudflare for SaaS)**: Custom hostnames point `CNAME -> proxy.echo9.net`, where a Cloudflare Worker forwards `X-Forwarded-Host` to CloudFront (`cf-site-content.js` + KVS).
+- **Custom Domains (Cloudflare for SaaS)**: Custom hostnames point `CNAME -> proxy.echonin9.com`, where a Cloudflare Worker forwards `X-Forwarded-Host` to CloudFront (`cf-site-content.js` + KVS).
 - **Single DynamoDB table** (`9host-main` behind `TenantStore`): pk/sk with GSIs (`byUser`, `byDomain`, `bySiteSlug`, `byEntity`).
 - **Hybrid Auth (`RequestContext`)**: Cognito User Pool (`USER#{sub}`) for Tenant Admins & Superadmins + DynamoDB `TUSER` / `ROLE` / `GROUP` entities for tenant-managed collaborators.
 - **Static HTML publish (`SiteCompiler` + `SiteStoragePort`)**: Pure `compile_site(snapshot, mode)` with HTML sanitization and root-relative links (`/`), uploaded to S3 `published/v{N}/` + `published/current/` and synced to CloudFront KVS.

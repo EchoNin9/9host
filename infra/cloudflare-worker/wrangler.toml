@@ -5,11 +5,13 @@ main = "custom-domain-proxy.js"
 compatibility_date = "2026-01-01"
 workers_dev = false
 
-# proxy.echo9.net is the Custom Hostnames fallback origin (AAAA 100::, proxied).
-# "*/*" catches every custom hostname routed to the echo9.net zone via Cloudflare for SaaS.
+# echonin9.com is the Cloudflare for SaaS zone (Free plan). proxy.echonin9.com is the
+# Custom Hostnames fallback origin (AAAA 100::, proxied). "*/*" catches every custom
+# hostname routed to this zone. echonin9.com / www.echonin9.com are sent to GitHub by a
+# Redirect Rule, which runs before Workers.
 routes = [
-  { pattern = "proxy.echo9.net/*", zone_name = "echo9.net" },
-  { pattern = "*/*", zone_name = "echo9.net" },
+  { pattern = "proxy.echonin9.com/*", zone_name = "echonin9.com" },
+  { pattern = "*/*", zone_name = "echonin9.com" },
 ]
 
 [vars]

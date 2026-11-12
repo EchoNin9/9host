@@ -168,7 +168,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
 - **Agent:** `agent1`
 - **Blocked by:** `T-06`
 - **Scope:**
-  - Create `api/cloudflare_saas.py` implementing custom hostname creation, status check, and deletion against Cloudflare Custom Hostnames API (`POST/GET/DELETE /zones/{zone_id}/custom_hostnames`), returning `cname_target = "proxy.echo9.net"` and ownership verification TXT records.
+  - Create `api/cloudflare_saas.py` implementing custom hostname creation, status check, and deletion against Cloudflare Custom Hostnames API (`POST/GET/DELETE /zones/{zone_id}/custom_hostnames`), returning `cname_target = "proxy.echonin9.com"` and ownership verification TXT records.
   - Create `infra/cloudflare-worker/custom-domain-proxy.js` and `infra/cloudflare-worker/wrangler.toml` for the 12-line fallback origin Worker on `echo9.net`.
   - Refactor `api/custom_domain_handler.py` and `api/domains_handler.py` to use `CloudflareSaaSAdapter` + `HostMappingKVS` (syncing `domain -> {tenant, site_id}` into KVS when domain becomes `ACTIVE`).
   - Delete `infra/lambda_acm.tf` and `infra/lambda_acm_handler/`.
@@ -204,7 +204,7 @@ Wave 5 (End-to-End Verification & Two-Axis Code Review)
   - Create `frontend/src/lib/api-client.ts` and `frontend/src/context/tenant-scope.tsx`.
   - Refactor `frontend/src/lib/api.ts` to delegate all calls through `apiClient` (eliminating global `_impersonateTenant` race conditions and separating `9host_cognito_token` from `9host_site_token`).
   - Remove `RootRoute` and `fetchDefaultSite` from `frontend/src/App.tsx`.
-  - Update `frontend/src/components/custom-domain-wizard.tsx` to display the simplified Cloudflare for SaaS instructions (`CNAME -> proxy.echo9.net` + TXT validation record).
+  - Update `frontend/src/components/custom-domain-wizard.tsx` to display the simplified Cloudflare for SaaS instructions (`CNAME -> proxy.echonin9.com` + TXT validation record).
   - Refactor `frontend/src/components/administer-tenant.tsx` to reuse the tenant resource components via `<TenantScopeProvider>`.
   - Add the **Superadmin-Only Live Edge Routing & Domains Health Panel** (`9host-site-hosts-kvs`) inside the Superadmin Console (`/admin`, gated by `require_superadmin()`), and ensure the public `(www.)echo9.net` landing template never exposes tenant domain lists or KVS entries.
 - **Acceptance Criteria:**
@@ -258,26 +258,16 @@ We verified live API access against `https://api.cloudns.net/dns/records.json` f
 
 ## 5. One-Time Setup Checklist for Cloudflare for SaaS Custom Domains (`Option B2`)
 
-Because Cloudflare account configuration happens in your Cloudflare dashboard, complete these 5 steps once when you are ready to route live domains:
+**Decision (2026-11-11):** `echo9.net` stays on ClouDNS. The Cloudflare for SaaS zone is **`echonin9.com`** (Free plan; it has no email). Customers point `CNAME <their-domain> -> proxy.echonin9.com`. (A delegated subdomain such as `9h.e9.cx` cannot be its own Cloudflare zone below Enterprise.)
 
-1. **Add `echo9.net` Zone to Cloudflare (Free Plan):**
-   - In Cloudflare Dashboard -> **Add a domain** -> `echo9.net` (Free plan).
-   - Remove the old `echo9.net -> tools.e9.cx` redirect rule.
-2. **Create DNS Records in Cloudflare `echo9.net`:**
-   - `CNAME app` -> `<frontend-cloudfront-domain>.cloudfront.net` (DNS only / grey cloud, since CloudFront terminates `*.echo9.net` ACM cert).
-   - `CNAME stage` -> `<staging-frontend-cloudfront-domain>.cloudfront.net` (DNS only / grey cloud).
-   - `CNAME *` -> `<sites-cloudfront-domain>.cloudfront.net` (DNS only / grey cloud).
-   - `CNAME sites-origin` -> `<sites-cloudfront-domain>.cloudfront.net` (DNS only / grey cloud).
-   - `AAAA proxy` -> `100::` (Proxied / **orange cloud** — acts as the Cloudflare for SaaS Fallback Origin).
-3. **Enable Cloudflare for SaaS (Custom Hostnames):**
-   - In Cloudflare Dashboard -> `echo9.net` -> **SSL/TLS** -> **Custom Hostnames**.
-   - Enable Cloudflare for SaaS (first 100 hostnames are **$0/month**).
-   - Set **Fallback Origin** to `proxy.echo9.net`.
-4. **Deploy the Fallback Origin Worker:**
-   - Run `npx wrangler deploy` inside `infra/cloudflare-worker/` (binds route `proxy.echo9.net/*` and `*/*` custom hostnames to forward requests to `https://sites-origin.echo9.net` with `X-Forwarded-Host`).
-5. **Save Cloudflare API Token in AWS Secrets Manager (`9host-cloudflare`):**
-   - Create a Cloudflare API Token with `Zone:SSL and Certificates:Edit` for `echo9.net`.
-   - Store `{"zone_id": "<your-zone-id>", "api_token": "<your-api-token>"}` in AWS Secrets Manager secret `9host-cloudflare`.
+1. **Add `echonin9.com` to Cloudflare (Free plan)** and change its nameservers at the registrar to the two Cloudflare nameservers shown. It currently has no MX; the old ClouDNS web redirect and the `www -> ghs.google.com` record are dropped.
+2. **DNS records in the `echonin9.com` zone:**
+   - `AAAA proxy` -> `100::` (**Proxied**, orange cloud): the Cloudflare for SaaS fallback origin.
+   - `AAAA @` -> `100::` and `AAAA www` -> `100::` (**Proxied**): placeholders so the redirect rule can fire.
+3. **Redirect Rule** (Rules -> Redirect Rules): when hostname is `echonin9.com` or `www.echonin9.com`, static redirect `301` to `https://github.com/EchoNin9`. Redirect Rules run before Workers, so the `*/*` Worker route does not intercept them.
+4. **Enable Cloudflare for SaaS:** `echonin9.com` -> **SSL/TLS** -> **Custom Hostnames**, enable (first 100 hostnames free; Cloudflare may ask for a payment method), set **Fallback Origin** to `proxy.echonin9.com`.
+5. **Deploy the Worker:** `npx wrangler login`, then `npx wrangler deploy` in `infra/cloudflare-worker/` (routes `proxy.echonin9.com/*` and `*/*` on `echonin9.com`; forwards to `https://sites-origin.echo9.net` with `X-Forwarded-Host`). `sites-origin.echo9.net` is a ClouDNS CNAME to the sites CloudFront distribution (§6).
+6. **API token -> AWS Secrets Manager:** Custom Token scoped to zone `echonin9.com` with Zone -> SSL and Certificates -> Edit, Zone -> Zone -> Read (plus Zone -> DNS -> Edit only while setting up records). Store `{"zone_id": "...", "api_token": "..."}` in secret `9host-cloudflare` (local staging file: gitignored `.env.cloudflare`).
 
 ---
 
@@ -292,7 +282,7 @@ Because Cloudflare account configuration happens in your Cloudflare dashboard, c
 5. Move admins to `app.echo9.net` (Cognito callback/logout URLs already include it); remove the `prod` alias/record after traffic drains.
 6. **Landing page:** unmanaged distribution `E164B9WJ8ALT9F` still holds `echo9.net` / `www.echo9.net`. Remove them there by hand, then set `serve_landing_domain = true` and `landing_site = {tenant, site_id}` and apply.
 7. **ClouDNS `@` / `www` (manual, only after step 6):** `www` (`180304155`) WR -> `CNAME d2nqdv42n1qlhv.cloudfront.net`; `@` (`180304152`) -> 301 to `https://www.echo9.net` or ALIAS to the sites distribution.
-8. **Existing ACM-era custom domains** re-register with Cloudflare on their next status check and stay `PENDING_VALIDATION` until the tenant points `CNAME -> proxy.echo9.net`; delete orphaned ACM certs by hand.
+8. **Existing ACM-era custom domains** re-register with Cloudflare on their next status check and stay `PENDING_VALIDATION` until the tenant points `CNAME -> proxy.echonin9.com`; delete orphaned ACM certs by hand.
 
 Known spec deviations: there is no `aws_cloudfront_distribution.frontend` (the SPA is `staging` + `production`), no `/api/*` CloudFront behaviour (SPA calls API Gateway via `VITE_API_URL`), and `cf-preview-content.js` uses `crypto.createHmac` (CloudFront Functions have no `crypto.subtle`).
 

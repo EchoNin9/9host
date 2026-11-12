@@ -26,7 +26,7 @@
 - **US-01 (Subdomain Site Viewing at `/`):** As a site visitor navigating to `https://<site-slug>.echo9.net/`, I immediately receive the static HTML of the site at `/` (with clean `/`, `/blog/`, `/events/`, `/media/...` links) in $<10\text{ ms}$ from CloudFront + S3 without loading the React Admin SPA or invoking Lambda/DynamoDB.
 - **US-02 (Landing Page at `(www.)echo9.net`):** As a visitor to `https://echo9.net` or `https://www.echo9.net`, I see the 9host landing page instead of redirecting to `tools.e9.cx`.
 - **US-03 (Admin SPA on `app.echo9.net` / `stage.echo9.net`):** As a Tenant Admin, Superadmin, or `TUSER` collaborator, I log into `https://app.echo9.net` (production) or `https://stage.echo9.net` (staging) to manage sites, content, domains, and users.
-- **US-04 (Custom Domains via Cloudflare for SaaS — Option B2):** As a Tenant Admin adding `myband.com` from ClouDNS or any registrar, I add a single `CNAME -> proxy.echo9.net` (and TXT validation record if apex). Cloudflare automatically issues the SSL certificate and routes traffic through the fallback Worker to my 9host site at `https://myband.com/`.
+- **US-04 (Custom Domains via Cloudflare for SaaS — Option B2):** As a Tenant Admin adding `myband.com` from ClouDNS or any registrar, I add a single `CNAME -> proxy.echonin9.com` (and TXT validation record if apex). Cloudflare automatically issues the SSL certificate and routes traffic through the fallback Worker to my 9host site at `https://myband.com/`.
 - **US-05 (Hybrid Cognito + `TUSER` Auth & Impersonation):** As a Tenant Admin authenticated via AWS Cognito, I can manage non-Cognito `TUSER` collaborators, custom `ROLE`s, and `GROUP`s; as a Superadmin impersonating a tenant, I can create, edit, and delete any site or content item without 403 errors.
 - **US-06 (Feature-Flagged Billing in MVP):** When `VITE_ENABLE_BILLING=false` (default for MVP), all billing tabs, pricing cards, and upgrade banners are hidden in the UI, while backend Stripe Checkout and Webhook logic is fixed and verified by unit tests so setting `VITE_ENABLE_BILLING=true` enables SaaS billing cleanly.
 
@@ -113,7 +113,7 @@ async function handler(event) {
 ```
 
 #### 1D. Cloudflare for SaaS Fallback Worker (`infra/cloudflare-worker/custom-domain-proxy.js`)
-Deployed on the `echo9.net` Cloudflare zone (`proxy.echo9.net/*` and `*/*` custom hostname fallback route):
+Deployed on the `echo9.net` Cloudflare zone (`proxy.echonin9.com/*` and `*/*` custom hostname fallback route):
 ```javascript
 export default {
   async fetch(request, env) {

@@ -32,10 +32,10 @@ We adopt a **Split Edge Architecture** combining AWS CloudFront KeyValueStore (K
    - On every viewer request, `cf-site-content.js` reads the effective hostname, resolves `{tenant}/{site_id}` from KVS in $<1\text{ ms}$, and rewrites `request.uri` to `/{tenant}/{site_id}/published/current/index.html` at `/`.
    - Delete `RootRoute` from `frontend/src/App.tsx` and delete `api/default_site_handler.py`.
 
-3. **Cloudflare for SaaS (`proxy.echo9.net`) + Fallback Worker for Custom Domains:**
+3. **Cloudflare for SaaS (`proxy.echonin9.com`) + Fallback Worker for Custom Domains:**
    - Retire and delete `infra/lambda_acm.tf`, `infra/lambda_acm_handler/main.py`, and all AWS ACM / CloudFront Alias mutation code in `api/custom_domain_handler.py`.
    - Use **Cloudflare for SaaS (Custom Hostnames)** on the `echo9.net` zone (first 100 custom hostnames are **$0/month** on Cloudflare Free plan; $0.10/hostname/month thereafter).
-   - End users at ClouDNS or any DNS registrar simply add `CNAME -> proxy.echo9.net` (plus TXT validation record).
+   - End users at ClouDNS or any DNS registrar simply add `CNAME -> proxy.echonin9.com` (plus TXT validation record).
    - Because AWS CloudFront rejects HTTP requests whose `Host` header is not in its `Aliases` list (`403 Forbidden`) and Cloudflare Host Header Override requires an Enterprise plan, deploy a **12-line Cloudflare Worker** on `echo9.net` (Cloudflare Workers Free tier: **100,000 requests/day at $0/month**) as the Custom Hostnames Fallback Origin:
      - The Worker fetches `https://sites-origin.echo9.net${url.pathname}${url.search}` while passing `X-Forwarded-Host: ${url.hostname}` and a shared `X-9host-Edge-Secret` header.
      - `cf-site-content.js` trusts `x-forwarded-host` when `x-9host-edge-secret` matches, and resolves the custom domain in `HostMappingKVS`.

@@ -652,14 +652,14 @@ export interface Domain {
   domain: string
   site_id: string
   status: DomainStatus
-  /** Always "proxy.echo9.net" */
+  /** Always "proxy.echonin9.com" */
   cname_target?: string
   cf_hostname_id?: string
   cf_status?: string
   ssl_status?: string
   validation_records?: DomainValidationRecord[]
   verification_errors?: string[]
-  /** Always "proxy.echo9.net" (kept by the backend for compatibility) */
+  /** Always "proxy.echonin9.com" (kept by the backend for compatibility) */
   verification_cname_target?: string
   created_at?: string
   updated_at?: string

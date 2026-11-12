@@ -184,7 +184,7 @@ class TestAdapter:
         }
         assert rec.cf_hostname_id == "cfh-0001"
         assert rec.domain == "myband.com"
-        assert rec.cname_target == CNAME_TARGET == "proxy.echo9.net"
+        assert rec.cname_target == CNAME_TARGET == "proxy.echonin9.com"
         assert rec.status == "pending" and rec.ssl_status == "pending_validation"
         assert not rec.is_active
         assert rec.ownership_txt_records == [
@@ -277,7 +277,7 @@ class TestAdapter:
     @pytest.mark.parametrize(
         "bad",
         ["", "localhost", "-bad.com", "bad-.com", "a..b.com", "exa mple.com", "*.example.com",
-         "example.123", "foo.echo9.net", "echo9.net", "x.echo9.ca", "a" * 64 + ".com",
+         "example.123", "foo.echo9.net", "proxy.echonin9.com", "echonin9.com", "echo9.net", "x.echo9.ca", "a" * 64 + ".com",
          "http://example.com", "example.com/path"],
     )
     def test_validate_domain_rejects(self, bad, monkeypatch):
@@ -308,8 +308,8 @@ class TestDomainLifecycle:
         d = body["domain"]
         assert d["domain"] == "myband.com"
         assert d["status"] == "PENDING_VALIDATION"
-        assert d["cname_target"] == "proxy.echo9.net"
-        assert d["verification_cname_target"] == "proxy.echo9.net"
+        assert d["cname_target"] == "proxy.echonin9.com"
+        assert d["verification_cname_target"] == "proxy.echonin9.com"
         assert d["cf_hostname_id"] == "cfh-0001"
         assert d["ssl_status"] == "pending_validation"
         assert {"type": "TXT", "name": "_cf-custom-hostname.myband.com", "value": "own-cfh-0001", "purpose": "ownership"} in d["validation_records"]

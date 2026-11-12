@@ -14,7 +14,7 @@
 - **Edge & Custom Domains:**
   - `app.echo9.net` (prod) / `stage.echo9.net` (stage): React Admin & Superadmin SPA.
   - `*.echo9.net` + `(www.)echo9.net`: Public static sites served directly from `S3-9host-sites` at `/` via `cf-site-content.js` + CloudFront KeyValueStore (`HostMappingKVS`).
-  - Custom Domains: **Cloudflare for SaaS** on `echo9.net` (`CNAME -> proxy.echo9.net`) + fallback Worker forwarding `X-Forwarded-Host` to CloudFront.
+  - Custom Domains: **Cloudflare for SaaS** on `echo9.net` (`CNAME -> proxy.echonin9.com`) + fallback Worker forwarding `X-Forwarded-Host` to CloudFront.
 - **Auth:** Hybrid Cognito User Pool (`USER#{sub}` for Tenant Admins / Superadmins) + DynamoDB `TUSER` / `ROLE` / `GROUP` entities unified inside `RequestContext`.
 - **Frontend:** React + Vite + TypeScript + Tailwind CSS + Shadcn/UI.
 
