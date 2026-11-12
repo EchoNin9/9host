@@ -49,6 +49,9 @@ jobs:
       - name: Build Lambda package
         run: scripts/build-lambda-package.sh
 
+      - name: Install boto3 for data scripts
+        run: python -m pip install --quiet boto3
+
       - name: OpenTofu init (remote state)
         working-directory: infra
         run: |
