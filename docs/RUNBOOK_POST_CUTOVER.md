@@ -13,7 +13,7 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 - **Landing (staging):** `preview.echo9.net` → CloudFront `EYLR0G6R8Z1BK` (`dggrw8k6efaha.cloudfront.net`), bucket `9host-landing`, synced from `landing/` by CI. Not a tenant site; never in the KVS.
 - **Custom domains:** Cloudflare for SaaS on zone `echonin9.com` (fallback origin `proxy.echonin9.com`, Worker `9host-custom-domain-proxy`). Customers point `CNAME`/`ALIAS -> proxy.echonin9.com` plus a `_cf-custom-hostname` TXT.
   - Live: `oliverjinks.com` and `www.oliverjinks.com`.
-  - `jinks.ca`: the owner changed its DNS; waiting for Cloudflare to issue the certificate.
+  - Live: `jinks.ca` (ACTIVE 2026-11-12, KVS key present, 200). `www.jinks.ca` is not configured (no Cloudflare custom hostname, no KVS key).
 - **Published sites** (tenant `jinks`). Republished 2026-11-12 with root-relative links:
 
   | Subdomain | Site ID |
@@ -23,10 +23,10 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
   | `oliverjinks-com` | `4ee567a5-e8a7-4164-9bdb-2a2cab21868a` |
 
 - **Baseline checks (all must stay green):**
-  - `cd api && ../.venv/bin/pytest -q` (217)
-  - `npm --prefix frontend test -- --run` (28)
+  - `cd api && ../.venv/bin/pytest -q` (361)
+  - `npm --prefix frontend test -- --run` (43)
   - `npm --prefix frontend run build`
-  - `node --test infra/tests/*.test.mjs` (14)
+  - `node --test infra/tests/*.test.mjs` (21)
   - `scripts/build-lambda-package.sh && AWS_PROFILE=echo9 AWS_REGION=us-east-1 tofu -chdir=infra validate`
 
 ## 2. Guardrails (hard rules)
@@ -218,3 +218,30 @@ Order and acceptance:
    - The §6 landing production cutover.
 
 Finish by updating §5 / `AGENTS.md` with outcomes and SHAs, and reporting what changed in production and what is waiting on the owner.
+
+### §7 status (2026-11-12, second Commander run)
+
+Items 1–5 done; item 6 untouched (owner). Every push was green in develop CI, and after each one `jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `app.echo9.net`, `preview.echo9.net` returned 200.
+
+| Item | Outcome | Commit |
+|---|---|---|
+| 1. `jinks.ca` | `ACTIVE`, `verification_errors: []`, KVS key present, `https://jinks.ca/` 200 (first curl 404 during KVS propagation). `www.jinks.ca` not configured — owner decision. | — |
+| 2. `T-21` | Root cause of the T-18 503: cloudfront-js-2.0 rejects `await` inside call arguments (`String(await kvsHandle.get(...))`) with a load-time SyntaxError; Node accepts it. Fixed (await only as a plain assignment), proven with `test-function` on scratch `9host-site-content-t21` (deleted). Fails open while `__proxy_secret__` is absent (today). CI now runs `infra/tests/cf_test_function.py` (DEVELOPMENT stage, mapped + unmapped host) before apply; deploy policy gained `cloudfront:TestFunction` (6072/6144 chars). New edge tests incl. a static `await`-placement guard. LIVE published 11:29 UTC, all sites 200. The commit also carries T-24's deletion of `infra/cloudns/scripts/import-existing-records.sh`. | `5f088e4` |
+| 3. `T-22` | Production `E26B25DDJUH6YE` has the `/media/*` origin + behaviour; media bucket policy allows it. `app` and `stage` both return 200 `binary/octet-stream` 980813 bytes for `/media/jinks/80e9d9b4-…/014445eb-joshing-logo1.png` (app was 403). | `55de689` |
+| 4. `T-23` | `require_permission` on domains (POST/DELETE/activate), analytics (GET), settings (PATCH `/api/tenant`), users (`/api/tenant/users`, `/api/tenant/tusers`). Escalation guard: `/api/tenant/roles` stays built-in admin/manager only; custom-role callers may assign only `member`/`editor` to TUSERs. Built-in roles unchanged. pytest 361. | `f068e73` |
+| 5. `T-24` | `infra/cloudns` manages only the zone; edge records via `infra/cloudns/scripts/edge_records.py` (dry run 0 changes vs live DNS; never applied). State backup `infra/cloudns/terraform.tfstate.pre-T24.backup`. §2.3 updated. | `b9b544f` |
+
+#### Owner: `T-21` proxy-secret rollout (only while all sites are 200)
+Run from the repo root, in one shell.
+1. Deploy the Worker (already sends `X-9host-Proxy-Secret` only when `PROXY_SECRET` is set, so harmless):
+   `set -a; . ./.env.cloudflare; set +a; export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_WORKERS_TOKEN"; (cd infra/cloudflare-worker && npx wrangler deploy)` — rollback `npx wrangler rollback`.
+2. Set the secret: `export PROXY_SECRET="$(openssl rand -hex 32)"; (cd infra/cloudflare-worker && printf %s "$PROXY_SECRET" | npx wrangler secret put PROXY_SECRET)` — rollback `npx wrangler secret delete PROXY_SECRET` (delete the KVS key first if written).
+3. Write the KVS key (enforcement starts):
+   `.venv/bin/python -c "import os,boto3;c=boto3.Session(profile_name='echo9',region_name='us-east-1').client('cloudfront-keyvaluestore');a='arn:aws:cloudfront::452644920012:key-value-store/10537886-08ea-4b05-87c9-68a1684e6f41';c.put_key(KvsARN=a,Key='__proxy_secret__',Value=os.environ['PROXY_SECRET'],IfMatch=c.describe_key_value_store(KvsARN=a)['ETag']);print('ok')"; unset PROXY_SECRET`
+   Verify: `oliverjinks.com` and `www.oliverjinks.com` 200; `curl -s -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Host: oliverjinks.com' https://sites-origin.echo9.net/` → 404.
+   Rollback (instant): same snippet with `c.delete_key(KvsARN=a,Key='__proxy_secret__',IfMatch=...)`.
+
+#### New notes / tickets
+- `T-27` (owner decision): `editor` is not an assignable TUSER role today (400 for every caller). Decide whether it should be.
+- `T-28`: The CI test-function gate uses `jinks4.echo9.net` as its mapped host; change `--mapped-host` in `cf_test_function.py` if that site is ever removed.
+- `www.jinks.ca`: add a Cloudflare custom hostname + KVS key if wanted (owner).

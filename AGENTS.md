@@ -57,11 +57,15 @@ Full scope, files, and acceptance criteria for each are in runbook §7. `T-13`�
 - [x] `T-18`: Small hardening (sanitizer `rel`, `X-Forwarded-Host` trust, Cloudflare poll throttle, admin console polish) [agent1/agent2] — DONE `53a27b4` (edge-function part reverted in 3394394/aa3ad44 → T-21; prod /media/* → T-22)
 - [x] `T-19`: Post-deploy runtime verification (edge functions, Lambda bundle, Cloudflare, browser) [all] — DONE `d8c90e2` (browser checks need owner)
 - [x] `T-20`: Superadmin users console: list platform admins (Cognito `superadmin` group, e.g. app.echo9.net admins) in their own section above tenant admins instead of under "Orphaned users" [agent1/agent2] — owner request 2026-11-12 — DONE `7d2c0d4`
-- [ ] `T-21`: Re-land the X-Forwarded-Host proxy-secret edge check (verify with `aws cloudfront test-function`; add a CI test-function step) [agent1]
-- [ ] `T-22`: `/media/*` cache behaviour on the production Admin SPA distribution [agent1]
-- [ ] `T-23`: Enforce remaining CustomRole permission keys (domains, analytics, settings, users) [agent1]
-- [ ] `T-24`: ClouDNS provider read bug: upstream fix or move echo9.net edge records to an API script [agent1]
+- [x] `T-21`: Re-land the X-Forwarded-Host proxy-secret edge check (verify with `aws cloudfront test-function`; add a CI test-function step) [agent1] — DONE `5f088e4`
+- [x] `T-22`: `/media/*` cache behaviour on the production Admin SPA distribution [agent1] — DONE `55de689`
+- [x] `T-23`: Enforce remaining CustomRole permission keys (domains, analytics, settings, users) [agent1] — DONE `f068e73`
+- [x] `T-24`: ClouDNS provider read bug: upstream fix or move echo9.net edge records to an API script [agent1] — DONE `b9b544f`
 - [ ] `T-25`: (owner) Expired echo9.net cert on non-9host distribution E164B9WJ8ALT9F [owner]
 - [ ] `T-26`: (owner decision) Restyle Admin SPA to match ui-mockups.html screens 2–4 (theme, Sites cards, sidebar, domains table, superadmin console) [agent2]
+- [ ] `T-27`: (owner decision) Make `editor` an assignable TUSER role? [agent1]
+- [ ] `T-28`: CI test-function gate depends on `jinks4.echo9.net` staying mapped [agent1]
+
+`T-21`–`T-24` outcomes, the owner's `T-21` proxy-secret rollout commands and new tickets `T-27`/`T-28`: runbook §7 status.
 
 Post-cutover runbook outcomes (A–F) and the landing production cutover steps: `docs/RUNBOOK_POST_CUTOVER.md` §5–§6.
