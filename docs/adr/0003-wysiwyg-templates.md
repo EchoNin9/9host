@@ -198,3 +198,15 @@ Run all four CLAUDE.md suites on every step. `node --test infra/tests/*.test.mjs
 7. **Embeds and forms**: are provider-specific embed blocks (YouTube, maps) or a contact form (needs a backend endpoint plus spam control) in scope for v1?
 8. **Tier gating**: should any blocks be Pro+ (for example `Columns`, `Gallery`), enforced through `tier_config.py` and `<FeatureGate>`?
 9. **Rollout**: opt-in per site first (recommended), or switch everyone at once? And when should the batch backfill (T-31f) run?
+
+## Owner Answers (2026-11-12)
+
+1. **Puck**: OK as a pinned dependency during bootstrap (T-31a bundle-size gate still applies).
+2. **Home page**: reserved `_home` page doc.
+3. **Posts**: TipTap rich text in v1 (recommendation accepted).
+4. **Template CSS**: confirmed — tokens + presets only, no raw CSS for superadmins.
+5. **Template upgrades**: pending owner confirmation of: pin `template_version`; retire by *deprecating* (not selectable for new sites, "update available" banner, no delete while pinned); superadmin bulk "upgrade all sites to vN".
+6. **Tenant forks**: pending owner confirmation of: drop forks (per-site token overrides replace them).
+7. **Embeds**: in scope for v1 (provider allowlist). Contact form: out.
+8. **Tier gating**: yes, some blocks Pro+, but deferred to `T-34`; v1 goal is working templates with no block gating.
+9. **Rollout**: all sites at once (all are owner-owned). The per-site opt-in flag stays only as a rollback switch; T-31f backfill runs right after T-31e.
