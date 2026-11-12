@@ -8,6 +8,7 @@ KVS functions in site_storage are patched.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -158,6 +159,16 @@ def env(dynamodb_table, cf, kvs, auth):
     _seed_tenant(dynamodb_table, "tenantb")
     _seed_tenant(dynamodb_table, "freebie", tier="FREE")
     return type("Env", (), {"table": dynamodb_table, "cf": cf, "kvs": kvs})
+
+
+def _advance_clock(monkeypatch, seconds):
+    """Make domains_handler see ``seconds`` more elapsed time (poll throttle, T-18)."""
+    later = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    monkeypatch.setattr(dh, "_utcnow", lambda: later)
+
+
+def _cf_gets(env):
+    return [c for c in env.cf.calls if c["method"] == "GET"]
 
 
 def _row(table, tenant, domain):
@@ -322,7 +333,7 @@ class TestDomainLifecycle:
         assert row["gsi2pk"] == "DOMAIN#myband.com" and row["gsi2sk"] == "TENANT#tenanta"
         assert env.kvs.calls == []  # not mapped until active
 
-    def test_polling_pending_to_active_flips_row_and_writes_kvs(self, env):
+    def test_polling_pending_to_active_flips_row_and_writes_kvs(self, env, monkeypatch):
         _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
 
         code, body = _call("GET", "/api/tenant/domains", "tenanta")
@@ -330,6 +341,7 @@ class TestDomainLifecycle:
         assert env.kvs.calls == []
 
         env.cf.activate("cfh-0001")
+        _advance_clock(monkeypatch, 31)  # past the poll throttle
         code, body = _call("GET", "/api/tenant/domains", "tenanta")
         assert code == 200
         assert body["domains"][0]["status"] == "ACTIVE"
@@ -343,6 +355,43 @@ class TestDomainLifecycle:
         _call("GET", "/api/tenant/domains", "tenanta")
         _call("GET", "/api/tenant/domains/myband.com", "tenanta")
         assert len(env.cf.calls) == n
+
+    def test_status_poll_throttled_per_row(self, env, monkeypatch):
+        """T-18: a non-ACTIVE row polled < 30 s ago is not re-checked with Cloudflare."""
+        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        _call("GET", "/api/tenant/domains", "tenanta")
+        assert len(_cf_gets(env)) == 1
+        assert _row(env.table, "tenanta", "myband.com")["last_checked_at"]
+
+        for _ in range(3):  # UI polls every 10 s
+            code, body = _call("GET", "/api/tenant/domains", "tenanta")
+            assert code == 200 and body["domains"][0]["status"] == "PENDING_VALIDATION"
+            _call("GET", "/api/tenant/domains/myband.com", "tenanta")
+        assert len(_cf_gets(env)) == 1
+
+        _advance_clock(monkeypatch, 31)
+        _call("GET", "/api/tenant/domains", "tenanta")
+        assert len(_cf_gets(env)) == 2
+
+    def test_activate_bypasses_poll_throttle(self, env):
+        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        _call("GET", "/api/tenant/domains", "tenanta")
+        env.cf.activate("cfh-0001")
+        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
+        assert code == 200 and body["domain"]["status"] == "ACTIVE"
+        assert len(_cf_gets(env)) == 2
+
+    def test_failed_poll_is_throttled_too(self, env, monkeypatch):
+        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        env.cf.fail_next = (500, {"success": False, "errors": []})
+        _call("GET", "/api/tenant/domains", "tenanta")
+        assert _row(env.table, "tenanta", "myband.com")["last_checked_at"]
+        n = len(env.cf.calls)
+        _call("GET", "/api/tenant/domains", "tenanta")
+        assert len(env.cf.calls) == n
+        _advance_clock(monkeypatch, 31)
+        _call("GET", "/api/tenant/domains", "tenanta")
+        assert len(env.cf.calls) == n + 1
 
     def test_activate_endpoint_rechecks_status(self, env):
         _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})

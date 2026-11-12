@@ -29,7 +29,7 @@ import {
   updateTenantTUser,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import {
@@ -45,6 +45,7 @@ import {
   type TenantUser,
   type ModulePermissions,
 } from "@/lib/api"
+import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
 
 function PermissionsForm({
   user,
@@ -590,22 +591,22 @@ function TenantUsers() {
 
   if (!canEdit) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <TenantPage>
         <div>
-          <h1 className="text-2xl font-semibold">Users</h1>
+          <TenantPageTitle>Users</TenantPageTitle>
           <p className="text-muted-foreground">
             Admin or manager access required to view tenant users.
           </p>
         </div>
-      </div>
+      </TenantPage>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <TenantPage>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Users</h1>
+          <TenantPageTitle>Users</TenantPageTitle>
           <p className="text-muted-foreground">
             Tenant members and their roles. Cognito users can configure module access.
           </p>
@@ -986,7 +987,7 @@ function TenantUsers() {
           </div>
         </SheetContent>
       </Sheet>
-    </div>
+    </TenantPage>
   )
 }
 

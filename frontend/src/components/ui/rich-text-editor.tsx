@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { MediaPicker, uploadFileAndGetUrl } from "@/components/content-editors/media-picker"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 
 interface RichTextEditorProps {
   value: string

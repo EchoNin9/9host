@@ -25,12 +25,13 @@ import {
 import { FeatureGate } from "@/components/feature-gate"
 import { Link } from "react-router-dom"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
 import { SitePreview } from "@/components/site-preview"
 import { TemplatePicker } from "@/components/template-picker"
 import { getToken, validateSlug, fetchTemplates, forkTemplate, type Site, type Template } from "@/lib/api"
+import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
 
 const SLUG_DEBOUNCE_MS = 400
 const VALID_SLUG_RE = /^[a-z0-9-]*$/
@@ -399,10 +400,10 @@ function TenantSites() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <TenantPage>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Sites</h1>
+          <TenantPageTitle>Sites</TenantPageTitle>
           <p className="text-muted-foreground">
             Manage websites for {tenantSlug}
           </p>
@@ -550,7 +551,7 @@ function TenantSites() {
         </div>
       )}
 
-    </div>
+    </TenantPage>
   )
 }
 

@@ -6,7 +6,8 @@ custom domain is a DynamoDB row ``pk=TENANT#{slug}, sk=DOMAIN#{domain}`` that
 carries the Cloudflare ``cf_hostname_id``. Lifecycle:
 
     register_domain(...)       -> Cloudflare custom hostname created, row PENDING_VALIDATION
-    refresh_domain_status(...) -> poll Cloudflare; when active: row ACTIVE + KVS put
+    refresh_domain_status(...) -> poll Cloudflare; when active: row ACTIVE + KVS put;
+                                  always stamps last_checked_at (poll throttle)
     remove_domain(...)         -> Cloudflare hostname deleted, KVS key deleted, row deleted
 
 The Cloudflare port is resolved through ``get_custom_domain_port()`` so tests can
@@ -166,6 +167,20 @@ def _fields_for(rec: CustomHostnameRecord, tenant_slug: str, domain: str, site_i
     return fields
 
 
+def _mark_checked(table, item: dict, checked_at: str) -> None:
+    """Best-effort ``last_checked_at`` write after a failed Cloudflare poll."""
+    try:
+        table.update_item(
+            Key={"pk": item["pk"], "sk": item["sk"]},
+            UpdateExpression="SET last_checked_at = :t",
+            ExpressionAttributeValues={":t": checked_at},
+        )
+    except Exception:  # noqa: BLE001 — throttling is an optimisation, never fail the request
+        logger.warning("custom_domain: could not record last_checked_at for %s", domain_from_item(item))
+        return
+    item["last_checked_at"] = checked_at
+
+
 def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> dict:
     """Poll Cloudflare for a non-ACTIVE domain row and persist the result.
 
@@ -176,6 +191,7 @@ def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> d
         return item
 
     port = get_custom_domain_port()
+    checked_at = _now()
     try:
         if item.get("cf_hostname_id"):
             rec = port.get_hostname_status(item["cf_hostname_id"])
@@ -184,10 +200,12 @@ def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> d
     except CloudflareAPIError:
         if raise_errors:
             raise
+        _mark_checked(table, item, checked_at)  # a failing provider is throttled too
         return item
 
     fields = _fields_for(rec, tenant_from_item(item), domain_from_item(item), item.get("site_id", ""))
-    fields["updated_at"] = _now()
+    fields["updated_at"] = checked_at
+    fields["last_checked_at"] = checked_at  # poll throttle (T-18, domains_handler)
     fields.update(entity_keys_domain(tenant_from_item(item), domain_from_item(item)))  # self-heal (T-17)
     names = {f"#{k}": k for k in fields}
     values = {f":{k}": v for k, v in fields.items()}

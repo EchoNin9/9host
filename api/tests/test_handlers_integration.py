@@ -651,3 +651,61 @@ def test_member_read_routes(api):
     code, body = call("GET", "/api/tenants", owner(api), tenant=None)
     assert code == 200 and body["tenants"] == [{"slug": "acme", "name": "Acme", "role": "admin"}]
     assert call("GET", "/api/tenants", tuser(), tenant=None)[0] == 401
+
+
+# ---------------------------------------------------------------------------
+# T-18: platform hostnames are reserved as tenant / site slugs
+# ---------------------------------------------------------------------------
+
+RESERVED = ["app", "stage", "prod", "www", "tools", "sites-origin", "proxy", "preview", "api", "admin"]
+
+
+def test_reserved_slug_constant_matches_spec():
+    from reserved_slugs import RESERVED_SLUGS
+
+    assert RESERVED_SLUGS == frozenset(RESERVED)
+
+
+@pytest.mark.parametrize("slug", RESERVED)
+def test_validate_slug_reports_reserved_unavailable(api, slug):
+    code, body = call("GET", "/api/validate-slug", owner(api), query={"slug": slug.upper()})
+    assert code == 200 and body == {"available": False, "slug": slug, "reason": "reserved"}
+
+
+@pytest.mark.parametrize("slug", RESERVED)
+def test_site_create_rejects_reserved_slug(api, slug):
+    code, body = call("POST", "/api/tenant/sites", owner(api), body={"name": "X", "slug": slug})
+    assert code == 400 and body["code"] == "slug_reserved", body
+    assert DynamoDBTenantStore(api.table).list_sites("acme") == []
+
+
+def test_site_create_rejects_reserved_slug_derived_from_name(api):
+    code, body = call("POST", "/api/tenant/sites", owner(api), body={"name": "Admin"})
+    assert code == 400 and body["code"] == "slug_reserved"
+
+
+def test_site_update_rejects_reserved_slug_but_legacy_site_keeps_its_own(api):
+    tok = owner(api)
+    site_id = create_site(api, slug="band")
+    code, body = call("PUT", f"/api/tenant/sites/{site_id}", tok, body={"slug": "app"})
+    assert code == 400 and body["code"] == "slug_reserved"
+    assert DynamoDBTenantStore(api.table).get_site("acme", site_id)["slug"] == "band"
+
+    # A site created before T-18 with a now-reserved slug can still be edited.
+    store = DynamoDBTenantStore(api.table)
+    store.put_site("acme", {**store.get_site("acme", site_id), "slug": "tools"})
+    code, body = call("PUT", f"/api/tenant/sites/{site_id}", tok, body={"name": "Renamed", "slug": "tools"})
+    assert code == 200, body
+    code, body = call("GET", "/api/validate-slug", tok, query={"slug": "tools", "exclude_site_id": site_id})
+    assert body == {"available": True, "slug": "tools"}
+    code, body = call("GET", "/api/validate-slug", tok, query={"slug": "tools"})
+    assert body["available"] is False
+
+
+@pytest.mark.parametrize("slug", ["app", "preview", "sites-origin"])
+def test_tenant_create_rejects_reserved_slug(api, slug):
+    code, body = call("POST", "/api/tenants", cognito(api.key, "founder-1"), tenant=None, body={"slug": slug})
+    assert code == 400 and body["code"] == "slug_reserved", body
+    code, body = call("POST", "/api/admin/tenants", superadmin(api), tenant=None, body={"slug": slug})
+    assert code == 400 and body["code"] == "slug_reserved", body
+    assert api.table.get_item(Key={"pk": f"TENANT#{slug}", "sk": "TENANT"}).get("Item") is None

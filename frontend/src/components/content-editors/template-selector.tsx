@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card"
 import { getToken, fetchTemplates, updateSite, type Template, type Site } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 
 export function TemplateSelector({ site, onSaved }: { site: Site; onSaved?: () => void }) {
   const { tenantSlug } = useTenant()

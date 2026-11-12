@@ -14,6 +14,8 @@ import json
 import re
 from typing import Any
 
+from reserved_slugs import RESERVED_SLUGS
+
 # Slug: lowercase alphanumeric + hyphen
 SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 
@@ -57,10 +59,10 @@ def extract_tenant_slug(
         host = host[0] if host else ""
     host = str(host).lower()
 
-    # stage.echo9.net, prod.echo9.net, stage.echo9.ca, etc. -> no tenant (platform domains)
-    platform_hosts = set()
+    # Apex and platform subdomains (app./stage./www./... see reserved_slugs) -> no tenant (T-18)
+    platform_hosts = set(domain_list)
     for d in domain_list:
-        platform_hosts.update((f"stage.{d}", f"prod.{d}", f"www.{d}", d))
+        platform_hosts.update(f"{label}.{d}" for label in RESERVED_SLUGS)
     if host in platform_hosts:
         return None
 

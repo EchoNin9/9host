@@ -1,6 +1,6 @@
 "use client"
 
-import { useTenantScope } from "@/context/tenant-scope"
+import { useTenantScope } from "@/context/tenant-scope-context"
 import { useCallback, useEffect, useState } from "react"
 import { getToken } from "@/lib/api"
 import { fetchTenant, type TenantMetadata } from "@/lib/api"

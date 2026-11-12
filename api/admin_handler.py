@@ -17,6 +17,7 @@ import boto3
 import site_storage
 from cloudflare_saas import CloudflareAPIError
 from custom_domain_handler import remove_domain
+from reserved_slugs import is_reserved_slug, reserved_slug_error
 from request_context import RequestContext, respond
 from tenant_store import DynamoDBTenantStore, entity_keys_tenant
 from tier_config import VALID_TIERS
@@ -108,6 +109,8 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
             400,
             {"error": "slug must be lowercase alphanumeric and hyphen (e.g. acme-corp, my-band)"},
         )
+    if is_reserved_slug(slug):  # tenant slugs are {slug}.{domain} hosts too (T-18)
+        return _json_response(400, reserved_slug_error(slug))
     if tier not in VALID_TIERS:
         return _json_response(400, {"error": "tier must be FREE, PRO, BUSINESS, or VIP"})
 
