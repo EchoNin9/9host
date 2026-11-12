@@ -65,7 +65,7 @@ def cognito(key, sub, groups=None):
     return jwt.encode(claims, key, algorithm="RS256", headers={"kid": KID})
 
 
-def tuser(username="ed", role="editor", tenant="acme"):
+def tuser(username="ed", role="member", tenant="acme"):
     now = int(time.time())
     return jwt.encode(
         {"username": username, "tenant_slug": tenant, "role": role, "user_type": "tenant_user", "exp": now + 3600},
@@ -161,12 +161,13 @@ def test_superadmin_on_admin_path_edits_content(api):
     assert code == 200 and body["page"]["title"] == "Home"
 
 
-def test_tuser_editor_can_edit_content_but_not_manage_users(api):
+def test_legacy_editor_role_is_treated_as_member(api):
+    """T-27: built-in 'editor' was dropped; a stored/issued 'editor' resolves to 'member'."""
     site_id = create_site(api)
     ed = tuser(role="editor")
     base = f"/api/tenant/sites/{site_id}/pages"
-    assert call("POST", base, ed, body={"path": "news", "title": "News"})[0] == 201
-    assert call("PUT", f"{base}/news", ed, body={"title": "Latest"})[1]["page"]["title"] == "Latest"
+    assert call("POST", base, ed, body={"path": "news", "title": "News"})[0] == 403
+    assert call("GET", base, ed)[0] == 200
     assert call("GET", "/api/tenant/sites", ed)[0] == 200
 
     assert call("GET", "/api/tenant/users", ed)[0] == 403

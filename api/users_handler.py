@@ -22,7 +22,7 @@ from tenant_users_handler import create_tuser
 
 BASE_PATH = "/api/tenant/users"
 MANAGE_ROLES = ("admin", "manager")
-MEMBER_ROLES = ("admin", "manager", "editor", "member")
+MEMBER_ROLES = ("admin", "manager", "member")
 MODULE_KEYS = ("sites", "domains", "analytics", "settings", "users")
 
 
@@ -98,7 +98,7 @@ def _add_member(store, tenant_slug: str, body: dict) -> dict:
     if not sub:
         return respond(400, {"error": "sub or email is required."})
     if role not in MEMBER_ROLES:
-        return respond(400, {"error": "role must be admin, manager, editor, or member."})
+        return respond(400, {"error": "role must be admin, manager, or member."})
     if store.get_member(tenant_slug, sub):
         return respond(409, {"error": "User already in tenant."})
     now = datetime.now(timezone.utc).isoformat()

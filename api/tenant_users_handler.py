@@ -20,7 +20,7 @@ USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z
 BASE_PATH = "/api/tenant/tusers"
 MANAGE_ROLES = ("admin", "manager")
 ROLE_ERROR = "role must be manager, member, or an existing custom role."
-CUSTOM_ASSIGNABLE = ("editor", "member")  # T-23: all a custom-role caller may assign
+CUSTOM_ASSIGNABLE = ("member",)  # T-23: all a custom-role caller may assign
 
 
 def _tuser_out(t: dict) -> dict:
@@ -72,7 +72,7 @@ def tenant_users_handler(ctx: RequestContext) -> dict:
     tenant_slug, caller_role = ctx.require_permission("users", MANAGE_ROLES)
     body = ctx.json_body() if ctx.method in ("POST", "PUT") else {}
     if caller_role not in MANAGE_ROLES and "role" in body and (body.get("role") or "").lower() not in CUSTOM_ASSIGNABLE:
-        return respond(403, {"error": "Custom roles may only assign: editor, member."})
+        return respond(403, {"error": "Custom roles may only assign: member."})
     store = DynamoDBTenantStore()
     method = ctx.method
     parts = [p for p in ctx.path[len(BASE_PATH):].split("/") if p]

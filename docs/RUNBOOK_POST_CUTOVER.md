@@ -242,6 +242,14 @@ Run from the repo root, in one shell.
    Rollback (instant): same snippet with `c.delete_key(KvsARN=a,Key='__proxy_secret__',IfMatch=...)`.
 
 #### New notes / tickets
-- `T-27` (owner decision): `editor` is not an assignable TUSER role today (400 for every caller). Decide whether it should be.
+- `T-27`: owner decision 2026-11-12 — drop the built-in `editor` role (in progress).
 - `T-28`: The CI test-function gate uses `jinks4.echo9.net` as its mapped host; change `--mapped-host` in `cf_test_function.py` if that site is ever removed.
 - `www.jinks.ca`: add a Cloudflare custom hostname + KVS key if wanted (owner).
+
+### Follow-up tickets (owner, 2026-11-12)
+Main merged from develop (PR #18) after owner review of stage + preview.
+
+- `T-29` **Landing showcase redesign.** `landing/` (preview.echo9.net, later echo9.net) is good enough for now but not showcase quality. Redesign with high-quality design skills (design-director / artifact-design level polish): typography, hierarchy, imagery, motion, responsive, dark mode. Keep the `⚡ Echo9 Tools (tools.e9.cx ↗)` button and the SPEC Public Landing Security Rule (no tenant data). Plain static output synced by CI.
+- `T-30` **Admin SPA redesign (app/stage).** Current UX is awkward and the UI is ugly. Audit flows (sites, publish, pages/posts/events/media, domains, users, superadmin console), then redesign navigation, layout and visual system on shadcn/Tailwind. Supersedes `T-26` (mockups in `docs/ui-mockups.html` are a starting reference, not a spec). Owner reviews on stage before main.
+- `T-31` **WYSIWYG templates.** Refactor the site templates system (`api/templates/`, `SiteCompiler`) so tenants edit pages visually in a WYSIWYG editor that round-trips to the compiled static HTML. Must keep `compile_site` pure, HTML sanitization, root-relative links, and draft preview. Needs a design spike (editor library, content model/migration) before code.
+- `T-32` **WYSIWYG template admin.** Refactor the superadmin template admin section into a WYSIWYG interface for creating/editing platform templates; depends on `T-31`'s content model.
