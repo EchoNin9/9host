@@ -6,14 +6,8 @@ import { signIn, confirmSignIn } from "aws-amplify/auth"
 import { Hub } from "aws-amplify/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { AuthLayout } from "@/components/auth-layout"
+import { FormField, Notice } from "@/components/page"
 import { clearSiteToken, fetchAllTenants, fetchTenants, getToken } from "@/lib/api"
 
 export function Login() {
@@ -102,123 +96,95 @@ export function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>
-            {needsNewPassword ? "Set new password" : "Sign in"}
-          </CardTitle>
-          <CardDescription>
-            {needsNewPassword
-              ? "Your account requires a new password. Choose a secure password."
-              : "Sign in to 9host with your email"}
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            )}
-            {!needsNewPassword && (
-              <>
-                <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm font-medium">
-                    Password
-                  </label>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </>
-            )}
-            {needsNewPassword && (
-              <>
-                <div className="space-y-2">
-                  <label htmlFor="new-password" className="text-sm font-medium">
-                    New password
-                  </label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="confirm-password"
-                    className="text-sm font-medium"
-                  >
-                    Confirm new password
-                  </label>
-                  <Input
-                    id="confirm-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    minLength={8}
-                  />
-                </div>
-              </>
-            )}
-          </CardContent>
-          <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading
-                ? "Setting password…"
-                : needsNewPassword
-                  ? "Set password"
-                  : "Sign in"}
-            </Button>
-            {!needsNewPassword && (
-              <>
-                <p className="text-center text-sm text-muted-foreground">
-                  Don&apos;t have an account?{" "}
-                  <Link
-                    to="/signup"
-                    className="underline hover:text-foreground"
-                  >
-                    Sign up
-                  </Link>
-                </p>
-                <p className="text-center text-sm text-muted-foreground">
-                  <Link
-                    to="/login/site"
-                    className="underline hover:text-foreground"
-                  >
-                    Sign in to your site
-                  </Link>
-                </p>
-              </>
-            )}
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+    <AuthLayout
+      title={needsNewPassword ? "Set a new password" : "Sign in"}
+      description={
+        needsNewPassword
+          ? "Your account requires a new password before you continue."
+          : "Manage your sites, domains and team."
+      }
+      footer={
+        !needsNewPassword && (
+          <>
+            <p>
+              No account yet?{" "}
+              <Link to="/signup" className="font-medium text-foreground underline underline-offset-4">
+                Create one
+              </Link>
+            </p>
+            <p>
+              Have a site username instead?{" "}
+              <Link to="/login/site" className="font-medium text-foreground underline underline-offset-4">
+                Site sign-in
+              </Link>
+            </p>
+          </>
+        )
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Notice tone="danger">{error}</Notice>}
+        {!needsNewPassword ? (
+          <>
+            <FormField label="Email" htmlFor="email">
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+            </FormField>
+            <FormField label="Password" htmlFor="password">
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </FormField>
+          </>
+        ) : (
+          <>
+            <FormField label="New password" htmlFor="new-password" hint="At least 8 characters.">
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={8}
+                autoFocus
+              />
+            </FormField>
+            <FormField label="Confirm new password" htmlFor="confirm-password">
+              <Input
+                id="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={8}
+              />
+            </FormField>
+          </>
+        )}
+        <Button type="submit" className="w-full" disabled={loading}>
+          {needsNewPassword
+            ? loading
+              ? "Setting password…"
+              : "Set password"
+            : loading
+              ? "Signing in…"
+              : "Sign in"}
+        </Button>
+      </form>
+    </AuthLayout>
   )
 }

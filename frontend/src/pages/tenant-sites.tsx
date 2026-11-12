@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { MoreHorizontal, Pencil, Trash2, Check, X, Loader2, ExternalLink, FileEdit } from "lucide-react"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { ArrowUpRight, Check, Eye, FileEdit, Globe, Loader2, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import { NativeSelect } from "@/components/ui/native-select"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { EmptyState, FormField, LoadingState, Notice } from "@/components/page"
+import { SiteStatusBadge } from "@/components/status-badges"
+import { siteLiveUrl } from "@/lib/site-format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -15,15 +16,17 @@ import {
   SheetHeader,
   SheetTitle,
   SheetFooter,
+  SheetDescription,
 } from "@/components/ui/sheet"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { FeatureGate } from "@/components/feature-gate"
-import { Link } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantRole } from "@/hooks/use-tenant-role"
@@ -31,7 +34,7 @@ import { useSites } from "@/hooks/use-sites"
 import { SitePreview } from "@/components/site-preview"
 import { TemplatePicker } from "@/components/template-picker"
 import { getToken, validateSlug, fetchTemplates, forkTemplate, type Site, type Template } from "@/lib/api"
-import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
+import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 
 const SLUG_DEBOUNCE_MS = 400
 const VALID_SLUG_RE = /^[a-z0-9-]*$/
@@ -87,13 +90,12 @@ function ForkTemplateSheet({
         <SheetHeader>
           <SheetTitle>Fork template</SheetTitle>
         </SheetHeader>
-        <div className="mt-6 flex flex-col gap-4">
-          <div>
-            <label className="text-sm font-medium">Template</label>
-            <select
+        <div className="flex flex-col gap-5">
+          <FormField label="Template" htmlFor="fork-template">
+            <NativeSelect
+              id="fork-template"
               value={templateSlug}
               onChange={(e) => setTemplateSlug(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
             >
               <option value="">Select…</option>
               {platformTemplates.map((t) => (
@@ -101,30 +103,34 @@ function ForkTemplateSheet({
                   {t.name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium">Name (optional)</label>
+            </NativeSelect>
+          </FormField>
+          <FormField label="Name (optional)" htmlFor="fork-name">
             <Input
+              id="fork-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My custom theme"
-              className="mt-1"
             />
-          </div>
-          <div>
-            <label className="text-sm font-medium">Slug (optional)</label>
+          </FormField>
+          <FormField label="Slug (optional)" htmlFor="fork-slug">
             <Input
+              id="fork-slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
               placeholder="my-custom-theme"
-              className="mt-1"
+              className="font-mono"
             />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button onClick={handleFork} disabled={saving || !templateSlug}>
-            {saving ? "Forking…" : "Fork"}
-          </Button>
+          </FormField>
+          {error && <Notice tone="danger">{error}</Notice>}
+          <SheetFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleFork} disabled={saving || !templateSlug}>
+              {saving ? "Forking…" : "Fork template"}
+            </Button>
+          </SheetFooter>
         </div>
       </SheetContent>
     </Sheet>
@@ -230,85 +236,62 @@ function SiteForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div>
-        <label htmlFor="site-name" className="text-sm font-medium">
-          Name
-        </label>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <FormField label="Name" htmlFor="site-name">
         <Input
           id="site-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My site"
           required
-          className="mt-1"
+          autoFocus={!site}
         />
-      </div>
-      <div>
-        <label htmlFor="site-slug" className="text-sm font-medium">
-          Slug (optional)
-        </label>
-        <div className="relative mt-1">
+      </FormField>
+      <div className="space-y-1.5">
+        <Label htmlFor="site-slug">Slug</Label>
+        <div className="relative">
           <Input
             id="site-slug"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder="my-site"
-            className={
-              slugStatus === "taken" || slugStatus === "invalid"
-                ? "pr-9 border-destructive"
-                : "pr-9"
-            }
+            aria-invalid={slugStatus === "taken" || (slugStatus === "invalid" && !!slug.trim())}
+            aria-describedby="site-slug-hint"
+            className="pr-9 font-mono"
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-            {slugStatus === "checking" && (
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-            )}
-            {slugStatus === "available" && (
-              <Check className="size-4 text-green-600 dark:text-green-500" aria-hidden />
-            )}
-            {slugStatus === "taken" && (
-              <X className="size-4 text-destructive" aria-hidden />
-            )}
-            {slugStatus === "invalid" && slug.trim() && (
+          <span className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground">
+            {slugStatus === "checking" && <Loader2 className="size-4 animate-spin" aria-hidden />}
+            {slugStatus === "available" && <Check className="size-4 text-success" aria-hidden />}
+            {(slugStatus === "taken" || (slugStatus === "invalid" && slug.trim())) && (
               <X className="size-4 text-destructive" aria-hidden />
             )}
           </span>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {slugStatus === "available" && "Available"}
-          {slugStatus === "taken" && (
-            <span className="text-destructive">This slug is already taken</span>
-          )}
-          {slugStatus === "invalid" && slug.trim() && (
-            <span className="text-destructive">
-              Use lowercase letters, numbers, and hyphens only
+        <p id="site-slug-hint" aria-live="polite" className="text-xs text-muted-foreground">
+          {slugStatus === "available" && (
+            <span className="text-success">
+              Available — <span className="font-mono">{slug.trim().toLowerCase()}.echo9.net</span>
             </span>
           )}
-          {slugStatus === "idle" || slugStatus === "checking" ? (
-            "Lowercase letters, numbers, hyphens only"
-          ) : null}
+          {slugStatus === "taken" && <span className="text-destructive">This slug is already taken</span>}
+          {slugStatus === "invalid" && slug.trim() && (
+            <span className="text-destructive">Use lowercase letters, numbers, and hyphens only</span>
+          )}
+          {(slugStatus === "idle" || slugStatus === "checking") &&
+            "Optional. Sets the address, e.g. my-site.echo9.net. Lowercase letters, numbers, hyphens."}
         </p>
       </div>
-      <div>
-        <label className="text-sm font-medium">
-          Template (optional)
-        </label>
-        <div className="mt-2">
-          <TemplatePicker
-            templates={templates}
-            value={templateId}
-            onChange={setTemplateId}
-          />
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Templates are filtered by your tier. Pro+ sees more options.
+      <div className="space-y-2">
+        <Label>Template</Label>
+        <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
+        <p className="text-xs text-muted-foreground">
+          Templates are filtered by your tier. You need one before you can publish.
         </p>
         <FeatureGate feature="custom_domains">
           <Button
             type="button"
             variant="link"
-            className="mt-1 h-auto p-0 text-xs"
+            className="h-auto p-0 text-xs"
             onClick={() => setForkOpen(true)}
           >
             Fork a template (Pro+)
@@ -322,20 +305,16 @@ function SiteForm({
         onForked={loadTemplates}
       />
       {site && (
-        <div>
-          <label htmlFor="site-status" className="text-sm font-medium">
-            Status
-          </label>
-          <select
-            id="site-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-          >
+        <FormField
+          label="Status"
+          htmlFor="site-status"
+          hint="Publishing from the content editor sets this to Published."
+        >
+          <NativeSelect id="site-status" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="draft">Draft</option>
             <option value="published">Published</option>
-          </select>
-        </div>
+          </NativeSelect>
+        </FormField>
       )}
       <SheetFooter>
         <Button type="button" variant="outline" onClick={onClose}>
@@ -351,7 +330,7 @@ function SiteForm({
                 slugStatus === "checking"))
           }
         >
-          {saving ? "Saving…" : site ? "Update" : "Create"}
+          {saving ? "Saving…" : site ? "Save changes" : "Create site"}
         </Button>
       </SheetFooter>
     </form>
@@ -363,9 +342,18 @@ function TenantSites() {
   const base = tenantBasePath || `/${tenantSlug}`
   const { canEdit } = useTenantRole()
   const { sites, loading, error, create, update, remove } = useSites()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingSite, setEditingSite] = useState<Site | null>(null)
   const [previewSite, setPreviewSite] = useState<Site | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Site | null>(null)
+
+  // ?new=1 (from the Overview "New site" button) opens the create sheet directly.
+  const wantsNew = searchParams.get("new") === "1" && canEdit
+  const isSheetOpen = sheetOpen || wantsNew
+  const clearNew = () => {
+    if (searchParams.has("new")) setSearchParams({}, { replace: true })
+  }
 
   const handleCreate = () => {
     setEditingSite(null)
@@ -375,11 +363,6 @@ function TenantSites() {
   const handleEdit = (site: Site) => {
     setEditingSite(site)
     setSheetOpen(true)
-  }
-
-  const handleDelete = async (site: Site) => {
-    if (!confirm(`Delete "${site.name}"? This cannot be undone.`)) return
-    await remove(site.id)
   }
 
   const handleSubmit = async (body: {
@@ -397,55 +380,51 @@ function TenantSites() {
   const handleSheetClose = () => {
     setSheetOpen(false)
     setEditingSite(null)
+    clearNew()
   }
 
   return (
     <TenantPage>
-      <div className="flex items-center justify-between">
-        <div>
-          <TenantPageTitle>Sites</TenantPageTitle>
-          <p className="text-muted-foreground">
-            Manage websites for {tenantSlug}
-          </p>
-        </div>
-        {canEdit && (
-          <Button onClick={handleCreate}>Add site</Button>
-        )}
-      </div>
+      <TenantPageHeader
+        title="Sites"
+        description="Each site publishes to its own echo9.net address. Edit content, preview drafts and publish from the content editor."
+        actions={
+          canEdit && (
+            <Button onClick={handleCreate}>
+              <Plus className="size-4" />
+              New site
+            </Button>
+          )
+        }
+      />
 
       <Sheet
-        open={sheetOpen}
+        open={isSheetOpen}
         onOpenChange={(open) => {
           setSheetOpen(open)
-          if (!open) setEditingSite(null)
+          if (!open) {
+            setEditingSite(null)
+            clearNew()
+          }
         }}
       >
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>{editingSite ? "Edit site" : "Add site"}</SheetTitle>
+            <SheetTitle>{editingSite ? "Site settings" : "New site"}</SheetTitle>
+            <SheetDescription>
+              {editingSite ? (
+                <span className="font-mono">{editingSite.slug || editingSite.id}</span>
+              ) : (
+                "Name it, pick an address and a template. You can change these later."
+              )}
+            </SheetDescription>
           </SheetHeader>
-          <div className="mt-4">
-            {editingSite && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mb-4"
-                onClick={() => {
-                  setSheetOpen(false)
-                  setPreviewSite(editingSite)
-                }}
-              >
-                <ExternalLink className="mr-2 size-4" />
-                Preview
-              </Button>
-            )}
-            <SiteForm
-              site={editingSite}
-              onSubmit={handleSubmit}
-              onClose={handleSheetClose}
-            />
-          </div>
+          <SiteForm
+            key={editingSite?.id ?? "new"}
+            site={editingSite}
+            onSubmit={handleSubmit}
+            onClose={handleSheetClose}
+          />
         </SheetContent>
       </Sheet>
 
@@ -459,98 +438,111 @@ function TenantSites() {
         />
       )}
 
-      {error && (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
-      )}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete “${deleteTarget?.name ?? ""}”?`}
+        description="The site, its content and its published files are removed. Custom domains pointing at it stop working. This cannot be undone."
+        confirmLabel="Delete site"
+        onConfirm={async () => {
+          if (deleteTarget) await remove(deleteTarget.id)
+        }}
+      />
+
+      {error && <Notice tone="danger">{error}</Notice>}
 
       {loading ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Loading sites…</p>
-          </CardContent>
-        </Card>
+        <LoadingState label="Loading sites…" />
       ) : sites.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Your sites</CardTitle>
-            <CardDescription>Create and manage hosted websites</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              No sites yet. Create your first site to get started.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={Globe}
+          title="No sites yet"
+          description="Create a site from a template, add your pages, then publish it to the web."
+          action={
+            canEdit && (
+              <Button onClick={handleCreate}>
+                <Plus className="size-4" />
+                Create your first site
+              </Button>
+            )
+          }
+        />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sites.map((site) => (
-            <Card key={site.id}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <div>
-                  <CardTitle className="text-base">{site.name}</CardTitle>
-                  <CardDescription>{site.slug || site.id}</CardDescription>
-                </div>
-                {canEdit && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-8">
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">Actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <Link to={`${base}/sites/${site.id}/edit`}>
-                          <FileEdit className="mr-2 size-4" />
-                          Edit content
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setPreviewSite(site)}>
-                        <ExternalLink className="mr-2 size-4" />
-                        Preview
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEdit(site)}>
-                        <Pencil className="mr-2 size-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => handleDelete(site)}
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {sites.map((site) => {
+            const url = siteLiveUrl(site)
+            const live = site.status === "published"
+            return (
+              <Card key={site.id} className="gap-4 transition-shadow hover:shadow-raised">
+                <CardHeader className="flex flex-row items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <CardTitle className="truncate">{site.name}</CardTitle>
+                    {url && live ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex max-w-full items-center gap-1 truncate font-mono text-xs text-muted-foreground hover:text-foreground"
                       >
-                        <Trash2 className="mr-2 size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                      site.status === "published"
-                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {site.status}
-                  </span>
-                  {site.template_id && (
-                    <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-                      Template: {site.template_id}
-                    </span>
+                        <span className="truncate">{url.replace("https://", "")}</span>
+                        <ArrowUpRight className="size-3 shrink-0" aria-hidden />
+                        <span className="sr-only">(opens in a new tab)</span>
+                      </a>
+                    ) : (
+                      <p className="truncate font-mono text-xs text-muted-foreground">
+                        {site.slug ? `${site.slug}.echo9.net` : site.id}
+                      </p>
+                    )}
+                  </div>
+                  {canEdit && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" className="-mt-1 -mr-2 shrink-0">
+                          <MoreHorizontal className="size-4" />
+                          <span className="sr-only">More actions for {site.name}</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setPreviewSite(site)}>
+                          <Eye className="size-4" />
+                          Template preview
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleEdit(site)}>
+                          <Pencil className="size-4" />
+                          Site settings
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(site)}>
+                          <Trash2 className="size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardHeader>
+                <CardContent className="flex flex-wrap items-center gap-2">
+                  <SiteStatusBadge site={site} />
+                  {site.template_id ? (
+                    <Badge mono>{site.template_id}</Badge>
+                  ) : (
+                    <Badge tone="warning">No template</Badge>
+                  )}
+                </CardContent>
+                {canEdit && (
+                  <CardFooter className="mt-auto gap-2 border-t pt-4 [.border-t]:pt-4">
+                    <Button asChild size="sm" variant="outline" className="flex-1">
+                      <Link to={`${base}/sites/${site.id}/edit`}>
+                        <FileEdit className="size-4" />
+                        Edit content
+                      </Link>
+                    </Button>
+                  </CardFooter>
+                )}
+              </Card>
+            )
+          })}
         </div>
       )}
-
     </TenantPage>
   )
 }

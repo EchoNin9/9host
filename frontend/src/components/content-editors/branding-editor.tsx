@@ -3,6 +3,8 @@
  * Logo, colors, fonts. Store in site settings.
  */
 import { useState, useRef, useEffect } from "react"
+import { Notice } from "@/components/page"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Upload, ImageIcon } from "lucide-react"
 import {
   Card,
@@ -175,20 +177,20 @@ export function BrandingEditor({ site, onSaved }: { site: Site; onSaved?: () => 
           </div>
           <div>
             <Label htmlFor="font_family">Font family</Label>
-            <select
+            <NativeSelect
+              className="mt-1.5"
               id="font_family"
               value={fontFamily}
               onChange={(e) => setFontFamily(e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
             >
               {FONT_OPTIONS.map((f) => (
                 <option key={f || "default"} value={f}>
                   {f || "Default"}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <Notice tone="danger">{error}</Notice>}
           <Button type="submit" disabled={saving}>
             {saving ? "Saving…" : "Save branding"}
           </Button>

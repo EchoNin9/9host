@@ -3,7 +3,8 @@
  * List events, CRUD, date/venue.
  */
 import { useState, useCallback, useEffect } from "react"
-import { Plus, Pencil, Trash2 } from "lucide-react"
+import { EmptyState, LoadingState, Notice } from "@/components/page"
+import { Plus, Pencil, Trash2, Calendar } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -107,22 +108,22 @@ export function EventsEditor({ siteId }: { siteId: string }) {
             <CardTitle>Events</CardTitle>
             <CardDescription>Events, shows, tour dates. Date and venue.</CardDescription>
           </div>
-          <Button size="sm" onClick={handleCreate}>
+          <Button size="sm" variant="outline" onClick={handleCreate}>
             <Plus className="mr-2 size-4" />
             Add event
           </Button>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <LoadingState rows={2} />
           ) : events.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No events yet. Add your first event.</p>
+            <EmptyState icon={Calendar} title="No events yet" description="Add your first event." />
           ) : (
             <ul className="space-y-2">
               {events.map((ev) => (
                 <li
                   key={ev.id}
-                  className="flex items-center justify-between rounded-md border p-3"
+                  className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2.5 transition-colors hover:bg-accent/40"
                 >
                   <div>
                     <p className="font-medium">{ev.title || "(Untitled)"}</p>
@@ -276,7 +277,7 @@ function EventFormSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-describedby={undefined} className="overflow-y-auto">
+      <SheetContent aria-describedby={undefined} className="sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>{event ? "Edit event" : "Add event"}</SheetTitle>
         </SheetHeader>
@@ -338,7 +339,7 @@ function EventFormSheet({
               </label>
             </div>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <Notice tone="danger">{error}</Notice>}
           <SheetFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

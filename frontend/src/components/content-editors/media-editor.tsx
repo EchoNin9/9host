@@ -3,6 +3,7 @@
  * Upload via pre-signed POST, list, caption, reorder.
  */
 import { useState, useCallback, useEffect, useRef } from "react"
+import { EmptyState, LoadingState, Notice } from "@/components/page"
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, ImageIcon } from "lucide-react"
 import {
   Card,
@@ -173,6 +174,7 @@ export function MediaEditor({ siteId }: { siteId: string }) {
             />
             <Button
               size="sm"
+              variant="outline"
               onClick={() => fileInputRef.current?.click()}
               disabled={saving}
             >
@@ -182,11 +184,11 @@ export function MediaEditor({ siteId }: { siteId: string }) {
           </div>
         </CardHeader>
         <CardContent>
-          {error && <p className="mb-2 text-sm text-destructive">{error}</p>}
+          {error && <Notice tone="danger">{error}</Notice>}
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+            <LoadingState rows={2} />
           ) : media.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No media yet. Upload an image.</p>
+            <EmptyState icon={ImageIcon} title="No media yet" description="Upload an image." />
           ) : (
             <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {[...media]
@@ -402,7 +404,7 @@ function MediaCaptionSheet({
               </label>
             </div>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <Notice tone="danger">{error}</Notice>}
           <SheetFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

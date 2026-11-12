@@ -4,14 +4,8 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { AuthLayout } from "@/components/auth-layout"
+import { FormField, Notice } from "@/components/page"
 import { siteLogin, setSiteSession } from "@/lib/api"
 
 export function SiteLogin() {
@@ -47,78 +41,61 @@ export function SiteLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Sign in to your site</CardTitle>
-          <CardDescription>
-            Use your site username and password. Enter your site slug (e.g. acme-corp).
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="space-y-2">
-              <label htmlFor="site-username" className="text-sm font-medium">
-                Username
-              </label>
-              <Input
-                id="site-username"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="jane"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="site-password" className="text-sm font-medium">
-                Password
-              </label>
-              <Input
-                id="site-password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="site-slug" className="text-sm font-medium">
-                Site
-              </label>
-              <Input
-                id="site-slug"
-                type="text"
-                autoComplete="organization"
-                value={site}
-                onChange={(e) => setSite(e.target.value)}
-                placeholder="acme-corp"
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Your tenant slug (e.g. acme-corp)
-              </p>
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in…" : "Sign in"}
-            </Button>
-            <p className="text-center text-sm text-muted-foreground">
-              <Link to="/login" className="underline hover:text-foreground">
-                Sign in with email (Cognito)
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+    <AuthLayout
+      title="Site sign-in"
+      description="For team members with a username created by their tenant admin."
+      footer={
+        <p>
+          Have an Echo9 account?{" "}
+          <Link to="/login" className="font-medium text-foreground underline underline-offset-4">
+            Sign in with email
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Notice tone="danger">{error}</Notice>}
+        <FormField label="Tenant" htmlFor="site-slug" hint="The tenant slug, e.g. acme-corp from acme-corp.echo9.net.">
+          <Input
+            id="site-slug"
+            type="text"
+            autoComplete="organization"
+            autoCapitalize="none"
+            spellCheck={false}
+            className="font-mono"
+            value={site}
+            onChange={(e) => setSite(e.target.value)}
+            placeholder="acme-corp"
+            required
+            autoFocus
+          />
+        </FormField>
+        <FormField label="Username" htmlFor="site-username">
+          <Input
+            id="site-username"
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="jane"
+            required
+          />
+        </FormField>
+        <FormField label="Password" htmlFor="site-password">
+          <Input
+            id="site-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </FormField>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </AuthLayout>
   )
 }

@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/collapsible"
 import { fetchAdminUsers, type AdminUserItem, type AdminUsersResponse } from "@/lib/api"
 import { groupAdminUsers } from "@/lib/admin-users"
-import { ChevronDown, ChevronRight, ShieldCheck, UserRound } from "lucide-react"
+import { ArrowDownAZ, ChevronDown, ChevronRight, ShieldCheck, UserRound } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { LoadingState, Page, PageHeader } from "@/components/page"
 
 type SortDir = "a-z" | "z-a"
 
@@ -65,31 +67,36 @@ function AdminUsersPage() {
     })
   }
 
+  const header = (
+    <PageHeader
+      eyebrow="Platform"
+      title="Users"
+      description="Platform admins first, then every user grouped by tenant."
+      actions={
+        <Button
+          variant="outline"
+          onClick={() => setSortDir((d) => (d === "a-z" ? "z-a" : "a-z"))}
+          aria-label={`Sort ${sortDir === "a-z" ? "Z to A" : "A to Z"}`}
+        >
+          <ArrowDownAZ className="size-4" />
+          {sortDir === "a-z" ? "A–Z" : "Z–A"}
+        </Button>
+      }
+    />
+  )
+
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        Loading…
-      </div>
+      <Page>
+        {header}
+        <LoadingState label="Loading users…" />
+      </Page>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Users</h1>
-          <p className="text-muted-foreground">
-            Platform admins first, then all users across tenants grouped by tenant.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setSortDir((d) => (d === "a-z" ? "z-a" : "a-z"))}
-        >
-          Sort: {sortDir === "a-z" ? "A–Z" : "Z–A"}
-        </Button>
-      </div>
+    <Page>
+      {header}
 
       {grouped.platformAdmins.length > 0 && (
         <Card>
@@ -103,7 +110,7 @@ function AdminUsersPage() {
               admins and site owners.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-1">
             {sortUsers(grouped.platformAdmins).map((u) => (
               <UserRow key={u.sub ?? u.username} user={u} tenantSlug={null} />
             ))}
@@ -118,7 +125,7 @@ function AdminUsersPage() {
             Expand each tenant to see users. Orphaned users have no tenant.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-1">
           {sortedTenantSlugs.map((slug) => (
             <TenantUserGroup
               key={slug}
@@ -130,14 +137,16 @@ function AdminUsersPage() {
           {grouped.orphaned.length > 0 && (
             <Collapsible defaultOpen>
               <CollapsibleTrigger asChild>
-                <button className="flex w-full items-center gap-2 rounded-lg border p-3 text-left font-medium hover:bg-muted/50">
-                  <ChevronRight className="size-4 collapse-icon" />
-                  <UserRound className="size-4" />
-                  Orphaned users ({grouped.orphaned.length})
+                <button className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left font-medium hover:bg-accent">
+                  <UserRound className="size-4 text-muted-foreground" />
+                  Orphaned users
+                  <span className="tabular ml-auto text-xs font-normal text-muted-foreground">
+                    {grouped.orphaned.length}
+                  </span>
                 </button>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <div className="ml-6 mt-2 space-y-2 border-l pl-4">
+                <div className="mt-1 mb-2 ml-5 space-y-1 border-l pl-3">
                   {sortUsers(grouped.orphaned).map((u) => (
                     <UserRow key={u.sub ?? u.username} user={u} tenantSlug={null} />
                   ))}
@@ -151,7 +160,7 @@ function AdminUsersPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </Page>
   )
 }
 
@@ -167,20 +176,20 @@ function TenantUserGroup({
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className="flex w-full items-center gap-2 rounded-lg border p-3 text-left font-medium hover:bg-muted/50">
+        <button className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left font-medium hover:bg-accent">
           {open ? (
-            <ChevronDown className="size-4" />
+            <ChevronDown className="size-4 text-muted-foreground" />
           ) : (
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-4 text-muted-foreground" />
           )}
-          <span>{tenantSlug}</span>
-          <span className="text-sm font-normal text-muted-foreground">
-            ({users.length} user{users.length !== 1 ? "s" : ""})
+          <span className="font-mono text-sm">{tenantSlug}</span>
+          <span className="tabular ml-auto text-xs font-normal text-muted-foreground">
+            {users.length} user{users.length !== 1 ? "s" : ""}
           </span>
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="ml-6 mt-2 space-y-2 border-l pl-4">
+        <div className="mt-1 mb-2 ml-5 space-y-1 border-l pl-3">
           {users.map((u) => (
             <UserRow key={u.sub ?? u.username} user={u} tenantSlug={tenantSlug} />
           ))}
@@ -195,33 +204,25 @@ function UserRow({ user, tenantSlug }: { user: AdminUserItem; tenantSlug: string
   const name = getUserDisplayName(user)
 
   return (
-    <div className="flex items-center justify-between rounded border p-2">
-      <div>
-        <span className="font-medium">{name || email || user.sub || user.username}</span>
-        {email && (
-          <span className="ml-2 text-sm text-muted-foreground">{email}</span>
-        )}
-        <span
-          className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-xs ${
-            user.type === "tenant_user"
-              ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {user.type}
-        </span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-2 hover:bg-muted/50">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">{name || email || user.sub || user.username}</p>
+        {email && email !== name && <p className="truncate text-xs text-muted-foreground">{email}</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
         {user.is_superadmin && (
-          <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-red-300 bg-red-100 px-2 py-0.5 font-mono text-xs font-semibold text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
-            <ShieldCheck className="size-3" />
+          <Badge tone="danger" mono>
+            <ShieldCheck aria-hidden />
             superadmin
-          </span>
+          </Badge>
         )}
-        {user.role && !(user.is_superadmin && user.role === "superadmin") && (
-          <span className="ml-2 text-xs text-muted-foreground">({user.role})</span>
-        )}
+        {user.role && !(user.is_superadmin && user.role === "superadmin") && <Badge>{user.role}</Badge>}
+        <Badge mono tone={user.type === "tenant_user" ? "info" : "neutral"}>
+          {user.type === "tenant_user" ? "site login" : user.type === "cognito" ? "account" : user.type}
+        </Badge>
       </div>
       {tenantSlug && (
-        <Button variant="outline" size="sm" asChild>
+        <Button variant="ghost" size="sm" asChild>
           <Link to={`/admin/tenants/${tenantSlug}`}>Administer</Link>
         </Button>
       )}

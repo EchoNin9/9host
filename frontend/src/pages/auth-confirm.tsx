@@ -5,19 +5,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom"
 import { confirmSignUp } from "aws-amplify/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { AuthLayout } from "@/components/auth-layout"
+import { FormField, Notice } from "@/components/page"
 
 export function AuthConfirm() {
   const navigate = useNavigate()
   const location = useLocation()
-  const email = (location.state as { email?: string } | null)?.email ?? ""
+  const stateEmail = (location.state as { email?: string } | null)?.email ?? ""
+  // Opened directly (e.g. from the email link or a reload) there is no router state: ask for it.
+  const [email, setEmail] = useState(stateEmail)
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -40,49 +36,57 @@ export function AuthConfirm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Confirm your email</CardTitle>
-          <CardDescription>
-            Enter the verification code sent to {email || "your email"}
-          </CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            )}
-            <div className="space-y-2">
-              <label htmlFor="code" className="text-sm font-medium">
-                Verification code
-              </label>
-              <Input
-                id="code"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="123456"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                required
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Confirming…" : "Confirm"}
-            </Button>
-            <p className="text-center text-sm text-muted-foreground">
-              <Link to="/login" className="underline hover:text-foreground">
-                Back to sign in
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+    <AuthLayout
+      title="Confirm your email"
+      description={
+        stateEmail ? (
+          <>
+            Enter the verification code we sent to <span className="font-medium text-foreground">{stateEmail}</span>.
+          </>
+        ) : (
+          "Enter your email and the verification code we sent you."
+        )
+      }
+      footer={
+        <p>
+          <Link to="/login" className="font-medium text-foreground underline underline-offset-4">
+            Back to sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error && <Notice tone="danger">{error}</Notice>}
+        {!stateEmail && (
+          <FormField label="Email" htmlFor="confirm-email">
+            <Input
+              id="confirm-email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </FormField>
+        )}
+        <FormField label="Verification code" htmlFor="code">
+          <Input
+            id="code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="123456"
+            className="font-mono tracking-[0.3em]"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            required
+            autoFocus={!!stateEmail}
+          />
+        </FormField>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? "Confirming…" : "Confirm email"}
+        </Button>
+      </form>
+    </AuthLayout>
   )
 }

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import {
   Card,
@@ -10,14 +11,16 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Switch } from "@/components/ui/switch"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { EmptyState, FormField, LoadingState, Notice, Page, PageHeader } from "@/components/page"
+import { TierBadge } from "@/components/status-badges"
+import { cn } from "@/lib/utils"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import { useTenantUsers } from "@/hooks/use-tenant-users"
@@ -34,7 +37,7 @@ import {
   putAdminTenantSettings,
   type AdminTenantDetail,
 } from "@/lib/api"
-import { ArrowLeft, Globe, GlobeLock, Settings, Trash2, Users } from "lucide-react"
+import { Building2, Globe, GlobeLock, MoreHorizontal, Settings, Trash2, UserCog, Users } from "lucide-react"
 
 import { ALL_MODULE_KEYS } from "@/lib/feature-flags"
 
@@ -62,7 +65,6 @@ function AdministerTenantPage() {
   const [tenant, setTenant] = useState<AdminTenantDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   const loadTenant = useCallback(async () => {
     if (!slug) return
@@ -78,70 +80,90 @@ function AdministerTenantPage() {
   }, [slug, loadTenant])
 
   const handleDelete = async () => {
-    if (!slug) return
-    setDeleting(true)
+    if (!slug) return false
     const ok = await deleteAdminTenant(await getToken("cognito"), slug)
-    setDeleting(false)
-    if (ok) {
-      setDeleteOpen(false)
-      navigate("/admin/tenants")
-    }
+    if (ok) navigate("/admin/tenants")
+    return ok
   }
 
-  if (superadminLoading) return <div className="flex min-h-screen items-center justify-center">Loading…</div>
+  if (superadminLoading) return <Page><LoadingState label="Loading…" /></Page>
   if (!isSuperadmin) return <Navigate to="/" replace />
   if (!slug) return <Navigate to="/admin/tenants" replace />
-  if (loading) return <div className="flex min-h-screen items-center justify-center">Loading…</div>
-  if (!tenant) return <div className="p-6">Tenant not found.</div>
+  if (loading) return <Page><LoadingState label="Loading tenant…" /></Page>
+  if (!tenant) {
+    return (
+      <Page>
+        <EmptyState
+          icon={Building2}
+          title="Tenant not found"
+          description={<>No tenant with slug <span className="font-mono">{slug}</span>.</>}
+          action={
+            <Button asChild variant="outline">
+              <Link to="/admin/tenants">Back to tenants</Link>
+            </Button>
+          }
+        />
+      </Page>
+    )
+  }
 
   const basePath = `/admin/tenants/${slug}`
   const activeTab = siteId ? "sites" : tab
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            to="/admin/tenants"
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back to tenants
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold">{tenant.name || tenant.slug}</h1>
-            <p className="text-muted-foreground">
-              {tenant.slug} · {tenant.tier}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => { setImpersonate(slug); navigate(`/${slug}`) }}>
-            Impersonate
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="mr-2 size-4" />
-            Delete tenant
-          </Button>
-        </div>
-      </div>
+    <Page>
+      <PageHeader
+        back={{ to: "/admin/tenants", label: "Tenants" }}
+        eyebrow="Tenant"
+        title={tenant.name || tenant.slug}
+        meta={<TierBadge tier={tenant.tier} />}
+        description={<span className="font-mono">{tenant.slug}.echo9.net</span>}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => { setImpersonate(slug); navigate(`/${slug}`) }}>
+              <UserCog className="size-4" />
+              Impersonate
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreHorizontal className="size-4" />
+                  <span className="sr-only">More tenant actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+                  <Trash2 className="size-4" />
+                  Delete tenant
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
-      <nav aria-label="Tenant sections" className="flex gap-2 border-b">
-        {TABS.map((t) => (
-          <Link
-            key={t.id}
-            to={t.id === "settings" ? basePath : `${basePath}/${t.id}`}
-            aria-current={activeTab === t.id ? "page" : undefined}
-            className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === t.id
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <t.icon className="size-4" />
-            {t.label}
-          </Link>
-        ))}
+      <nav aria-label="Tenant sections" className="-mx-4 overflow-x-auto border-b px-4 sm:mx-0 sm:px-0">
+        <div className="flex min-w-max gap-1">
+          {TABS.map((t) => {
+            const active = activeTab === t.id
+            return (
+              <Link
+                key={t.id}
+                to={t.id === "settings" ? basePath : `${basePath}/${t.id}`}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "-mb-px flex items-center gap-2 rounded-t-sm border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
+                  active
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                )}
+              >
+                <t.icon className={cn("size-4", active && "text-primary")} aria-hidden />
+                {t.label}
+              </Link>
+            )
+          })}
+        </div>
       </nav>
 
       <TenantScopeProvider tenantSlug={slug} basePath={basePath} isSuperadminImpersonating embedded>
@@ -160,23 +182,15 @@ function AdministerTenantPage() {
         </TenantTierProvider>
       </TenantScopeProvider>
 
-      <AlertDialog open={deleteOpen} onOpenChange={(o) => !o && !deleting && setDeleteOpen(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete tenant &quot;{slug}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the tenant and all its sites, domains, users, and settings. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete tenant"}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={`Delete tenant “${slug}”?`}
+        description="This permanently deletes the tenant and all its sites, domains, users, and settings. This action cannot be undone."
+        confirmLabel="Delete tenant"
+        onConfirm={handleDelete}
+      />
+    </Page>
   )
 }
 
@@ -229,67 +243,60 @@ function AdminSettingsTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Settings</CardTitle>
-        <CardDescription>Update tenant configuration</CardDescription>
+        <CardTitle>Platform settings</CardTitle>
+        <CardDescription>Name, tier, owner and module overrides. Only superadmins can change these.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <label htmlFor="admin-tenant-name" className="text-sm font-medium">Name</label>
-          <Input id="admin-tenant-name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+      <CardContent className="space-y-5">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <FormField label="Name" htmlFor="admin-tenant-name">
+            <Input id="admin-tenant-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </FormField>
+          <FormField label="Tier" htmlFor="admin-tenant-tier">
+            <NativeSelect id="admin-tenant-tier" value={tier} onChange={(e) => setTier(e.target.value)}>
+              <option value="FREE">Free</option>
+              <option value="PRO">Pro</option>
+              <option value="BUSINESS">Business</option>
+              <option value="VIP">VIP</option>
+            </NativeSelect>
+          </FormField>
         </div>
-        <div>
-          <label htmlFor="admin-tenant-tier" className="text-sm font-medium">Tier</label>
-          <select
-            id="admin-tenant-tier"
-            value={tier}
-            onChange={(e) => setTier(e.target.value)}
-            className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-          >
-            <option value="FREE">Free</option>
-            <option value="PRO">Pro</option>
-            <option value="BUSINESS">Business</option>
-            <option value="VIP">VIP</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="admin-tenant-owner" className="text-sm font-medium">Owner</label>
-          <p className="text-xs text-muted-foreground mt-1 mb-2">
-            Cognito users only. DB users (TUSER) cannot be owner.
-          </p>
-          <select
-            id="admin-tenant-owner"
-            value={ownerSub}
-            onChange={(e) => setOwnerSub(e.target.value)}
-            className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-          >
+        <FormField
+          label="Owner"
+          htmlFor="admin-tenant-owner"
+          hint="Accounts only. Site users (TUSER) cannot own a tenant."
+        >
+          <NativeSelect id="admin-tenant-owner" value={ownerSub} onChange={(e) => setOwnerSub(e.target.value)}>
             <option value="">— No owner —</option>
             {cognitoUsers.map((u) => (
               <option key={u.sub} value={u.sub}>
                 {u.email || u.name || u.sub}
               </option>
             ))}
-          </select>
-        </div>
-        <fieldset>
+          </NativeSelect>
+        </FormField>
+        <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Module overrides</legend>
-          <div className="mt-2 space-y-2">
+          <p className="text-xs text-muted-foreground">Force a module on for this tenant regardless of its tier.</p>
+          <div className="grid gap-px overflow-hidden rounded-md border bg-border sm:grid-cols-2">
             {ALL_MODULE_KEYS.map((key) => (
-              <label key={key} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={moduleOverrides[key] ?? false}
-                  onChange={(e) => setModuleOverrides((m) => ({ ...m, [key]: e.target.checked }))}
-                  className="h-4 w-4"
-                />
+              <label
+                key={key}
+                className="flex cursor-pointer items-center justify-between gap-3 bg-card px-3 py-2.5 hover:bg-accent"
+              >
                 <span className="text-sm capitalize">{key.replace("_", " ")}</span>
+                <Switch
+                  checked={moduleOverrides[key] ?? false}
+                  onCheckedChange={(v) => setModuleOverrides((m) => ({ ...m, [key]: v }))}
+                  aria-label={key.replace("_", " ")}
+                />
               </label>
             ))}
           </div>
         </fieldset>
-        {saveError && (
-          <p className="text-sm text-destructive">{saveError}</p>
-        )}
-        <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+        {saveError && <Notice tone="danger">{saveError}</Notice>}
+        <div className="flex justify-end border-t pt-4">
+          <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
+        </div>
       </CardContent>
     </Card>
   )

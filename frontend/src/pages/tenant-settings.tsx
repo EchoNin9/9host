@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useState, useEffect, type ReactNode } from "react"
+import { Link, useSearchParams } from "react-router-dom"
 import { getToken } from "@/lib/api"
 import {
   createBillingCheckout,
   createBillingPortal,
-  patchTenantModuleOverrides,
   putTransferOwner,
 } from "@/lib/api"
 import {
@@ -18,9 +17,15 @@ import { Button } from "@/components/ui/button"
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { NativeSelect } from "@/components/ui/native-select"
+import { FormField, LoadingState, Notice } from "@/components/page"
+import { TierBadge } from "@/components/status-badges"
+import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantRole } from "@/hooks/use-tenant-role"
@@ -29,7 +34,7 @@ import { useTenantUsers } from "@/hooks/use-tenant-users"
 import { useAuth } from "@/hooks/use-auth"
 import { Crown, CreditCard, Settings2 } from "lucide-react"
 
-import { ALL_MODULE_KEYS, isBillingEnabled } from "@/lib/feature-flags"
+import { isBillingEnabled } from "@/lib/feature-flags"
 
 const TIER_ORDER = ["free", "pro", "business", "vip"] as const
 type TierSlug = (typeof TIER_ORDER)[number]
@@ -42,8 +47,21 @@ function tierRank(t: string): number {
   return i >= 0 ? i : -1
 }
 
+function Row({ label, children, action }: { label: string; children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 py-3.5 sm:flex-row sm:items-center sm:gap-6">
+      <dt className="w-40 shrink-0 text-sm text-muted-foreground">{label}</dt>
+      <dd className="flex min-w-0 flex-1 items-center gap-3 text-sm">
+        <div className="min-w-0 flex-1">{children}</div>
+        {action}
+      </dd>
+    </div>
+  )
+}
+
 function TenantSettings() {
-  const { tenantSlug } = useTenant()
+  const { tenantSlug, tenantBasePath } = useTenant()
+  const base = tenantBasePath || `/${tenantSlug}`
   const { api } = useTenantScope()
   const { role, canEdit } = useTenantRole()
   const { tenant, loading, refetch } = useTenantMetadata()
@@ -54,7 +72,6 @@ function TenantSettings() {
   const [transferTarget, setTransferTarget] = useState("")
   const [transferring, setTransferring] = useState(false)
   const [transferError, setTransferError] = useState<string | null>(null)
-  const [moduleOverridesSaving, setModuleOverridesSaving] = useState(false)
   const [billingLoading, setBillingLoading] = useState<string | null>(null)
   const [billingError, setBillingError] = useState<string | null>(null)
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null)
@@ -73,23 +90,6 @@ function TenantSettings() {
       setSearchParams({}, { replace: true })
     }
   }, [searchParams, setSearchParams, refetch])
-
-  const handleModuleOverrideToggle = async (
-    key: string,
-    value: boolean
-  ) => {
-    if (!tenantSlug || !tenant) return
-    const next = { ...(tenant.module_overrides ?? {}), [key]: value }
-    setModuleOverridesSaving(true)
-    const token = await getToken()
-    const result = await patchTenantModuleOverrides(
-      api,
-      token,
-      next
-    )
-    setModuleOverridesSaving(false)
-    if (result) void refetch()
-  }
 
   const handleTransfer = async () => {
     if (!tenantSlug || !transferTarget) return
@@ -145,25 +145,72 @@ function TenantSettings() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-muted-foreground">
-          Configure {tenantSlug}
-        </p>
-      </div>
+    <TenantPage>
+      <TenantPageHeader title="Settings" description="Tenant details, ownership and plan." />
 
       {isBillingEnabled() && checkoutMessage && (
-        <div
-          className={`rounded-lg border p-3 text-sm ${
-            checkoutMessage.includes("success")
-              ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
-          }`}
-        >
-          {checkoutMessage}
-        </div>
+        <Notice tone={checkoutMessage.includes("success") ? "success" : "warning"}>{checkoutMessage}</Notice>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tenant settings</CardTitle>
+          <CardDescription>
+            {canEdit ? "General information about this tenant." : `View-only access (${role})`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <LoadingState rows={2} />
+          ) : (
+            <dl className="divide-y border-t">
+              <Row label="Name">{tenant?.name || tenantSlug}</Row>
+              <Row label="Slug">
+                <span className="font-mono">{tenantSlug}</span>
+              </Row>
+              <Row label="Plan">
+                <TierBadge tier={tenant?.tier} />
+              </Row>
+              <Row label="Your role">
+                <span className="capitalize">{role}</span>
+              </Row>
+              {tenant?.owner_sub && (
+                <Row
+                  label="Owner"
+                  action={
+                    isOwner &&
+                    canEdit && (
+                      <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>
+                        Transfer
+                      </Button>
+                    )
+                  }
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Crown className="size-4 text-warning" aria-hidden />
+                    {isOwner ? "You" : <span className="font-mono text-xs">{tenant.owner_sub.slice(0, 8)}…</span>}
+                  </span>
+                </Row>
+              )}
+              {canEdit && (
+                <Row
+                  label="Modules"
+                  action={
+                    <Button asChild variant="outline" size="sm">
+                      <Link to={`${base}/modules`}>
+                        <Settings2 className="size-4" />
+                        Manage
+                      </Link>
+                    </Button>
+                  }
+                >
+                  <span className="text-muted-foreground">Blog, events, media, branding and more.</span>
+                </Row>
+              )}
+            </dl>
+          )}
+        </CardContent>
+      </Card>
 
       {isBillingEnabled() && (
         <Card>
@@ -178,33 +225,19 @@ function TenantSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <LoadingState rows={1} />
             ) : (
               <>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Current tier:</span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      currentTier === "vip"
-                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
-                        : currentTier === "business"
-                          ? "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300"
-                          : currentTier === "pro"
-                            ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
-                            : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {currentTier.charAt(0).toUpperCase() + currentTier.slice(1)}
-                  </span>
+                  <TierBadge tier={currentTier} />
                 </div>
                 {currentTier === "vip" && (
                   <p className="text-sm text-muted-foreground">
                     VIP — Full features, no billing required.
                   </p>
                 )}
-                {billingError && (
-                  <p className="text-sm text-destructive">{billingError}</p>
-                )}
+                {billingError && <Notice tone="danger">{billingError}</Notice>}
                 {canEdit && (
                   <div className="flex flex-wrap gap-2">
                     {tierRank(currentTier) < tierRank("pro") && (
@@ -219,7 +252,7 @@ function TenantSettings() {
                     )}
                     {tierRank(currentTier) < tierRank("business") && (
                       <Button
-                        variant="default"
+                        variant={tierRank(currentTier) < tierRank("pro") ? "outline" : "default"}
                         size="sm"
                         disabled={!!billingLoading}
                         onClick={() => handleUpgrade("business")}
@@ -249,102 +282,22 @@ function TenantSettings() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Tenant settings</CardTitle>
-          <CardDescription>
-            {canEdit
-              ? "Manage your tenant configuration"
-              : `View-only access (${role})`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (
-            <>
-              {tenant?.owner_sub && (
-                <div className="flex items-center gap-2 rounded-lg border p-3">
-                  <Crown className="size-4 text-amber-500" />
-                  <div>
-                    <p className="text-sm font-medium">Account owner</p>
-                    <p className="text-xs text-muted-foreground">
-                      {isOwner
-                        ? "You are the owner"
-                        : `Owner: ${tenant.owner_sub.slice(0, 8)}…`}
-                    </p>
-                  </div>
-                  {isOwner && canEdit && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() => setTransferOpen(true)}
-                    >
-                      Transfer owner
-                    </Button>
-                  )}
-                </div>
-              )}
-              {canEdit && (
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm font-medium flex items-center gap-2">
-                    <Settings2 className="size-4" />
-                    Module overrides
-                  </p>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Override tier-based features (e.g. Free + custom domains)
-                  </p>
-                  <div className="space-y-2">
-                    {ALL_MODULE_KEYS.map((key) => (
-                      <label
-                        key={key}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={
-                            tenant?.resolved_features?.[key] ??
-                            tenant?.module_overrides?.[key] ??
-                            false
-                          }
-                          onChange={(e) =>
-                            handleModuleOverrideToggle(key, e.target.checked)
-                          }
-                          disabled={moduleOverridesSaving}
-                          className="h-4 w-4 rounded"
-                        />
-                        <span className="text-sm capitalize">
-                          {key.replace("_", " ")}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
       <Sheet open={transferOpen} onOpenChange={setTransferOpen}>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Transfer ownership</SheetTitle>
+            <SheetDescription>
+              The new owner gets full control of this tenant. You stay on as an admin.
+            </SheetDescription>
           </SheetHeader>
-          <div className="mt-4 space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Transfer this tenant to another member. You will become a regular
-              admin.
-            </p>
-            <div>
-              <label className="text-sm font-medium">New owner</label>
-              <select
+          <div className="flex flex-1 flex-col gap-5">
+            <FormField label="New owner" htmlFor="transfer-target">
+              <NativeSelect
+                id="transfer-target"
                 value={transferTarget}
                 onChange={(e) => setTransferTarget(e.target.value)}
-                className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
               >
-                <option value="">Select user</option>
+                <option value="">Select a member</option>
                 {users
                   .filter((u) => u.sub !== userId)
                   .map((u) => (
@@ -352,12 +305,10 @@ function TenantSettings() {
                       {u.name || u.email || u.sub}
                     </option>
                   ))}
-              </select>
-            </div>
-            {transferError && (
-              <p className="text-sm text-destructive">{transferError}</p>
-            )}
-            <div className="flex gap-2">
+              </NativeSelect>
+            </FormField>
+            {transferError && <Notice tone="danger">{transferError}</Notice>}
+            <SheetFooter>
               <Button variant="outline" onClick={() => setTransferOpen(false)}>
                 Cancel
               </Button>
@@ -365,13 +316,13 @@ function TenantSettings() {
                 onClick={handleTransfer}
                 disabled={!transferTarget || transferring}
               >
-                {transferring ? "Transferring…" : "Transfer"}
+                {transferring ? "Transferring…" : "Transfer ownership"}
               </Button>
-            </div>
+            </SheetFooter>
           </div>
         </SheetContent>
       </Sheet>
-    </div>
+    </TenantPage>
   )
 }
 

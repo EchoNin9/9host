@@ -6,22 +6,20 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { RefreshCw } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { LoadingState, Notice, Page, PageHeader } from "@/components/page"
 import { fetchEdgeKvs, getToken, type EdgeKvsResponse } from "@/lib/api"
-
-const th = "px-3 py-2 text-left font-medium text-muted-foreground"
-const td = "px-3 py-2"
 
 function StatusPill({ value }: { value?: string | null }) {
   const v = (value ?? "").toLowerCase()
-  const tone =
-    v === "active"
-      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-      : v
-        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-        : "bg-muted text-muted-foreground"
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{value || "—"}</span>
+  return (
+    <Badge tone={v === "active" ? "success" : v ? "warning" : "neutral"} dot={v === "active"}>
+      {value || "—"}
+    </Badge>
+  )
 }
 
 function AdminEdgeHealthPage() {
@@ -43,101 +41,102 @@ function AdminEdgeHealthPage() {
   }, [load])
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Edge Routing &amp; Domains Health</h1>
-          <p className="text-muted-foreground">
-            Live hostname routing from <code>9host-site-hosts-kvs</code> and Cloudflare for SaaS
-            custom-domain status. Superadmin only.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
-          <RefreshCw className={`mr-2 size-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
-      </div>
+    <Page>
+      <PageHeader
+        eyebrow="Platform"
+        title="Edge routing & domains health"
+        description={
+          <>
+            Live hostname routing from <code className="font-mono text-foreground">9host-site-hosts-kvs</code> and
+            Cloudflare for SaaS custom-domain status. Superadmin only.
+          </>
+        }
+        actions={
+          <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        }
+      />
 
       {error ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p role="alert" className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
+        <Notice tone="danger">{error}</Notice>
       ) : loading && !data ? (
-        <p className="text-sm text-muted-foreground">Loading edge routing…</p>
+        <LoadingState label="Loading edge routing…" />
       ) : (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Live edge routing table</CardTitle>
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b py-4">
+              <CardTitle>
+                Live edge routing table{" "}
+                <span className="tabular font-normal text-muted-foreground">{data?.entries.length ?? 0}</span>
+              </CardTitle>
               <CardDescription>Hostname → tenant / site served at the edge.</CardDescription>
             </CardHeader>
-            <CardContent>
-              {!data?.entries.length ? (
-                <p className="text-sm text-muted-foreground">No hostnames are routed at the edge yet.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th scope="col" className={th}>Hostname</th>
-                      <th scope="col" className={th}>Tenant</th>
-                      <th scope="col" className={th}>Site</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.entries.map((e) => (
-                      <tr key={e.hostname} className="border-b last:border-0">
-                        <td className={`${td} font-mono`}>{e.hostname}</td>
-                        <td className={td}>{e.tenant}</td>
-                        <td className={`${td} font-mono text-xs`}>{e.site_id}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </CardContent>
+            {!data?.entries.length ? (
+              <p className="px-5 py-6 text-sm text-muted-foreground">No hostnames are routed at the edge yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Hostname</TableHead>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Site</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.entries.map((e) => (
+                    <TableRow key={e.hostname}>
+                      <TableCell className="font-mono">{e.hostname}</TableCell>
+                      <TableCell>{e.tenant}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{e.site_id}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Custom domains health</CardTitle>
+          <Card className="gap-0 py-0">
+            <CardHeader className="border-b py-4">
+              <CardTitle>
+                Custom domains health{" "}
+                <span className="tabular font-normal text-muted-foreground">{data?.domains.length ?? 0}</span>
+              </CardTitle>
               <CardDescription>Cloudflare for SaaS hostname and SSL status across tenants.</CardDescription>
             </CardHeader>
-            <CardContent>
-              {!data?.domains.length ? (
-                <p className="text-sm text-muted-foreground">No custom domains registered.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead className="border-b">
-                    <tr>
-                      <th scope="col" className={th}>Domain</th>
-                      <th scope="col" className={th}>Tenant</th>
-                      <th scope="col" className={th}>Site</th>
-                      <th scope="col" className={th}>Status</th>
-                      <th scope="col" className={th}>Hostname</th>
-                      <th scope="col" className={th}>SSL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.domains.map((d) => (
-                      <tr key={d.domain} className="border-b last:border-0">
-                        <td className={`${td} font-mono`}>{d.domain}</td>
-                        <td className={td}>{d.tenant_slug}</td>
-                        <td className={`${td} font-mono text-xs`}>{d.site_id}</td>
-                        <td className={td}><StatusPill value={d.status} /></td>
-                        <td className={td}><StatusPill value={d.cf_status} /></td>
-                        <td className={td}><StatusPill value={d.ssl_status} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </CardContent>
+            {!data?.domains.length ? (
+              <p className="px-5 py-6 text-sm text-muted-foreground">No custom domains registered.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Domain</TableHead>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Site</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Hostname</TableHead>
+                    <TableHead>SSL</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.domains.map((d) => (
+                    <TableRow key={d.domain}>
+                      <TableCell className="font-mono">{d.domain}</TableCell>
+                      <TableCell>{d.tenant_slug}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{d.site_id}</TableCell>
+                      <TableCell><StatusPill value={d.status} /></TableCell>
+                      <TableCell><StatusPill value={d.cf_status} /></TableCell>
+                      <TableCell><StatusPill value={d.ssl_status} /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </Card>
         </>
       )}
-    </div>
+    </Page>
   )
 }
 

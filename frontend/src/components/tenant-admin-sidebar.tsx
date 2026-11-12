@@ -1,56 +1,32 @@
 "use client"
 
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { signOut } from "aws-amplify/auth"
-import { clearSiteToken } from "@/lib/api"
-import { useAuth } from "@/hooks/use-auth"
 import {
-  LayoutDashboard,
   BarChart3,
   Globe,
   GlobeLock,
+  LayoutDashboard,
+  LayoutGrid,
   Package,
   Settings,
+  ShieldCheck,
   Users,
-  UserCog,
-  LogOut,
-  type LucideIcon,
 } from "lucide-react"
-import { ThemeToggle } from "@/components/theme-toggle"
 
+import { clearSiteToken } from "@/lib/api"
+import { useAuth } from "@/hooks/use-auth"
 import { useTenant } from "@/hooks/use-tenant"
-import { useTenantScope } from "@/context/tenant-scope-context"
-import { useImpersonation } from "@/hooks/use-impersonation"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { TenantSwitcher } from "@/components/tenant-switcher"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarRail,
-} from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
-
-interface NavItem {
-  title: string
-  href: string
-  icon: LucideIcon
-}
+import { NavGroup, UserMenu, type NavItem } from "@/components/app-shell"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarRail } from "@/components/ui/sidebar"
 
 function TenantAdminSidebar() {
   const { tenantSlug, tenantBasePath } = useTenant()
-  const { clearImpersonate } = useImpersonation()
-  const { isSuperadminImpersonating } = useTenantScope()
   const { isSuperadmin } = useAdminTenants()
   const { isSiteUser, userDisplay } = useAuth()
-  const location = useLocation()
   const navigate = useNavigate()
   const base = tenantBasePath || `/${tenantSlug}`
 
@@ -58,109 +34,61 @@ function TenantAdminSidebar() {
     try {
       if (isSiteUser) {
         clearSiteToken()
-        navigate("/login")
       } else {
         await signOut()
-        navigate("/login")
       }
+      navigate("/login")
     } catch (error) {
       console.error("Error signing out: ", error)
     }
   }
 
-  const mainNav: NavItem[] = [
-    { title: "Dashboard", href: `${base}`, icon: LayoutDashboard },
-    { title: "Analytics", href: `${base}/analytics`, icon: BarChart3 },
+  const workspaceNav: NavItem[] = [
+    { title: "Overview", href: base, icon: LayoutDashboard, exact: true },
     { title: "Sites", href: `${base}/sites`, icon: Globe },
     { title: "Domains", href: `${base}/domains`, icon: GlobeLock },
-    { title: "Users", href: `${base}/users`, icon: Users },
+    { title: "Analytics", href: `${base}/analytics`, icon: BarChart3 },
+  ]
+  const manageNav: NavItem[] = [
+    { title: "Users & roles", href: `${base}/users`, icon: Users },
     { title: "Modules", href: `${base}/modules`, icon: Package },
     { title: "Settings", href: `${base}/settings`, icon: Settings },
   ]
 
   return (
     <Sidebar collapsible="icon" variant="inset">
-      <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <TenantSwitcher />
-        </div>
+      <SidebarHeader>
+        <TenantSwitcher />
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Admin</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNav.map((item) => {
-                const isActive =
-                  location.pathname === item.href ||
-                  (item.href !== base &&
-                    location.pathname.startsWith(item.href))
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      <Link to={item.href}>
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup label="Workspace" items={workspaceNav} />
+        <NavGroup label="Manage" items={manageNav} />
       </SidebarContent>
 
-      <Separator className="mx-2" />
-
-      <SidebarFooter className="border-t border-sidebar-border p-2 space-y-2">
-        {isSuperadminImpersonating && (
-          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-600 dark:text-amber-400">
-            <UserCog className="size-3.5 shrink-0" />
-            <span>Impersonating {tenantSlug}</span>
-            <Link
-              to="/"
-              onClick={clearImpersonate}
-              className="ml-auto flex items-center gap-1 font-medium hover:underline"
-            >
-              <LogOut className="size-3" />
-              Stop
-            </Link>
-          </div>
-        )}
-        <div className="flex flex-col gap-1">
+      <SidebarFooter>
+        <UserMenu
+          userDisplay={userDisplay}
+          subtitle={isSiteUser ? "Site login" : undefined}
+          onSignOut={handleSignOut}
+        >
           {isSuperadmin && !isSiteUser && (
-            <Link
-              to="/admin"
-              className="flex items-center gap-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
-            >
-              <UserCog className="size-3.5" />
-              Platform admin
-            </Link>
+            <DropdownMenuItem asChild>
+              <Link to="/admin">
+                <ShieldCheck className="size-4" />
+                Platform admin
+              </Link>
+            </DropdownMenuItem>
           )}
           {!isSiteUser && (
-            <Link
-              to="/"
-              className="text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground"
-            >
-              ← Back to platform
-            </Link>
+            <DropdownMenuItem asChild>
+              <Link to="/?choose=1">
+                <LayoutGrid className="size-4" />
+                All tenants
+              </Link>
+            </DropdownMenuItem>
           )}
-          {userDisplay && (
-            <p className="text-xs text-sidebar-foreground/80 truncate px-0.5" title={userDisplay}>
-              {userDisplay}
-            </p>
-          )}
-          <ThemeToggle />
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-2 mt-2 text-xs text-sidebar-foreground/70 hover:text-sidebar-foreground text-left"
-          >
-            <LogOut className="size-3.5" />
-            Sign Out
-          </button>
-        </div>
+        </UserMenu>
       </SidebarFooter>
 
       <SidebarRail />

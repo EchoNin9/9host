@@ -1,11 +1,39 @@
 import { Link, useParams, Navigate } from "react-router-dom"
 import { useState } from "react"
-import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload, LayoutTemplate, Globe } from "lucide-react"
+import {
+  ArrowUpRight,
+  Calendar,
+  Eye,
+  FileQuestion,
+  FileText,
+  Globe,
+  History,
+  Image,
+  LayoutTemplate,
+  MoreHorizontal,
+  Newspaper,
+  Palette,
+  Upload,
+} from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantScope } from "@/context/tenant-scope-context"
+import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
-import { getToken, fetchDraftPublish, fetchDraftToken, publishSite } from "@/lib/api"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { getToken, fetchDraftPublish, fetchDraftToken, publishSite, rollbackSite } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { ModuleLocked } from "@/components/module-locked"
+import { EmptyState, FormField, LoadingState, Notice } from "@/components/page"
+import { SiteStatusBadge } from "@/components/status-badges"
+import { siteLiveUrl } from "@/lib/site-format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FeatureGate } from "@/components/feature-gate"
 import { PagesEditor } from "@/components/content-editors/pages-editor"
@@ -14,12 +42,12 @@ import { EventsEditor } from "@/components/content-editors/events-editor"
 import { MediaEditor } from "@/components/content-editors/media-editor"
 import { BrandingEditor } from "@/components/content-editors/branding-editor"
 import { TemplateSelector } from "@/components/content-editors/template-selector"
-import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
+import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 
 /**
  * Content editor shell (Task 2.90).
  * Layout with sidebar, page/post/event/media/branding tabs.
- * Per-module editors (2.91–2.94).
+ * Per-module editors (2.91–2.94). Publish, draft preview and rollback (T-30) live in the header.
  */
 function SiteContentEditor() {
   const { tenantSlug, tenantBasePath } = useTenant()
@@ -33,6 +61,11 @@ function SiteContentEditor() {
   const [publishMessage, setPublishMessage] = useState<string | null>(null)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [publishLiveUrl, setPublishLiveUrl] = useState<string | null>(null)
+  const [rollbackOpen, setRollbackOpen] = useState(false)
+  const [rollbackVersion, setRollbackVersion] = useState("")
+  const [tab, setTab] = useState("pages")
+  const { canEdit } = useTenantRole()
+  const isMobile = useIsMobile()
 
   const site = siteId ? sites.find((s) => s.id === siteId) : null
 
@@ -64,6 +97,7 @@ function SiteContentEditor() {
     if (!tenantSlug || !siteId) return
     setPublishError(null)
     setPublishMessage(null)
+    setPublishLiveUrl(null)
     setPublishLoading(true)
     try {
       const token = await getToken()
@@ -73,8 +107,7 @@ function SiteContentEditor() {
       }
       const result = await publishSite(api, token, siteId)
       if (result) {
-        const siteSlug = site?.slug
-        const liveUrl = siteSlug ? `https://${siteSlug}.echo9.net` : null
+        const liveUrl = site ? siteLiveUrl(site) : null
         setPublishMessage(
           liveUrl
             ? `Published v${result.version} (${result.files_count} files).`
@@ -92,6 +125,30 @@ function SiteContentEditor() {
     }
   }
 
+  const openRollback = () => {
+    const current = site?.published_version ?? 0
+    setRollbackVersion(current > 1 ? String(current - 1) : "1")
+    setRollbackOpen(true)
+  }
+
+  const handleRollback = async (): Promise<boolean> => {
+    const version = Number(rollbackVersion)
+    if (!siteId || !Number.isInteger(version) || version < 1) return false
+    setPublishError(null)
+    setPublishMessage(null)
+    setPublishLiveUrl(null)
+    try {
+      const token = await getToken()
+      const result = await rollbackSite(api, token, siteId, version)
+      setPublishMessage(`Rolled back: the live site now serves v${result.version}.`)
+      if (site) setPublishLiveUrl(siteLiveUrl(site))
+      void refetch()
+    } catch (e) {
+      setPublishError(e instanceof Error ? e.message : "Rollback failed")
+    }
+    return true
+  }
+
   if (!tenantSlug || !siteId) {
     return <Navigate to={base ? `${base}/sites` : "/"} replace />
   }
@@ -99,7 +156,7 @@ function SiteContentEditor() {
   if (loading) {
     return (
       <TenantPage>
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <LoadingState label="Loading site…" />
       </TenantPage>
     )
   }
@@ -107,153 +164,208 @@ function SiteContentEditor() {
   if (!site) {
     return (
       <TenantPage>
-        <p className="text-sm text-muted-foreground">Site not found.</p>
-        <Button asChild variant="outline">
-          <Link to={`${base}/sites`}>Back to sites</Link>
-        </Button>
+        <EmptyState
+          icon={FileQuestion}
+          title="Site not found"
+          description="It may have been deleted, or the link is out of date."
+          action={
+            <Button asChild variant="outline">
+              <Link to={`${base}/sites`}>Back to sites</Link>
+            </Button>
+          }
+        />
       </TenantPage>
     )
   }
 
+  const liveUrl = siteLiveUrl(site)
+  const hasTemplate = !!site.template_id
+  const canRollback = canEdit && site.published_version != null
+
+  const tabs = [
+    { value: "pages", label: "Pages", icon: FileText },
+    { value: "posts", label: "Posts", icon: Newspaper },
+    { value: "events", label: "Events", icon: Calendar },
+    { value: "media", label: "Media", icon: Image },
+    { value: "branding", label: "Branding", icon: Palette },
+    { value: "templates", label: "Template", icon: LayoutTemplate },
+  ] as const
+
   return (
     <TenantPage>
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="ghost" size="sm">
-              <Link to={`${base}/sites`}>← Sites</Link>
-            </Button>
-          </div>
-          <TenantPageTitle className="mt-2">{site.name}</TenantPageTitle>
-          <p className="text-muted-foreground">
-            Content editor — {site.slug || site.id}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePreviewDraft}
-            disabled={previewLoading || !site?.slug}
-          >
-            <ExternalLink className="mr-2 size-4" />
-            {previewLoading ? "Preparing…" : "Preview draft"}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handlePublish}
-            disabled={publishLoading}
-          >
-            <Upload className="mr-2 size-4" />
-            {publishLoading ? "Publishing…" : "Publish"}
-          </Button>
-          {previewError && (
-            <span className="text-sm text-destructive">{previewError}</span>
-          )}
-          {publishError && (
-            <span className="text-sm text-destructive">{publishError}</span>
-          )}
-          {publishMessage && (
-            <span className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-              {publishMessage}
-              {publishLiveUrl && (
-                <a
-                  href={publishLiveUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 underline underline-offset-2"
-                >
-                  <Globe className="size-3" />
-                  View live site
-                </a>
-              )}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Last published info (Task 5.2) */}
-      {site.published_at && (
-        <div className="flex items-center gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm dark:border-green-900/40 dark:bg-green-900/10">
-          <Globe className="size-4 text-green-600 dark:text-green-400" />
-          <span className="text-muted-foreground">
-            Last published:{" "}
-            <span className="font-medium text-foreground">
-              {new Date(site.published_at).toLocaleString()}
-            </span>
-            {site.published_version != null && (
-              <> &middot; v{site.published_version}</>
+      <TenantPageHeader
+        back={{ to: `${base}/sites`, label: "Sites" }}
+        eyebrow="Content editor"
+        title={site.name}
+        meta={<SiteStatusBadge site={site} />}
+        description={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            {liveUrl && site.status === "published" ? (
+              <a
+                href={liveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-mono text-foreground underline-offset-4 hover:underline"
+              >
+                {liveUrl.replace("https://", "")}
+                <ArrowUpRight className="size-3.5" aria-hidden />
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            ) : (
+              <span className="font-mono">{site.slug ? `${site.slug}.echo9.net` : site.id}</span>
+            )}
+            {site.published_at && (
+              <span>
+                · Last published {new Date(site.published_at).toLocaleString()}
+              </span>
             )}
           </span>
-          {site.slug && (
-            <a
-              href={`https://${site.slug}.echo9.net`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto inline-flex items-center gap-1 text-green-600 underline underline-offset-2 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+        }
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={handlePreviewDraft}
+              disabled={previewLoading || !site.slug}
+              title={!site.slug ? "Give the site a slug to preview drafts" : undefined}
             >
-              <ExternalLink className="size-3" />
-              {site.slug}.echo9.net
-            </a>
-          )}
-        </div>
+              <Eye className="size-4" />
+              {previewLoading ? "Preparing…" : "Preview draft"}
+            </Button>
+            {canEdit && (
+              <Button onClick={handlePublish} disabled={publishLoading || !hasTemplate}>
+                <Upload className="size-4" />
+                {publishLoading ? "Publishing…" : "Publish"}
+              </Button>
+            )}
+            {canRollback && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <MoreHorizontal className="size-4" />
+                    <span className="sr-only">More publishing actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={openRollback}>
+                    <History className="size-4" />
+                    Roll back to an earlier version…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </>
+        }
+      />
+
+      {previewError && <Notice tone="danger">{previewError}</Notice>}
+      {publishError && <Notice tone="danger" title="Publishing failed">{publishError}</Notice>}
+      {publishMessage && (
+        <Notice
+          tone="success"
+          title={publishMessage}
+          action={
+            publishLiveUrl && (
+              <Button asChild variant="outline" size="sm">
+                <a href={publishLiveUrl} target="_blank" rel="noopener noreferrer">
+                  <Globe className="size-4" />
+                  View live site
+                </a>
+              </Button>
+            )
+          }
+        />
+      )}
+      {!hasTemplate && (
+        <Notice
+          tone="warning"
+          title="Choose a template before publishing"
+          action={
+            <Button variant="outline" size="sm" onClick={() => setTab("templates")}>
+              Choose template
+            </Button>
+          }
+        >
+          The template decides your site’s layout. Pick one in the Template tab.
+        </Notice>
       )}
 
-      <Tabs defaultValue="pages" orientation="vertical" className="flex flex-1 gap-6">
-        <TabsList variant="line" className="h-fit w-48 shrink-0 flex-col items-stretch border-r border-border pr-4 bg-transparent p-0">
-          <TabsTrigger value="pages" className="justify-start">
-            <FileText className="mr-2 size-4" />
-            Pages
-          </TabsTrigger>
-          <TabsTrigger value="posts" className="justify-start">
-            <Newspaper className="mr-2 size-4" />
-            Posts
-          </TabsTrigger>
-          <TabsTrigger value="events" className="justify-start">
-            <Calendar className="mr-2 size-4" />
-            Events
-          </TabsTrigger>
-          <TabsTrigger value="media" className="justify-start">
-            <Image className="mr-2 size-4" />
-            Media
-          </TabsTrigger>
-          <TabsTrigger value="branding" className="justify-start">
-            <Palette className="mr-2 size-4" />
-            Branding
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="justify-start">
-            <LayoutTemplate className="mr-2 size-4" />
-            Templates
-          </TabsTrigger>
+      <Tabs
+        value={tab}
+        onValueChange={setTab}
+        orientation={isMobile ? "horizontal" : "vertical"}
+        className="flex flex-1 flex-col gap-6 md:flex-row"
+      >
+        <TabsList
+          variant="line"
+          aria-label="Content sections"
+          className="h-auto w-full shrink-0 justify-start overflow-x-auto border-b bg-transparent p-0 md:w-44 md:flex-col md:items-stretch md:overflow-visible md:border-r md:border-b-0 md:pr-3"
+        >
+          {tabs.map((t) => (
+            <TabsTrigger key={t.value} value={t.value} className="flex-none justify-start px-3 py-2 md:w-full">
+              <t.icon className="size-4" />
+              {t.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="pages" className="mt-0 flex-1">
+        <TabsContent value="pages" className="mt-0 min-w-0 flex-1">
           <PagesEditor siteId={siteId!} />
         </TabsContent>
-        <TabsContent value="posts" className="mt-0 flex-1">
-          <FeatureGate feature="updates_blog">
+        <TabsContent value="posts" className="mt-0 min-w-0 flex-1">
+          <FeatureGate feature="updates_blog" fallback={<ModuleLocked feature="updates_blog" />}>
             <PostsEditor siteId={siteId!} />
           </FeatureGate>
         </TabsContent>
-        <TabsContent value="events" className="mt-0 flex-1">
-          <FeatureGate feature="events_shows">
+        <TabsContent value="events" className="mt-0 min-w-0 flex-1">
+          <FeatureGate feature="events_shows" fallback={<ModuleLocked feature="events_shows" />}>
             <EventsEditor siteId={siteId!} />
           </FeatureGate>
         </TabsContent>
-        <TabsContent value="media" className="mt-0 flex-1">
-          <FeatureGate feature="media_gallery">
+        <TabsContent value="media" className="mt-0 min-w-0 flex-1">
+          <FeatureGate feature="media_gallery" fallback={<ModuleLocked feature="media_gallery" />}>
             <MediaEditor siteId={siteId!} />
           </FeatureGate>
         </TabsContent>
-        <TabsContent value="branding" className="mt-0 flex-1">
-          <FeatureGate feature="branding">
+        <TabsContent value="branding" className="mt-0 min-w-0 flex-1">
+          <FeatureGate feature="branding" fallback={<ModuleLocked feature="branding" />}>
             <BrandingEditor site={site!} onSaved={refetch} />
           </FeatureGate>
         </TabsContent>
-        <TabsContent value="templates" className="mt-0 flex-1">
+        <TabsContent value="templates" className="mt-0 min-w-0 flex-1">
           <TemplateSelector site={site!} onSaved={refetch} />
         </TabsContent>
       </Tabs>
+
+      <ConfirmDialog
+        open={rollbackOpen}
+        onOpenChange={setRollbackOpen}
+        title="Roll back the live site"
+        description={
+          <>
+            The live site switches to an earlier published version. Your draft content is not changed, and the
+            next Publish creates a new version. Currently live:{" "}
+            <span className="font-mono text-foreground">v{site.published_version}</span>.
+          </>
+        }
+        destructive={false}
+        confirmLabel={`Roll back to v${rollbackVersion || "?"}`}
+        pendingLabel="Rolling back…"
+        confirmDisabled={!/^[1-9]\d*$/.test(rollbackVersion) || Number(rollbackVersion) === site.published_version}
+        onConfirm={handleRollback}
+      >
+        <FormField label="Version" htmlFor="rollback-version" hint="Versions are numbered from 1 in publish order.">
+          <Input
+            id="rollback-version"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            value={rollbackVersion}
+            onChange={(e) => setRollbackVersion(e.target.value)}
+            className="w-32 font-mono"
+          />
+        </FormField>
+      </ConfirmDialog>
     </TenantPage>
   )
 }

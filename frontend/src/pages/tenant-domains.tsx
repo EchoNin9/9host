@@ -1,12 +1,11 @@
 import { useState } from "react"
-import { MoreHorizontal, Trash2, Settings2, ShieldCheck, Loader2 } from "lucide-react"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { GlobeLock, Loader2, MoreHorizontal, Plus, Settings2, ShieldCheck, Trash2 } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { NativeSelect } from "@/components/ui/native-select"
+import { ConfirmDialog } from "@/components/confirm-dialog"
+import { ModuleLocked } from "@/components/module-locked"
+import { EmptyState, FormField, LoadingState, Notice } from "@/components/page"
+import { DomainStatusBadge } from "@/components/status-badges"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -15,6 +14,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetFooter,
+  SheetDescription,
 } from "@/components/ui/sheet"
 import {
   DropdownMenu,
@@ -24,13 +24,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { FeatureGate } from "@/components/feature-gate"
 import { DomainSetupGuideDialog } from "@/components/domain-setup-guide"
-import { useTenant } from "@/hooks/use-tenant"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useDomains } from "@/hooks/use-domains"
 import { useSites } from "@/hooks/use-sites"
 import type { Domain } from "@/lib/api"
-import { TenantPage, TenantPageTitle } from "@/components/tenant-page"
+import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 
 function DomainForm({
   onSubmit,
@@ -63,71 +62,42 @@ function DomainForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <div>
-        <label htmlFor="domain" className="text-sm font-medium">
-          Domain
-        </label>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <FormField label="Domain" htmlFor="domain" hint="An apex domain (example.com) or a subdomain (blog.example.com).">
         <Input
           id="domain"
           type="text"
+          inputMode="url"
+          autoCapitalize="none"
+          spellCheck={false}
           value={domain}
           onChange={(e) => setDomain(e.target.value)}
           placeholder="example.com"
+          className="font-mono"
           required
-          className="mt-1"
+          autoFocus
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          e.g. example.com or blog.example.com
-        </p>
-      </div>
-      <div>
-        <label htmlFor="site" className="text-sm font-medium">
-          Site
-        </label>
-        <select
-          id="site"
-          value={siteId}
-          onChange={(e) => setSiteId(e.target.value)}
-          required
-          className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-        >
+      </FormField>
+      <FormField label="Serves site" htmlFor="site">
+        <NativeSelect id="site" value={siteId} onChange={(e) => setSiteId(e.target.value)} required>
           <option value="">Select a site</option>
           {sites.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
           ))}
-        </select>
-      </div>
-      {error && (
-        <p className="text-sm text-destructive">{error}</p>
-      )}
+        </NativeSelect>
+      </FormField>
+      {error && <Notice tone="danger">{error}</Notice>}
       <SheetFooter>
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
         <Button type="submit" disabled={saving}>
-          {saving ? "Adding..." : "Add domain"}
+          {saving ? "Adding…" : "Add domain"}
         </Button>
       </SheetFooter>
     </form>
-  )
-}
-
-function StatusBadge({ status }: { status: Domain["status"] }) {
-  if (status === "ACTIVE") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
-        Active
-      </span>
-    )
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-      <Loader2 className="size-3 animate-spin" />
-      Pending validation
-    </span>
   )
 }
 
@@ -139,6 +109,7 @@ function DomainsContent() {
   const [setupDomain, setSetupDomain] = useState<Domain | null>(null)
   const [activating, setActivating] = useState<string | null>(null)
   const [activateError, setActivateError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Domain | null>(null)
 
   const handleSubmit = async (body: { domain: string; site_id: string }) => {
     const result = await add(body)
@@ -149,10 +120,6 @@ function DomainsContent() {
     return result
   }
 
-  const handleDelete = async (d: Domain) => {
-    if (!confirm(`Remove "${d.domain}"? This cannot be undone.`)) return
-    await remove(d.domain)
-  }
 
   const handleActivate = async (d: Domain) => {
     setActivating(d.domain)
@@ -176,42 +143,23 @@ function DomainsContent() {
     setSheetOpen(false)
   }
 
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground">Loading domains...</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <p className="text-sm text-destructive">{error}</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
   const canActivate = (d: Domain) => d.status === "PENDING_VALIDATION"
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Custom domains</h2>
-          <p className="text-sm text-muted-foreground">
-            Add custom domains to your sites. Requires Pro or Business tier.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+  const header = (
+    <TenantPageHeader
+      title="Domains"
+      description={
+        <>
+          Serve a site from your own domain. Each domain needs a CNAME to{" "}
+          <span className="font-mono text-foreground">proxy.echonin9.com</span> plus the validation records we show you.
+        </>
+      }
+      actions={
+        <>
           {polling && (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              Checking status...
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+              <Loader2 className="size-3 animate-spin" aria-hidden />
+              Checking status…
             </span>
           )}
           {canEdit && (
@@ -220,19 +168,20 @@ function DomainsContent() {
               disabled={sites.length === 0}
               title={sites.length === 0 ? "Create a site first" : undefined}
             >
+              <Plus className="size-4" />
               Add domain
             </Button>
           )}
-        </div>
-      </div>
+        </>
+      }
+    />
+  )
 
-      {activateError && (
-        <Card>
-          <CardContent className="pt-4">
-            <p className="text-sm text-destructive">{activateError}</p>
-          </CardContent>
-        </Card>
-      )}
+  return (
+    <>
+      {header}
+
+      {activateError && <Notice tone="danger">{activateError}</Notice>}
 
       {setupDomain && (
         <DomainSetupGuideDialog
@@ -242,136 +191,128 @@ function DomainsContent() {
         />
       )}
 
-      <Sheet
-        open={sheetOpen}
-        onOpenChange={(open) => setSheetOpen(open)}
-      >
+      <Sheet open={sheetOpen} onOpenChange={(open) => setSheetOpen(open)}>
         <SheetContent>
           <SheetHeader>
             <SheetTitle>Add custom domain</SheetTitle>
+            <SheetDescription>Next, we show the DNS records to add at your registrar.</SheetDescription>
           </SheetHeader>
-          <div className="mt-4">
-            <DomainForm
-              onSubmit={handleSubmit}
-              onClose={handleSheetClose}
-              sites={sites}
-            />
-          </div>
+          <DomainForm onSubmit={handleSubmit} onClose={handleSheetClose} sites={sites} />
         </SheetContent>
       </Sheet>
 
-      {domains.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">
-              No custom domains yet. Add a domain to point it at one of your sites.
-            </p>
-          </CardContent>
-        </Card>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Remove ${deleteTarget?.domain ?? "domain"}?`}
+        description="The domain stops serving your site. You can add it again later, but DNS validation starts over."
+        confirmLabel="Remove domain"
+        pendingLabel="Removing…"
+        onConfirm={async () => {
+          if (deleteTarget) await remove(deleteTarget.domain)
+        }}
+      />
+
+      {loading ? (
+        <LoadingState label="Loading domains…" rows={2} />
+      ) : error ? (
+        <Notice tone="danger">{error}</Notice>
+      ) : domains.length === 0 ? (
+        <EmptyState
+          icon={GlobeLock}
+          title="No custom domains yet"
+          description={
+            sites.length === 0
+              ? "Create a site first, then point your domain at it."
+              : "Add a domain you own and point it at one of your sites."
+          }
+          action={
+            canEdit &&
+            sites.length > 0 && (
+              <Button onClick={() => setSheetOpen(true)}>
+                <Plus className="size-4" />
+                Add domain
+              </Button>
+            )
+          }
+        />
       ) : (
-        <div className="space-y-2">
-          {domains.map((d) => (
-            <Card key={d.domain}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 py-4">
-                <div>
-                  <CardTitle className="text-base">{d.domain}</CardTitle>
-                  <CardDescription>
-                    Site: {sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}
-                  </CardDescription>
+        <Card className="gap-0 py-0">
+          <ul className="divide-y">
+            {domains.map((d) => (
+              <li key={d.domain} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono text-sm font-medium">{d.domain}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Serves {sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}
+                  </p>
                 </div>
-                {canEdit && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-8">
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">Actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setSetupDomain(d)}>
-                        <Settings2 className="mr-2 size-4" />
-                        DNS setup
-                      </DropdownMenuItem>
-                      {canActivate(d) && (
-                        <DropdownMenuItem
-                          onClick={() => handleActivate(d)}
-                          disabled={activating === d.domain}
-                        >
-                          <ShieldCheck className="mr-2 size-4" />
-                          {activating === d.domain ? "Checking..." : "Check status"}
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => handleDelete(d)}
-                      >
-                        <Trash2 className="mr-2 size-4" />
-                        Remove
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </CardHeader>
-              <CardContent className="pt-0 flex items-center justify-between">
-                <StatusBadge status={d.status} />
-                <div className="flex items-center gap-2">
+                <DomainStatusBadge status={d.status} />
+                <div className="flex items-center gap-1">
                   {canEdit && canActivate(d) && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 text-xs"
                       onClick={() => handleActivate(d)}
                       disabled={activating === d.domain}
                     >
                       {activating === d.domain ? (
-                        <>
-                          <Loader2 className="mr-1 size-3 animate-spin" />
-                          Checking...
-                        </>
+                        <Loader2 className="size-4 animate-spin" aria-hidden />
                       ) : (
-                        <>
-                          <ShieldCheck className="mr-1 size-3" />
-                          Check status
-                        </>
+                        <ShieldCheck className="size-4" aria-hidden />
                       )}
+                      {activating === d.domain ? "Checking…" : "Check status"}
                     </Button>
                   )}
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                    onClick={() => setSetupDomain(d)}
-                  >
-                    DNS setup
+                  <Button variant="ghost" size="sm" onClick={() => setSetupDomain(d)}>
+                    <Settings2 className="size-4" />
+                    DNS records
                   </Button>
+                  {canEdit && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm">
+                          <MoreHorizontal className="size-4" />
+                          <span className="sr-only">More actions for {d.domain}</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem variant="destructive" onSelect={() => setDeleteTarget(d)}>
+                          <Trash2 className="size-4" />
+                          Remove domain
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
-    </div>
+    </>
+  )
+}
+
+function DomainsLocked() {
+  return (
+    <>
+      <TenantPageHeader title="Domains" description="Serve a site from your own domain." />
+      <ModuleLocked feature="custom_domains" />
+    </>
   )
 }
 
 function TenantDomains() {
-  const { tenantSlug } = useTenant()
   const { tenant } = useTenantMetadata()
   const isVip = (tenant?.tier?.toLowerCase() ?? "") === "vip"
 
   return (
     <TenantPage>
-      <div>
-        <TenantPageTitle>Domains</TenantPageTitle>
-        <p className="text-muted-foreground">
-          Custom domains for {tenantSlug} (Pro+)
-        </p>
-      </div>
-
       {isVip ? (
         <DomainsContent />
       ) : (
-        <FeatureGate feature="custom_domains">
+        <FeatureGate feature="custom_domains" fallback={<DomainsLocked />}>
           <DomainsContent />
         </FeatureGate>
       )}

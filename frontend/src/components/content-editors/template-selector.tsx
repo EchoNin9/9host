@@ -3,6 +3,7 @@
  * Allows changing the site's template from available platform templates.
  */
 import { useState, useEffect, useCallback } from "react"
+import { LoadingState, Notice } from "@/components/page"
 import { Check } from "lucide-react"
 import {
   Card,
@@ -76,7 +77,7 @@ export function TemplateSelector({ site, onSaved }: { site: Site; onSaved?: () =
       </CardHeader>
       <CardContent>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading templates…</p>
+          <LoadingState rows={2} label="Loading templates…" />
         ) : templates.length === 0 ? (
           <p className="text-sm text-muted-foreground">No templates available.</p>
         ) : (
@@ -110,16 +111,16 @@ export function TemplateSelector({ site, onSaved }: { site: Site; onSaved?: () =
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">{t.description}</p>
                   {t.tier_required && t.tier_required !== "FREE" && (
-                    <p className="mt-1 text-xs font-medium text-amber-600">{t.tier_required}+</p>
+                    <p className="mt-1 text-xs font-medium text-warning">{t.tier_required}+</p>
                   )}
                 </button>
               )
             })}
           </div>
         )}
-        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        {error && <Notice tone="danger">{error}</Notice>}
         {successMsg && (
-          <p className="mt-3 text-sm text-green-600 dark:text-green-400">{successMsg}</p>
+          <p className="mt-3 text-sm text-success">{successMsg}</p>
         )}
       </CardContent>
     </Card>
