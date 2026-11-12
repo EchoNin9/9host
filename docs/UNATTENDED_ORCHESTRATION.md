@@ -285,7 +285,15 @@ We verified live API access against `https://api.cloudns.net/dns/records.json` f
 > 1. **`origin/develop` has diverged:** 5 commits from 2026-04-11/12 (`635d97b`..`133f560`) implement per-domain CloudFront distributions for custom domains, and the live tofu state was applied from them. **Decision (owner, 2026-11-11):** drop that approach; Cloudflare for SaaS only. Merge `origin/develop` into `develop`, resolving every conflict in favour of local (`git merge -X ours origin/develop`, then confirm `api/admin_tenant_resources.py`, `infra/lambda_acm.tf`, `infra/lambda_acm_handler/`, `infra/cf-custom-domain.js` and `infra/cloudfront_custom_domains.tf` are absent and the five checks in §0 pass).
 > 2. **Live per-domain distributions:** `E3EPWB63QJS9R` (`jinks.ca`, `www.jinks.ca`) and `EPRVV3QWR08XT` (`oliverjinks.com`) are unmanaged, created by the old ACM Lambda. They use the `9host-custom-domain` CloudFront Function and the `distribution/*` S3 grant, so the apply would fail deleting that function and would 403 both sites. **Decision (owner, 2026-11-11):** these sites may go offline and will be re-added via Cloudflare for SaaS. Disable, wait for `Deployed`, delete both distributions, then delete their ACM certs. **Get the owner's explicit go-ahead first (irreversible).**
 >
-> **Order from here:**
+> **PROGRESS 2026-11-12 (§6 cutover done):**
+> - Blockers 1–2 resolved: `E3EPWB63QJS9R` / `EPRVV3QWR08XT` and their ACM certs are deleted, and `origin/develop` is merged (`2f76078`, tree identical to local).
+> - KVS created with the 3 site mappings. CI applied everything (runs `43147934109`, `43148864223`, `43149398837`), after two fixes: deploy-role `iam:ListInstanceProfilesForRole` + `s3:PutLifecycleConfiguration`, and `pip install boto3` in the workflows. `app.echo9.net` cert validation CNAME added.
+> - ClouDNS `app`, `sites-origin` and `tools` records created. Provider v1.0.10 cannot read records back (`retrec.priority` unmarshal error), so use `-refresh=false` in `infra/cloudns` until fixed (tracked in `T-16`).
+> - Worker `9host-custom-domain-proxy` deployed on `echonin9.com` with a scoped Workers token kept only in local `.env.cloudflare` (`CLOUDFLARE_WORKERS_TOKEN`).
+> - Verified: the three subdomain sites return 200, a draft path returns 403, `stage.echo9.net` serves the new frontend, the `proxy.echonin9.com` → Worker → CloudFront chain works (unmapped host returns 404), and `X-Forwarded-Host` routing works.
+> - **Remaining:** re-add custom domains (`jinks.ca`, `oliverjinks.com`) through the app; merge `develop` → `main` for the production frontend (`app.echo9.net` still has the old bundle); republish sites for root-relative links; `T-19`.
+>
+> **Order from here (historical):**
 > 1. Blocker 2.
 > 2. Blocker 1.
 > 3. Targeted apply of `aws_cloudfront_key_value_store.site_hosts`.
