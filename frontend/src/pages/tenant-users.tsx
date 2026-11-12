@@ -29,6 +29,7 @@ import {
   updateTenantTUser,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import {
@@ -47,22 +48,17 @@ import {
 
 function PermissionsForm({
   user,
-  tenantSlug,
   ownerSub,
   onClose,
   onSaved,
 }: {
   user: TenantUser
-  tenantSlug: string
   ownerSub: string | null
   onClose: () => void
   onSaved: () => void
 }) {
   const isOwner = ownerSub != null && user.sub === ownerSub
-  const { permissions, loading, update } = useUserPermissions(
-    tenantSlug,
-    user.sub
-  )
+  const { permissions, loading, update } = useUserPermissions(user.sub)
   const [local, setLocal] = useState<ModulePermissions | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -142,16 +138,15 @@ function PermissionsForm({
 }
 
 function AddTUserForm({
-  tenantSlug,
   roles,
   onClose,
   onSaved,
 }: {
-  tenantSlug: string
   roles: { name: string }[]
   onClose: () => void
   onSaved: () => void
 }) {
+  const { api } = useTenantScope()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [displayName, setDisplayName] = useState("")
@@ -179,7 +174,7 @@ function AddTUserForm({
     setSaving(true)
     try {
       const token = await getToken()
-      const created = await createTenantTUser(tenantSlug, token, {
+      const created = await createTenantTUser(api, token, {
         username: username.trim().toLowerCase(),
         password,
         display_name: displayName.trim() || undefined,
@@ -275,17 +270,16 @@ function AddTUserForm({
 
 function EditTUserForm({
   user,
-  tenantSlug,
   roles,
   onClose,
   onSaved,
 }: {
   user: TenantTUser
-  tenantSlug: string
   roles: { name: string }[]
   onClose: () => void
   onSaved: () => void
 }) {
+  const { api } = useTenantScope()
   const [displayName, setDisplayName] = useState(user.display_name || "")
   const [role, setRole] = useState(user.role)
   const [password, setPassword] = useState("")
@@ -313,7 +307,7 @@ function EditTUserForm({
         display_name: displayName.trim() || undefined,
       }
       if (password) body.password = password
-      const updated = await updateTenantTUser(tenantSlug, token, user.username, body)
+      const updated = await updateTenantTUser(api, token, user.username, body)
       if (updated) {
         onSaved()
         onClose()
@@ -391,14 +385,13 @@ function EditTUserForm({
 }
 
 function AddRoleForm({
-  tenantSlug,
   onClose,
   onSaved,
 }: {
-  tenantSlug: string
   onClose: () => void
   onSaved: () => void
 }) {
+  const { api } = useTenantScope()
   const [name, setName] = useState("")
   const [permissions, setPermissions] = useState<Record<string, boolean>>({
     sites: false,
@@ -429,7 +422,7 @@ function AddRoleForm({
     setSaving(true)
     try {
       const token = await getToken()
-      const created = await createTenantRole(tenantSlug, token, {
+      const created = await createTenantRole(api, token, {
         name: n,
         permissions,
       })
@@ -500,15 +493,14 @@ function AddRoleForm({
 
 function EditRoleForm({
   role,
-  tenantSlug,
   onClose,
   onSaved,
 }: {
   role: TenantRole
-  tenantSlug: string
   onClose: () => void
   onSaved: () => void
 }) {
+  const { api } = useTenantScope()
   const [permissions, setPermissions] = useState(role.permissions)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -523,7 +515,7 @@ function EditRoleForm({
     setSaving(true)
     try {
       const token = await getToken()
-      const updated = await updateTenantRole(tenantSlug, token, role.name, {
+      const updated = await updateTenantRole(api, token, role.name, {
         permissions,
       })
       if (updated) {
@@ -582,11 +574,12 @@ function EditRoleForm({
 
 function TenantUsers() {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const { canEdit } = useTenantRole()
-  const { tenant } = useTenantMetadata(tenantSlug)
-  const { users, loading, error } = useTenantUsers(tenantSlug)
-  const { tusers, loading: tloading, error: terror, refetch: refetchTUsers } = useTenantTUsers(tenantSlug)
-  const { roles, loading: rolesLoading, refetch: refetchRoles } = useTenantRoles(tenantSlug)
+  const { tenant } = useTenantMetadata()
+  const { users, loading, error } = useTenantUsers()
+  const { tusers, loading: tloading, error: terror, refetch: refetchTUsers } = useTenantTUsers()
+  const { roles, loading: rolesLoading, refetch: refetchRoles } = useTenantRoles()
   const [permissionsUser, setPermissionsUser] = useState<TenantUser | null>(null)
   const [addUserOpen, setAddUserOpen] = useState(false)
   const [editTUser, setEditTUser] = useState<TenantTUser | null>(null)
@@ -811,7 +804,6 @@ function TenantUsers() {
           <div className="mt-4">
             {tenantSlug && (
               <AddTUserForm
-                tenantSlug={tenantSlug}
                 roles={roles}
                 onClose={() => setAddUserOpen(false)}
                 onSaved={() => {
@@ -839,7 +831,6 @@ function TenantUsers() {
             {editTUser && tenantSlug && (
               <EditTUserForm
                 user={editTUser}
-                tenantSlug={tenantSlug}
                 roles={roles}
                 onClose={() => setEditTUser(null)}
                 onSaved={() => {
@@ -872,7 +863,7 @@ function TenantUsers() {
               onClick={async () => {
                 if (!deleteTUser || !tenantSlug) return
                 const token = await getToken()
-                const ok = await deleteTenantTUser(tenantSlug, token, deleteTUser.username)
+                const ok = await deleteTenantTUser(api, token, deleteTUser.username)
                 if (ok) {
                   refetchTUsers()
                   setDeleteTUser(null)
@@ -899,7 +890,6 @@ function TenantUsers() {
           <div className="mt-4">
             {tenantSlug && (
               <AddRoleForm
-                tenantSlug={tenantSlug}
                 onClose={() => setAddRoleOpen(false)}
                 onSaved={() => {
                   refetchRoles()
@@ -924,7 +914,6 @@ function TenantUsers() {
             {editRole && tenantSlug && (
               <EditRoleForm
                 role={editRole}
-                tenantSlug={tenantSlug}
                 onClose={() => setEditRole(null)}
                 onSaved={() => {
                   refetchRoles()
@@ -956,7 +945,7 @@ function TenantUsers() {
               onClick={async () => {
                 if (!deleteRole || !tenantSlug) return
                 const token = await getToken()
-                const ok = await deleteTenantRole(tenantSlug, token, deleteRole.name)
+                const ok = await deleteTenantRole(api, token, deleteRole.name)
                 if (ok) {
                   refetchRoles()
                   setDeleteRole(null)
@@ -989,7 +978,6 @@ function TenantUsers() {
             {permissionsUser && tenantSlug && (
               <PermissionsForm
                 user={permissionsUser}
-                tenantSlug={tenantSlug}
                 ownerSub={tenant?.owner_sub ?? null}
                 onClose={() => setPermissionsUser(null)}
                 onSaved={() => {}}

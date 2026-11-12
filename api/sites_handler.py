@@ -1,429 +1,221 @@
 """
-Sites API — GET/POST/PUT/DELETE /api/tenant/sites.
-
-Tenant-scoped sites CRUD. Requires tenant_slug (header/subdomain), Cognito auth,
-tenant membership.
+Sites API — GET/POST/PUT/DELETE /api/tenant/sites (also serves /api/admin/tenants/{slug}/sites).
 
 GET /api/tenant/sites/{id}/preview — merge site + template for live preview (Task 1.79).
 Query param template={slug} overrides site.template_id.
+
+Site metadata goes exclusively through TenantStore (Bug #3: list_sites never reads content
+rows). Host-mapping hygiene: a slug change or delete removes the old {slug}.{domain} KVS key;
+delete also tears down the site's custom domains (Cloudflare + KVS + row).
 """
 
-import json
-import os
 import re
-import traceback
 import uuid
 from datetime import datetime, timezone
 
-import boto3
-
-from auth_helpers import require_tenant_auth, require_tenant_admin_or_manager, role_is_admin_or_manager
+import site_storage
+from cloudflare_saas import CloudflareAPIError
 from cloudns_helpers import add_site_cname, delete_site_cname
-from dynamodb_helpers import (
-    get_site_item,
-    get_tenant_item,
-    get_template_item,
-    gsi4pk_slug,
-    gsi4sk_site,
-    pk_tenant,
-    query_sites_in_tenant,
-    sk_site,
-    slug_is_taken,
-)
-from middleware import with_tenant
-from tier_config import tier_rank as _tier_rank
+from custom_domain_handler import remove_domain
+from publish_handler import _base_domain
+from request_context import RequestContext, respond
+from tenant_store import DynamoDBTenantStore
+from tier_config import tier_rank
 
-# Slug: lowercase alphanumeric + hyphen
 SITE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
+BASE_PATH = "/api/tenant/sites"
+MANAGE_ROLES = ("admin", "manager")
 
 
-def _json_response(status: int, body: dict, empty_body: bool = False) -> dict:
-    return {
-        "statusCode": status,
-        "headers": {"Content-Type": "application/json"},
-        "body": "" if empty_body else json.dumps(body),
-    }
-
-
-def _parse_body(event: dict) -> dict | None:
-    """Parse JSON body from event."""
-    body = event.get("body")
-    if not body:
-        return None
-    if isinstance(body, str):
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return None
-    return body
-
-
-def _extract_site_id_from_path(path: str) -> str | None:
-    """Extract site_id from /api/tenant/sites/{site_id} or /api/tenant/sites/{site_id}/preview."""
-    prefix = "/api/tenant/sites/"
-    if path.startswith(prefix):
-        rest = path[len(prefix) :].strip("/")
-        if rest:
-            parts = rest.split("/")
-            if len(parts) == 2 and parts[1] == "preview":
-                return parts[0] if parts[0] else None
-            return rest
-    return None
-
-
-def _is_preview_path(path: str) -> bool:
-    """True if path is /api/tenant/sites/{id}/preview."""
-    prefix = "/api/tenant/sites/"
-    if not path.startswith(prefix):
-        return False
-    rest = path[len(prefix) :].strip("/")
-    parts = rest.split("/")
-    return len(parts) == 2 and parts[1] == "preview"
-
-
-def _site_to_response(item: dict) -> dict:
-    """Convert DynamoDB item to API response."""
-    sk = item.get("sk", "")
-    site_id = sk.replace("SITE#", "") if sk.startswith("SITE#") else ""
-
+def _site_to_response(site: dict) -> dict:
     out = {
-        "id": site_id,
-        "name": item.get("name", ""),
-        "slug": item.get("slug", ""),
-        "status": item.get("status", "draft"),
-        "template_id": item.get("template_id"),
-        "published_at": item.get("published_at"),
-        "published_version": int(item["published_version"]) if item.get("published_version") is not None else None,
-        "created_at": item.get("created_at", ""),
-        "updated_at": item.get("updated_at", ""),
+        "id": site.get("id", ""),
+        "name": site.get("name", ""),
+        "slug": site.get("slug", ""),
+        "status": site.get("status", "draft"),
+        "template_id": site.get("template_id"),
+        "published_at": site.get("published_at"),
+        "published_version": int(site["published_version"]) if site.get("published_version") is not None else None,
+        "created_at": site.get("created_at", ""),
+        "updated_at": site.get("updated_at", ""),
     }
-    branding = item.get("branding")
-    if isinstance(branding, dict):
-        out["branding"] = branding
+    if isinstance(site.get("branding"), dict):
+        out["branding"] = site["branding"]
     return out
 
 
-def _list_sites(table, tenant_slug: str) -> dict:
-    """List sites in tenant. Excludes content items (SITE#id#PAGE#, etc.) — filter in app (sk cannot be in FilterExpression)."""
-    # #region agent log
-    try:
-        params = query_sites_in_tenant(tenant_slug)
-        resp = table.query(**params)
-        # Exclude content items: SITE#id#PAGE#, SITE#id#POST#, etc.
-        content_markers = ("#PAGE#", "#POST#", "#EVENT#", "#MEDIA#")
-        items = [i for i in resp.get("Items", []) if not any(m in (i.get("sk") or "") for m in content_markers)]
-        sites = [_site_to_response(item) for item in items]
-        return _json_response(200, {"sites": sites})
-    except Exception as e:
-        return _json_response(
-            500,
-            {
-                "error": "list_sites_failed",
-                "message": str(e),
-                "type": type(e).__name__,
-                "traceback": traceback.format_exc(),
-            },
-        )
-    # #endregion
+def _slug_taken(store, slug: str, site_id: str | None = None) -> bool:
+    """Tenant and site slugs share one global namespace (Tasks 1.76, 1.77)."""
+    if store.get_tenant(slug):
+        return True
+    hit = store.resolve_site_slug(slug)
+    return bool(hit) and hit["site_id"] != site_id
 
 
-def _get_site(table, tenant_slug: str, site_id: str) -> dict:
-    """Get single site."""
-    key = get_site_item(tenant_slug, site_id)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
-    if not item:
-        return _json_response(404, {"error": "Site not found."})
-    return _json_response(200, {"site": _site_to_response(item)})
+def _template_or_error(store, tenant_slug: str, template_id: str, missing_status: int = 400):
+    """(template, None) or (None, error response). Enforces tenant tier >= template.tier_required."""
+    template = store.get_template(template_id)
+    if not template:
+        return None, respond(missing_status, {"error": f"Template not found: {template_id}"})
+    tier = ((store.get_tenant(tenant_slug) or {}).get("tier") or "FREE").upper()
+    required = template.get("tier_required", "FREE")
+    if tier_rank(tier) < tier_rank(required):
+        return None, respond(403, {
+            "error": f"Template {template_id} requires {required} tier or higher.",
+            "tier_required": required,
+            "tenant_tier": tier,
+        })
+    return template, None
 
 
-def _create_site(table, tenant_slug: str, body: dict) -> dict:
-    """Create site. Optional template_id: validate exists and tenant tier >= template.tier_required (Task 1.32)."""
+def _create_site(store, tenant_slug: str, body: dict) -> dict:
     name = (body.get("name") or "").strip()
     slug = (body.get("slug") or "").strip().lower()
     status = (body.get("status") or "draft").strip().lower()
     template_id = (body.get("template_id") or "").strip().lower() or None
-
     if not name:
-        return _json_response(400, {"error": "name is required."})
-
+        return respond(400, {"error": "name is required."})
     if status not in ("draft", "published"):
         status = "draft"
-
     if not slug:
-        slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-"))
-        if not slug:
-            slug = str(uuid.uuid4())[:8]
-
+        slug = re.sub(r"[^a-z0-9-]", "", name.lower().replace(" ", "-")) or str(uuid.uuid4())[:8]
     if not SITE_SLUG_PATTERN.match(slug):
-        return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
-
-    # Global slug uniqueness (Task 1.77)
-    if slug_is_taken(table, slug):
-        return _json_response(409, {"error": "Slug is already taken.", "slug": slug})
-
-    # Validate template_id if provided (Task 1.32)
+        return respond(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+    if _slug_taken(store, slug):
+        return respond(409, {"error": "Slug is already taken.", "slug": slug})
     if template_id:
-        template_resp = table.get_item(Key=get_template_item(template_id))
-        template_item = template_resp.get("Item")
-        if not template_item:
-            return _json_response(400, {"error": f"Template not found: {template_id}"})
+        _, err = _template_or_error(store, tenant_slug, template_id)
+        if err:
+            return err
 
-        tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
-        tenant_item = tenant_resp.get("Item")
-        if not tenant_item:
-            return _json_response(404, {"error": "Tenant not found."})
-
-        tenant_tier_rank = _tier_rank(tenant_item.get("tier", "FREE"))
-        template_tier_required = template_item.get("tier_required", "FREE")
-        if tenant_tier_rank < _tier_rank(template_tier_required):
-            return _json_response(
-                403,
-                {
-                    "error": f"Template {template_id} requires {template_tier_required} tier or higher.",
-                    "tier_required": template_tier_required,
-                    "tenant_tier": tenant_item.get("tier", "FREE"),
-                },
-            )
-
-    site_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-
-    item = {
-        "pk": pk_tenant(tenant_slug),
-        "sk": sk_site(site_id),
-        "gsi4pk": gsi4pk_slug(slug),
-        "gsi4sk": gsi4sk_site(site_id),
-        "name": name,
-        "slug": slug,
-        "status": status,
-        "created_at": now,
-        "updated_at": now,
-    }
+    site = {"name": name, "slug": slug, "status": status, "created_at": now, "updated_at": now}
     if template_id:
-        item["template_id"] = template_id
-
-    table.put_item(Item=item)
+        site["template_id"] = template_id
+    site = store.put_site(tenant_slug, site)
     add_site_cname(slug)
-    return _json_response(201, {"site": _site_to_response(item)})
+    return respond(201, {"site": _site_to_response(site)})
 
 
-def _update_site(table, tenant_slug: str, site_id: str, body: dict) -> dict:
-    """Update site."""
-    key = get_site_item(tenant_slug, site_id)
-    resp = table.get_item(Key=key)
-    old_item = resp.get("Item")
-    item = resp.get("Item")
-    if not item:
-        return _json_response(404, {"error": "Site not found."})
+def _update_site(store, tenant_slug: str, site_id: str, body: dict) -> dict:
+    site = store.get_site(tenant_slug, site_id)
+    if not site:
+        return respond(404, {"error": "Site not found."})
+    old_slug = site.get("slug", "")
 
-    name = body.get("name")
-    slug = body.get("slug")
-    status = body.get("status")
-    template_id = body.get("template_id")
-
-    if name is not None:
-        item["name"] = str(name).strip()
-    if slug is not None:
-        s = str(slug).strip().lower()
+    if body.get("name") is not None:
+        site["name"] = str(body["name"]).strip()
+    if body.get("slug") is not None:
+        s = str(body["slug"]).strip().lower()
         if not SITE_SLUG_PATTERN.match(s):
-            return _json_response(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
-        if slug_is_taken(table, s, exclude_site_id=site_id):
-            return _json_response(409, {"error": "Slug is already taken.", "slug": s})
-        item["slug"] = s
-    if status is not None:
-        s = str(status).strip().lower()
+            return respond(400, {"error": "slug must be lowercase alphanumeric + hyphen."})
+        if _slug_taken(store, s, site_id):
+            return respond(409, {"error": "Slug is already taken.", "slug": s})
+        site["slug"] = s
+    if body.get("status") is not None:
+        s = str(body["status"]).strip().lower()
         if s in ("draft", "published"):
-            item["status"] = s
-    if template_id is not None:
-        tid = (template_id or "").strip().lower() or None
+            site["status"] = s
+    if "template_id" in body and body["template_id"] is not None:
+        tid = (body["template_id"] or "").strip().lower() or None
         if tid:
-            template_resp = table.get_item(Key=get_template_item(tid))
-            if not template_resp.get("Item"):
-                return _json_response(400, {"error": f"Template not found: {tid}"})
-            tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
-            tenant_item = tenant_resp.get("Item")
-            if tenant_item and _tier_rank(tenant_item.get("tier", "FREE")) < _tier_rank(
-                template_resp["Item"].get("tier_required", "FREE")
-            ):
-                return _json_response(
-                    403,
-                    {"error": f"Template {tid} requires higher tier."},
-                )
-            item["template_id"] = tid
+            _, err = _template_or_error(store, tenant_slug, tid)
+            if err:
+                return err
+            site["template_id"] = tid
         else:
-            item.pop("template_id", None)
-
-    # Branding (Task 2.94): logo_s3_key, primary_color, font_family
-    branding = body.get("branding")
-    if branding is not None:
-        if isinstance(branding, dict):
-            item["branding"] = {
-                k: v for k, v in branding.items()
-                if k in ("logo_s3_key", "primary_color", "font_family") and v is not None
-            }
-            if not item["branding"]:
-                item.pop("branding", None)
+            site.pop("template_id", None)
+    if "branding" in body and body["branding"] is not None:  # Task 2.94
+        branding = body["branding"]
+        clean = {
+            k: v for k, v in (branding.items() if isinstance(branding, dict) else [])
+            if k in ("logo_s3_key", "primary_color", "font_family") and v is not None
+        }
+        if clean:
+            site["branding"] = clean
         else:
-            item.pop("branding", None)
+            site.pop("branding", None)
 
-    item["updated_at"] = datetime.now(timezone.utc).isoformat()
-
-    # Ensure gsi4pk/gsi4sk for bySiteSlug GSI (Task 1.76)
-    slug_val = item.get("slug", "")
-    if slug_val:
-        item["gsi4pk"] = gsi4pk_slug(slug_val)
-        item["gsi4sk"] = gsi4sk_site(site_id)
-
-    old_slug = (old_item or {}).get("slug", "")
-    table.put_item(Item=item)
-    if old_slug and old_slug != slug_val:
+    site["updated_at"] = datetime.now(timezone.utc).isoformat()
+    site = store.put_site(tenant_slug, site)
+    new_slug = site.get("slug", "")
+    if old_slug and old_slug != new_slug:
         delete_site_cname(old_slug)
-    if slug_val:
-        add_site_cname(slug_val)
-    return _json_response(200, {"site": _site_to_response(item)})
+        site_storage.delete_host_mapping(f"{old_slug}.{_base_domain()}")
+        if new_slug and site.get("published_version") is not None:
+            site_storage.put_host_mapping(f"{new_slug}.{_base_domain()}", tenant_slug, site_id)
+    if new_slug:
+        add_site_cname(new_slug)
+    return respond(200, {"site": _site_to_response(site)})
 
 
-def _delete_site(table, tenant_slug: str, site_id: str) -> dict:
-    """Delete site."""
-    key = get_site_item(tenant_slug, site_id)
-    resp = table.get_item(Key=key)
-    item = resp.get("Item")
-    if not item:
-        return _json_response(404, {"error": "Site not found."})
+def _delete_site(store, tenant_slug: str, site_id: str) -> dict:
+    site = store.get_site(tenant_slug, site_id)
+    if not site:
+        return respond(404, {"error": "Site not found."})
+    for row in store.list_domains(tenant_slug):
+        if row.get("site_id") != site_id:
+            continue
+        try:
+            remove_domain(store.table, row)  # Cloudflare hostname + KVS key + row
+        except CloudflareAPIError:
+            site_storage.delete_host_mapping(row["sk"][len("DOMAIN#"):])  # row kept for retry
+    store.delete_site_cascade(tenant_slug, site_id)
+    slug = site.get("slug", "")
+    if slug:
+        site_storage.delete_host_mapping(f"{slug}.{_base_domain()}")
+        delete_site_cname(slug)
+    return respond(204)
 
-    table.delete_item(Key=key)
-    delete_site_cname(item.get("slug", ""))
-    return _json_response(204, {}, empty_body=True)
 
-
-def _preview_site(
-    table, tenant_slug: str, site_id: str, template_override: str | None
-) -> dict:
-    """
-    GET /api/tenant/sites/{id}/preview — merge site + template for preview (Task 1.79).
-
-    Query param template={id} overrides site.template_id. Requires tenant auth (draft preview).
-    """
-    key = get_site_item(tenant_slug, site_id)
-    resp = table.get_item(Key=key)
-    site_item = resp.get("Item")
-    if not site_item:
-        return _json_response(404, {"error": "Site not found."})
-
-    template_id = (template_override or "").strip().lower() or site_item.get("template_id")
+def _preview_site(store, tenant_slug: str, site_id: str, template_override: str) -> dict:
+    """GET /api/tenant/sites/{id}/preview — site metadata + template components (Task 1.79)."""
+    site = store.get_site(tenant_slug, site_id)
+    if not site:
+        return respond(404, {"error": "Site not found."})
+    template_id = template_override.lower() or site.get("template_id")
     if not template_id:
-        return _json_response(
-            400,
-            {"error": "No template for preview. Set template_id on site or use ?template={slug}."},
-        )
-
-    template_resp = table.get_item(Key=get_template_item(template_id))
-    template_item = template_resp.get("Item")
-    if not template_item:
-        return _json_response(404, {"error": f"Template not found: {template_id}"})
-
-    # Validate tenant tier when using template override
+        return respond(400, {"error": "No template for preview. Set template_id on site or use ?template={slug}."})
     if template_override:
-        tenant_resp = table.get_item(Key=get_tenant_item(tenant_slug))
-        tenant_item = tenant_resp.get("Item")
-        if tenant_item:
-            tenant_tier_rank = _tier_rank(tenant_item.get("tier", "FREE"))
-            if tenant_tier_rank < _tier_rank(template_item.get("tier_required", "FREE")):
-                return _json_response(
-                    403,
-                    {
-                        "error": f"Template {template_id} requires higher tier.",
-                        "tier_required": template_item.get("tier_required", "FREE"),
-                    },
-                )
-
-    site_data = _site_to_response(site_item)
-    template_components = template_item.get("components") or {}
-
-    # Merged preview: site metadata + template components for rendering
-    merged = {
-        **site_data,
-        "template_slug": template_item.get("slug", template_id),
-        "template_name": template_item.get("name", ""),
-        "components": template_components,
-    }
-
-    return _json_response(200, {"preview": merged})
+        template, err = _template_or_error(store, tenant_slug, template_id, missing_status=404)
+        if err:
+            return err
+    else:
+        template = store.get_template(template_id)
+        if not template:
+            return respond(404, {"error": f"Template not found: {template_id}"})
+    return respond(200, {"preview": {
+        **_site_to_response(site),
+        "template_slug": template.get("slug", template_id),
+        "template_name": template.get("name", ""),
+        "components": template.get("components") or {},
+    }})
 
 
-@with_tenant
-def sites_handler(event: dict, context: dict) -> dict:
-    """
-    GET/POST/PUT/DELETE /api/tenant/sites — tenant-scoped sites CRUD.
-    Requires tenant_slug (X-Tenant-Slug or subdomain), Cognito auth, tenant membership.
-    """
-    tenant_slug = event.get("tenant_slug")
-    if not tenant_slug:
-        return _json_response(
-            400,
-            {"error": "Missing tenant. Use subdomain or X-Tenant-Slug header."},
-        )
+def sites_handler(ctx: RequestContext) -> dict:
+    """GET/POST/PUT/DELETE /api/tenant/sites[/{id}[/preview]]. Writes need admin/manager."""
+    tenant_slug, _ = ctx.require_tenant_member()
+    store = DynamoDBTenantStore()
+    method, path = ctx.method, ctx.path
+    parts = path[len(BASE_PATH):].strip("/").split("/") if path.startswith(BASE_PATH) else []
+    parts = [p for p in parts if p]
+    site_id = parts[0] if parts else None
 
-    table_name = os.environ.get("DYNAMODB_TABLE")
-    if not table_name:
-        return _json_response(500, {"error": "DYNAMODB_TABLE not configured"})
+    if method == "GET":
+        if not parts:
+            return respond(200, {"sites": [_site_to_response(s) for s in store.list_sites(tenant_slug)]})
+        if len(parts) == 2 and parts[1] == "preview":
+            return _preview_site(store, tenant_slug, site_id, ctx.query("template") or ctx.query("template_id"))
+        site = store.get_site(tenant_slug, site_id) if len(parts) == 1 else None
+        return respond(200, {"site": _site_to_response(site)}) if site else respond(404, {"error": "Site not found."})
 
-    dynamodb = boto3.resource("dynamodb")
-    table = dynamodb.Table(table_name)
-
-    region = os.environ.get("AWS_REGION", "us-east-1")
-    try:
-        auth_result = require_tenant_auth(event, table, tenant_slug, region)
-    except Exception:
-        raise
-    if auth_result[0] is not True:
-        _, err_resp = auth_result
-        return _json_response(err_resp.get("statusCode", 401), json.loads(err_resp.get("body", "{}")))
-    _, sub_or_username, role, is_cognito = auth_result
-    sub = sub_or_username if is_cognito else None
-
-    path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
-    method = (
-        event.get("requestContext", {}).get("http", {}).get("method")
-        or event.get("httpMethod")
-        or "GET"
-    )
-
-    site_id = _extract_site_id_from_path(path)
-    base_path = "/api/tenant/sites"
-    is_list_or_create = path in (base_path, f"{base_path}/")
-
-    if method == "GET" and is_list_or_create:
-        return _list_sites(table, tenant_slug)
-
-    # GET /api/tenant/sites/{id}/preview (Task 1.79)
-    if method == "GET" and site_id and _is_preview_path(path):
-        params = event.get("queryStringParameters") or event.get("queryParameters") or {}
-        template_override = params.get("template") or params.get("template_id")
-        return _preview_site(table, tenant_slug, site_id, template_override)
-
-    if method == "GET" and site_id:
-        return _get_site(table, tenant_slug, site_id)
-
-    # POST/PUT/DELETE require admin or manager (Task 1.24)
-    if method in ("POST", "PUT", "DELETE"):
-        if is_cognito:
-            ok, err = require_tenant_admin_or_manager(table, sub, tenant_slug, event)
-            if not ok:
-                return _json_response(403, {"error": err or "Forbidden."})
-        elif not role_is_admin_or_manager(role):
-            return _json_response(403, {"error": "Admin or manager role required for this action."})
-
-    if method == "POST" and is_list_or_create:
-        body = _parse_body(event) or {}
-        return _create_site(table, tenant_slug, body)
-
-    if method == "PUT" and site_id:
-        body = _parse_body(event) or {}
-        return _update_site(table, tenant_slug, site_id, body)
-
-    if method == "DELETE" and site_id:
-        return _delete_site(table, tenant_slug, site_id)
-
-    return _json_response(405, {"error": "Method not allowed."})
+    if method not in ("POST", "PUT", "DELETE"):
+        return respond(405, {"error": "Method not allowed."})
+    ctx.require_tenant_member(MANAGE_ROLES)
+    if method == "POST" and not parts:
+        return _create_site(store, tenant_slug, ctx.json_body())
+    if method == "PUT" and len(parts) == 1:
+        return _update_site(store, tenant_slug, site_id, ctx.json_body())
+    if method == "DELETE" and len(parts) == 1:
+        return _delete_site(store, tenant_slug, site_id)
+    return respond(405, {"error": "Method not allowed."})

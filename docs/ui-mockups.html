@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>9host · Interactive UI Mockups (www.echo9.net &amp; app.echo9.net)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-canvas: #0f1117;
+      --bg-surface: #161922;
+      --bg-card: #1c202c;
+      --bg-paper: #f6f5f2;
+      --ink-dark: #181a20;
+      --ink-light: #f3f4f6;
+      --ink-muted: #9ca3af;
+      --ink-soft: #6b7280;
+      --accent: #e05638;
+      --accent-soft: rgba(224, 86, 56, 0.14);
+      --teal: #10b981;
+      --teal-soft: rgba(16, 185, 129, 0.14);
+      --blue: #3b82f6;
+      --blue-soft: rgba(59, 130, 246, 0.14);
+      --amber: #f59e0b;
+      --border-dark: rgba(255, 255, 255, 0.09);
+      --border-light: rgba(24, 26, 32, 0.11);
+      --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-serif: 'Instrument Serif', Georgia, serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: #11131a;
+      color: var(--ink-light);
+      min-height: 100vh;
+      padding-bottom: 5rem;
+    }
+
+    /* Top Switcher Bar (Prototype Chrome) */
+    .proto-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 17, 23, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-dark);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .proto-title {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .proto-badge {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      background: var(--accent-soft);
+      color: #ff7a5c;
+      border: 1px solid rgba(224, 86, 56, 0.35);
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .proto-title span {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #e5e7eb;
+    }
+    .proto-tabs {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .proto-tab {
+      appearance: none;
+      border: 1px solid var(--border-dark);
+      background: var(--bg-surface);
+      color: var(--ink-muted);
+      font-family: var(--font-mono);
+      font-size: 0.73rem;
+      padding: 0.45rem 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .proto-tab:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.22);
+    }
+    .proto-tab.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Browser Frame Wrapper */
+    .viewport-wrap {
+      max-width: 1280px;
+      margin: 1.5rem auto;
+      padding: 0 1.25rem;
+    }
+    .browser-chrome {
+      background: #1a1d27;
+      border: 1px solid var(--border-dark);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+    .browser-toolbar {
+      background: #141720;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .window-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .window-dots i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .window-dots i:nth-child(1) { background: #ef4444; }
+    .window-dots i:nth-child(2) { background: #f59e0b; }
+    .window-dots i:nth-child(3) { background: #10b981; }
+    .url-bar {
+      flex: 1;
+      max-width: 680px;
+      background: #0d0f14;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #d1d5db;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .url-lock {
+      color: var(--teal);
+      font-size: 0.7rem;
+    }
+    .url-note {
+      margin-left: auto;
+      font-size: 0.66rem;
+      color: var(--ink-muted);
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ===================================================================== */
+    /* SCREEN 1: www.echo9.net (Public Landing Page — ZERO Tenant Leaks)     */
+    /* ===================================================================== */
+    .landing-page {
+      background: var(--bg-paper);
+      color: var(--ink-dark);
+      min-height: 760px;
+    }
+    .landing-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 3rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .brand-cube {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      background: var(--ink-dark);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      display: grid;
+      place-items: center;
+    }
+    .landing-nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+      color: #4b5563;
+    }
+    .tools-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      background: #fff;
+      border: 1px solid rgba(24,26,32,0.18);
+      color: var(--ink-dark);
+      padding: 0.38rem 0.75rem;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 500;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .tools-pill b {
+      color: var(--accent);
+    }
+    .btn-dark {
+      background: var(--ink-dark);
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 500;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+    }
+    .landing-hero {
+      padding: 4.5rem 3rem 3.5rem;
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    .hero-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--accent);
+      margin-bottom: 0.85rem;
+      font-weight: 600;
+    }
+    .landing-hero h1 {
+      font-family: var(--font-serif);
+      font-size: 3.35rem;
+      line-height: 1.04;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.1rem;
+    }
+    .landing-hero p {
+      font-size: 1rem;
+      line-height: 1.65;
+      color: #4b5563;
+      margin-bottom: 1.75rem;
+      max-width: 52ch;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 0.85rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn-coral {
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 0.7rem 1.35rem;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-outline-light {
+      background: #fff;
+      color: var(--ink-dark);
+      border: 1px solid rgba(24,26,32,0.18);
+      font-size: 0.88rem;
+      font-weight: 500;
+      padding: 0.7rem 1.2rem;
+      border-radius: 6px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    /* Public-Safe Template & Publishing Showcase Card on www.echo9.net */
+    .showcase-card {
+      background: #fff;
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 1.35rem;
+      box-shadow: 0 12px 32px rgba(24,26,32,0.06);
+    }
+    .showcase-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.75rem;
+      margin-bottom: 0.9rem;
+      border-bottom: 1px solid var(--border-light);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: #6b7280;
+    }
+    .showcase-preview {
+      background: #181a20;
+      color: #f3f4f6;
+      border-radius: 8px;
+      padding: 1.15rem;
+      margin-bottom: 0.9rem;
+    }
+    .showcase-preview-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: #9ca3af;
+      margin-bottom: 0.65rem;
+    }
+    .showcase-preview h4 {
+      font-family: var(--font-serif);
+      font-size: 1.45rem;
+      font-weight: 400;
+      margin-bottom: 0.35rem;
+    }
+    .showcase-preview p {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      line-height: 1.5;
+      margin-bottom: 0.75rem;
+    }
+    .module-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .module-pill {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      background: rgba(255,255,255,0.08);
+      color: #e5e7eb;
+      padding: 0.22rem 0.55rem;
+      border-radius: 4px;
+    }
+    .template-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem;
+    }
+    .template-item {
+      padding: 0.55rem 0.7rem;
+      border-radius: 6px;
+      background: #f9fafb;
+      border: 1px solid rgba(24,26,32,0.06);
+      font-size: 0.78rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .template-item span {
+      font-weight: 600;
+      color: var(--ink-dark);
+    }
+    .template-item small {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: #6b7280;
+    }
+
+    .landing-grid {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 3rem 3.5rem;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+    .feature-box {
+      background: #fff;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    .feature-box .f-kicker {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 0.4rem;
+    }
+    .feature-box h3 {
+      font-size: 0.95rem;
+      margin-bottom: 0.4rem;
+    }
+    .feature-box p {
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: #4b5563;
+    }
+
+    /* ===================================================================== */
+    /* SCREEN 2, 3, 4: app.echo9.net (Admin & Superadmin SPA Shell)          */
+    /* ===================================================================== */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 248px 1fr;
+      min-height: 760px;
+      background: #0f1117;
+      color: #f3f4f6;
+    }
+    .sidebar {
+      background: #141720;
+      border-right: 1px solid var(--border-dark);
+      padding: 1.25rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .tenant-switcher {
+      background: #1c202c;
+      border: 1px solid var(--border-dark);
+      border-radius: 8px;
+      padding: 0.65rem 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tenant-switcher-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .tenant-switcher-name {
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+    .tenant-switcher-slug {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--ink-muted);
+    }
+    .tier-pill-vip {
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      font-weight: 600;
+      background: rgba(245, 158, 11, 0.16);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+    }
+    .nav-group-label {
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--ink-soft);
+      padding: 0 0.5rem;
+      margin-bottom: 0.35rem;
+    }
+    .nav-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      font-size: 0.83rem;
+      color: var(--ink-muted);
+      cursor: pointer;
+    }
+    .nav-item.active {
+      background: rgba(224, 86, 56, 0.14);
+      color: #ff856a;
+      font-weight: 600;
+    }
+    .nav-item-hidden {
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      border: 1px dashed rgba(255,255,255,0.12);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--ink-soft);
+    }
+    .main-pane {
+      padding: 1.75rem 2.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .impersonation-banner {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #fcd34d;
+    }
+    .pane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-dark);
+    }
+    .pane-header h2 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .pane-header p {
+      font-size: 0.84rem;
+      color: var(--ink-muted);
+    }
+    .site-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+    .site-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 10px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+    .site-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .site-card-title {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .site-card-url {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      color: #60a5fa;
+      margin-top: 0.2rem;
+      display: block;
+    }
+    .badge-kvs {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      background: var(--teal-soft);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 0.18rem 0.5rem;
+      border-radius: 4px;
+    }
+    .site-meta-row {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--ink-muted);
+    }
+    .site-meta-chip {
+      background: #1c202c;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      border: 1px solid var(--border-dark);
+    }
+    .site-card-actions {
+      display: flex;
+      gap: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border-dark);
+    }
+    .btn-sm {
+      font-size: 0.76rem;
+      font-weight: 500;
+      padding: 0.4rem 0.75rem;
+      border-radius: 5px;
+      border: 1px solid var(--border-dark);
+      background: #1c202c;
+      color: #e5e7eb;
+      cursor: pointer;
+    }
+    .btn-sm.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* Superadmin Gated Edge Routing & Domains Health Card */
+    .superadmin-edge-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 10px;
+      padding: 1.35rem;
+    }
+    .superadmin-edge-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.85rem;
+      margin-bottom: 0.95rem;
+      border-bottom: 1px solid var(--border-dark);
+    }
+    .superadmin-lock-tag {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      background: rgba(224, 86, 56, 0.16);
+      color: #ff856a;
+      border: 1px solid rgba(224, 86, 56, 0.35);
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .kvs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.65rem;
+    }
+    .kvs-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      background: #0d0f14;
+      border: 1px solid var(--border-dark);
+      font-size: 0.78rem;
+    }
+    .kvs-row code {
+      font-family: var(--font-mono);
+      color: #f3f4f6;
+      font-weight: 600;
+    }
+    .kvs-tag {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      padding: 0.16rem 0.48rem;
+      border-radius: 4px;
+      background: var(--teal-soft);
+      color: #34d399;
+    }
+
+    /* Custom Domain Wizard Card */
+    .wizard-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dark);
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .dns-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.85rem;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+    }
+    .dns-table th, .dns-table td {
+      padding: 0.65rem 0.85rem;
+      border: 1px solid var(--border-dark);
+      text-align: left;
+    }
+    .dns-table th {
+      background: #141720;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+      font-size: 0.66rem;
+      letter-spacing: 0.1em;
+    }
+    .dns-table td {
+      background: #0d0f14;
+      color: #e5e7eb;
+    }
+    .copy-chip {
+      color: #34d399;
+      font-size: 0.68rem;
+      margin-left: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Prototype Switcher -->
+  <header class="proto-bar">
+    <div class="proto-title">
+      <span class="proto-badge">Interactive UI Mockups</span>
+      <span>9host · Public Landing vs. Gated Admin &amp; Superadmin Views</span>
+    </div>
+    <div class="proto-tabs" role="tablist">
+      <button class="proto-tab active" onclick="showScreen('s1', 'https://www.echo9.net/', 'Public Landing Page · Zero Tenant/Domain Enumeration', this)">1. www.echo9.net (Public Landing)</button>
+      <button class="proto-tab" onclick="showScreen('s2', 'https://app.echo9.net/echo9/sites', 'Admin SPA · Billing Hidden (VITE_ENABLE_BILLING=false)', this)">2. app.echo9.net (Tenant Sites)</button>
+      <button class="proto-tab" onclick="showScreen('s3', 'https://app.echo9.net/echo9/domains', 'Cloudflare for SaaS (Option B2 · 100 Free Domains)', this)">3. app.echo9.net (Custom Domain Wizard)</button>
+      <button class="proto-tab" onclick="showScreen('s4', 'https://app.echo9.net/admin/edge-routing', 'Superadmin Only · Gated KVS Domains Health &amp; Hybrid Auth', this)">4. Superadmin (Gated Domains Health &amp; Auth)</button>
+    </div>
+  </header>
+
+  <main class="viewport-wrap">
+    <div class="browser-chrome">
+      <div class="browser-toolbar">
+        <div class="window-dots"><i></i><i></i><i></i></div>
+        <div class="url-bar">
+          <span class="url-lock">🔒 HTTPS</span>
+          <span id="mock-url">https://www.echo9.net/</span>
+          <span id="mock-note" class="url-note">Public Landing Page · Zero Tenant/Domain Enumeration</span>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- SCREEN 1: www.echo9.net (Public Landing Page — No Tenant Leaks!)  -->
+      <!-- ================================================================= -->
+      <section id="s1" class="screen active">
+        <div class="landing-page">
+          <nav class="landing-nav">
+            <div class="brand-mark">
+              <div class="brand-cube">e9</div>
+              <span>Echo9 · 9host</span>
+            </div>
+            <div class="landing-nav-links">
+              <span>Templates</span>
+              <span>Modules</span>
+              <span>Features</span>
+              <!-- Preserves 1-click access to tools.e9.cx! -->
+              <a href="https://tools.e9.cx" target="_blank" rel="noopener" class="tools-pill" title="Replaces the old bare-domain redirect while keeping 1-click access">
+                <span>⚡ Echo9 Tools</span>
+                <b>tools.e9.cx ↗</b>
+              </a>
+              <button class="btn-dark" onclick="document.querySelectorAll('.proto-tab')[1].click()">Sign In → app.echo9.net</button>
+            </div>
+          </nav>
+
+          <div class="landing-hero">
+            <div>
+              <p class="hero-eyebrow">Static-First Website Publishing Platform</p>
+              <h1>Design once, publish pure static HTML to the edge.</h1>
+              <p>Create custom sites from curated layouts, manage pages, blog updates, events, and galleries in one editor, and serve instant static HTML on your custom domains.</p>
+              <div class="hero-actions">
+                <button class="btn-coral" onclick="document.querySelectorAll('.proto-tab')[1].click()">Sign In to Console (app.echo9.net)</button>
+                <a href="https://tools.e9.cx" target="_blank" rel="noopener" class="btn-outline-light">Launch Echo9 Tools (tools.e9.cx) ↗</a>
+              </div>
+            </div>
+
+            <!-- Public-safe Template & Module Showcase (No tenant domains or KVS routing leaked!) -->
+            <div class="showcase-card">
+              <div class="showcase-head">
+                <span>CURATED TEMPLATES &amp; CONTENT MODULES</span>
+                <span style="color:#059669;font-weight:600;">STATIC HTML COMPILER</span>
+              </div>
+              <div class="showcase-preview">
+                <div class="showcase-preview-top">
+                  <span>TEMPLATE PREVIEW</span>
+                  <span>100 / 100 LIGHTHOUSE</span>
+                </div>
+                <h4>Editorial layouts with built-in content modules.</h4>
+                <p>Every publish compiles your pages, posts, and event schedules into immutable static HTML snapshots at the edge.</p>
+                <div class="module-pills">
+                  <span class="module-pill">Pages &amp; Hero</span>
+                  <span class="module-pill">Blog &amp; Updates</span>
+                  <span class="module-pill">Events &amp; Shows</span>
+                  <span class="module-pill">Media Gallery</span>
+                  <span class="module-pill">Custom Branding</span>
+                </div>
+              </div>
+              <div class="template-list">
+                <div class="template-item">
+                  <span>Personal &amp; Tech</span>
+                  <small>Portfolio / CV</small>
+                </div>
+                <div class="template-item">
+                  <span>Musician &amp; Band</span>
+                  <small>Shows / Releases</small>
+                </div>
+                <div class="template-item">
+                  <span>Professional Services</span>
+                  <small>Practice / Firm</small>
+                </div>
+                <div class="template-item">
+                  <span>Business Generic</span>
+                  <small>Landing / Brand</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="landing-grid">
+            <div class="feature-box">
+              <p class="f-kicker">01 · INSTANT STATIC DELIVERY</p>
+              <h3>Served Directly from the Edge</h3>
+              <p>Published sites compile to clean static HTML and CSS (`/`), loading in milliseconds with zero runtime database queries.</p>
+            </div>
+            <div class="feature-box">
+              <p class="f-kicker">02 · SELF-SERVE CUSTOM DOMAINS</p>
+              <h3>Automatic SSL for Any Domain</h3>
+              <p>Connect domains from any DNS registrar using a single CNAME record with automatic TLS certificate provisioning and renewal.</p>
+            </div>
+            <div class="feature-box">
+              <p class="f-kicker">03 · ECHO9 TOOLS SHORTCUT</p>
+              <h3>Quick Access to tools.e9.cx</h3>
+              <p>Access Echo9 utilities directly from the header bar (`tools.e9.cx`) or manage your hosted websites in the `app.echo9.net` console.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- SCREEN 2: app.echo9.net (Tenant Admin Dashboard — Sites)          -->
+      <!-- ================================================================= -->
+      <section id="s2" class="screen">
+        <div class="app-shell">
+          <aside class="sidebar">
+            <div class="tenant-switcher">
+              <div class="tenant-switcher-info">
+                <span class="tenant-switcher-name">Echo9 Primary</span>
+                <span class="tenant-switcher-slug">TENANT#echo9</span>
+              </div>
+              <span class="tier-pill-vip">VIP</span>
+            </div>
+
+            <div>
+              <p class="nav-group-label">Tenant Workspace</p>
+              <ul class="nav-list">
+                <li class="nav-item active"><span>🌐 Sites &amp; Content</span><span>4</span></li>
+                <li class="nav-item" onclick="document.querySelectorAll('.proto-tab')[2].click()"><span>🔗 Custom Domains</span><span>3</span></li>
+                <li class="nav-item" onclick="document.querySelectorAll('.proto-tab')[3].click()"><span>🛡️ Superadmin Console</span><span>ROOT</span></li>
+                <li class="nav-item"><span>⚙️ Tenant Settings</span></li>
+              </ul>
+              <div class="nav-item-hidden">
+                🔒 Billing Tab Hidden<br>
+                <span>VITE_ENABLE_BILLING=false</span>
+              </div>
+            </div>
+          </aside>
+
+          <div class="main-pane">
+            <div class="pane-header">
+              <div>
+                <h2>Sites &amp; Published Content</h2>
+                <p>Each site compiles via <code>SiteCompiler</code> to root-relative HTML (<code>/</code>, <code>/blog/</code>, <code>/events/</code>) and syncs to CloudFront KVS.</p>
+              </div>
+              <button class="btn-coral">+ New Site from Template</button>
+            </div>
+
+            <div class="site-cards-grid">
+              <div class="site-card">
+                <div class="site-card-top">
+                  <div>
+                    <div class="site-card-title">Oliver Jinks Portfolio</div>
+                    <span class="site-card-url">https://oliverjinks.com · https://oliver.echo9.net</span>
+                  </div>
+                  <span class="badge-kvs">PUBLISHED v14 · LIVE</span>
+                </div>
+                <div class="site-meta-row">
+                  <span class="site-meta-chip">Template: personal-tech</span>
+                  <span class="site-meta-chip">4 Pages · 6 Posts</span>
+                  <span class="site-meta-chip">Links: Root /</span>
+                </div>
+                <div class="site-card-actions">
+                  <button class="btn-sm primary">Edit Content &amp; Branding</button>
+                  <button class="btn-sm">Draft Preview (/preview)</button>
+                  <button class="btn-sm">Publish v15</button>
+                </div>
+              </div>
+
+              <div class="site-card">
+                <div class="site-card-top">
+                  <div>
+                    <div class="site-card-title">Echo9 Landing Site</div>
+                    <span class="site-card-url">https://www.echo9.net · https://echo9.net</span>
+                  </div>
+                  <span class="badge-kvs">PUBLISHED v3 · LIVE</span>
+                </div>
+                <div class="site-meta-row">
+                  <span class="site-meta-chip">Template: business-generic</span>
+                  <span class="site-meta-chip">Includes tools.e9.cx nav link</span>
+                </div>
+                <div class="site-card-actions">
+                  <button class="btn-sm primary">Edit Content &amp; Branding</button>
+                  <button class="btn-sm">Draft Preview (/preview)</button>
+                  <button class="btn-sm">Rollback</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- SCREEN 3: app.echo9.net (Cloudflare for SaaS Custom Domain UI)    -->
+      <!-- ================================================================= -->
+      <section id="s3" class="screen">
+        <div class="app-shell">
+          <aside class="sidebar">
+            <div class="tenant-switcher">
+              <div class="tenant-switcher-info">
+                <span class="tenant-switcher-name">Echo9 Primary</span>
+                <span class="tenant-switcher-slug">TENANT#echo9</span>
+              </div>
+              <span class="tier-pill-vip">VIP</span>
+            </div>
+            <div>
+              <p class="nav-group-label">Tenant Workspace</p>
+              <ul class="nav-list">
+                <li class="nav-item" onclick="document.querySelectorAll('.proto-tab')[1].click()"><span>🌐 Sites &amp; Content</span><span>4</span></li>
+                <li class="nav-item active"><span>🔗 Custom Domains</span><span>3</span></li>
+                <li class="nav-item" onclick="document.querySelectorAll('.proto-tab')[3].click()"><span>🛡️ Superadmin Console</span><span>ROOT</span></li>
+                <li class="nav-item"><span>⚙️ Tenant Settings</span></li>
+              </ul>
+            </div>
+          </aside>
+
+          <div class="main-pane">
+            <div class="pane-header">
+              <div>
+                <h2>Custom Domains · Cloudflare for SaaS (Option B2)</h2>
+                <p>Scoped to current tenant (<code>TENANT#echo9</code>). Add any domain from ClouDNS or any registrar.</p>
+              </div>
+              <button class="btn-coral">+ Connect Custom Domain</button>
+            </div>
+
+            <div class="wizard-box">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                <h3 style="font-size:1rem;">DNS Setup Instructions for <code>jinks.ca</code> → Site: <strong>Jinks CA</strong></h3>
+                <span class="badge-kvs">SSL ACTIVE · CLOUDFLARE EDGE</span>
+              </div>
+              <p style="font-size:0.82rem;color:var(--ink-muted);">Add the following record in your ClouDNS (or registrar) dashboard. No AWS ACM certificate polling required.</p>
+
+              <table class="dns-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Host / Name</th>
+                    <th>Target / Value</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>CNAME</strong> (or ALIAS)</td>
+                    <td><code>@</code> / <code>www</code></td>
+                    <td><code>proxy.echo9.net</code> <span class="copy-chip">[Copy]</span></td>
+                    <td><span style="color:#34d399;">✓ Verified &amp; Routing to S3</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>TXT</strong> (Ownership)</td>
+                    <td><code>_cf-custom-hostname.jinks.ca</code></td>
+                    <td><code>d4e8f9a0-12b3-4c5d-9e8f-7a6b5c4d3e2f</code> <span class="copy-chip">[Copy]</span></td>
+                    <td><span style="color:#34d399;">✓ Cert Issued (Auto-Renew)</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- SCREEN 4: Superadmin Console (Gated Domains Health + Hybrid Auth) -->
+      <!-- ================================================================= -->
+      <section id="s4" class="screen">
+        <div class="app-shell">
+          <aside class="sidebar">
+            <div class="tenant-switcher">
+              <div class="tenant-switcher-info">
+                <span class="tenant-switcher-name">Superadmin Console</span>
+                <span class="tenant-switcher-slug">Cognito Group: superadmin</span>
+              </div>
+              <span class="tier-pill-vip">ROOT</span>
+            </div>
+            <div>
+              <p class="nav-group-label">Platform Superadmin</p>
+              <ul class="nav-list">
+                <li class="nav-item active"><span>📡 Edge KVS &amp; Domains Health</span></li>
+                <li class="nav-item"><span>🏢 All Tenants &amp; Impersonation</span></li>
+                <li class="nav-item"><span>👥 Global Users (Cognito + TUSER)</span></li>
+                <li class="nav-item"><span>🎨 Platform Templates</span></li>
+              </ul>
+            </div>
+          </aside>
+
+          <div class="main-pane">
+            <div class="impersonation-banner">
+              <span>🔒 <strong>Superadmin-Only Gated View (<code>require_superadmin()</code>):</strong> Global domain inventory, ClouDNS records, and CloudFront KVS routing health are strictly restricted to platform superadmins.</span>
+              <span style="font-family:var(--font-mono);font-size:0.72rem;">GET /api/admin/edge-kvs</span>
+            </div>
+
+            <!-- GATED SUPERADMIN EDGE ROUTING & DOMAINS HEALTH PANEL -->
+            <div class="superadmin-edge-panel">
+              <div class="superadmin-edge-head">
+                <div>
+                  <h3 style="font-size:1.05rem;font-weight:600;">Live Edge Routing Table &amp; Domains Health (<code>9host-site-hosts-kvs</code>)</h3>
+                  <p style="font-size:0.78rem;color:var(--ink-muted);margin-top:0.2rem;">Real-time mapping of all active subdomains, Cloudflare for SaaS custom hostnames, and ClouDNS shortcuts across all tenants.</p>
+                </div>
+                <span class="superadmin-lock-tag">🔒 SUPERADMIN ONLY · KVS O(1) ACTIVE</span>
+              </div>
+
+              <div class="kvs-grid">
+                <div class="kvs-row">
+                  <code>www.echo9.net / echo9.net</code>
+                  <span class="kvs-tag">TENANT#echo9 / landing (Root /)</span>
+                </div>
+                <div class="kvs-row">
+                  <code>jinks1.echo9.net</code>
+                  <span class="kvs-tag">TENANT#echo9 / site-01 (Root /)</span>
+                </div>
+                <div class="kvs-row">
+                  <code>oliverjinks.com</code>
+                  <span class="kvs-tag">CF SaaS → proxy.echo9.net (SSL OK)</span>
+                </div>
+                <div class="kvs-row">
+                  <code>jinks.ca</code>
+                  <span class="kvs-tag">CF SaaS → proxy.echo9.net (SSL OK)</span>
+                </div>
+                <div class="kvs-row">
+                  <code>oliver.echo9.net</code>
+                  <span class="kvs-tag">TENANT#echo9 / site-02 (Root /)</span>
+                </div>
+                <div class="kvs-row" style="border-color:rgba(245,158,11,0.35);">
+                  <code>tools.echo9.net → tools.e9.cx</code>
+                  <span class="kvs-tag" style="background:rgba(245,158,11,0.15);color:#fbbf24;">ClouDNS WR Shortcut</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="pane-header" style="padding-top:0.25rem;">
+              <div>
+                <h2>Hybrid Identity Overview (`TENANT#echo9` Impersonation)</h2>
+                <p>Account owners &amp; Tenant Admins use AWS Cognito (`USER#{sub}`). Tenant Admins manage lightweight <code>TUSER</code> collaborators and custom <code>ROLE</code>s in DynamoDB.</p>
+              </div>
+              <div style="display:flex;gap:0.5rem;">
+                <button class="btn-sm">+ Invite Cognito Admin</button>
+                <button class="btn-coral">+ Create Site User (TUSER)</button>
+              </div>
+            </div>
+
+            <div class="site-cards-grid">
+              <div class="site-card">
+                <div class="site-card-top">
+                  <div>
+                    <div class="site-card-title">1. AWS Cognito Users (`USER#{sub}`)</div>
+                    <span class="site-card-url">Login via /login · MFA &amp; External IdP Ready</span>
+                  </div>
+                  <span class="badge-kvs">COGNITO POOL</span>
+                </div>
+                <div class="site-meta-row">
+                  <span class="site-meta-chip">adam@echo9.net (Owner · admin)</span>
+                  <span class="site-meta-chip">Token: 9host_cognito_token</span>
+                </div>
+              </div>
+
+              <div class="site-card">
+                <div class="site-card-top">
+                  <div>
+                    <div class="site-card-title">2. Tenant-Managed Users (`TUSER#{username}`)</div>
+                    <span class="site-card-url">Login via /login/site · $0 Cognito MAU Cost</span>
+                  </div>
+                  <span class="badge-kvs">DYNAMODB TUSER + ROLES</span>
+                </div>
+                <div class="site-meta-row">
+                  <span class="site-meta-chip">band_editor (Custom Role: blog_author)</span>
+                  <span class="site-meta-chip">event_coord (Role: editor)</span>
+                  <span class="site-meta-chip">Token: 9host_site_token</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    function showScreen(id, url, note, btn) {
+      document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      document.getElementById('mock-url').textContent = url;
+      document.getElementById('mock-note').textContent = note;
+      document.querySelectorAll('.proto-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>

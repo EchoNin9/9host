@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { siteLogin, SITE_TOKEN_KEY, SITE_USER_DISPLAY_KEY } from "@/lib/api"
+import { siteLogin, setSiteSession } from "@/lib/api"
 
 export function SiteLogin() {
   const navigate = useNavigate()
@@ -34,9 +34,7 @@ export function SiteLogin() {
       })
       if (result.ok) {
         const { data } = result
-        localStorage.setItem(SITE_TOKEN_KEY, data.token)
-        const display = (data.display_name || data.username || "").trim()
-        if (display) localStorage.setItem(SITE_USER_DISPLAY_KEY, display)
+        setSiteSession(data.token, (data.display_name || data.username || "").trim() || null)
         navigate(`/${data.tenant_slug}`, { replace: true })
         return
       }

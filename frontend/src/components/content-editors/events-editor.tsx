@@ -40,9 +40,11 @@ import {
   type ContentEvent,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 export function EventsEditor({ siteId }: { siteId: string }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [events, setEvents] = useState<ContentEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -56,7 +58,7 @@ export function EventsEditor({ siteId }: { siteId: string }) {
     setLoading(true)
     try {
       const token = await getToken()
-      const list = await fetchContentEvents(tenantSlug, token, siteId)
+      const list = await fetchContentEvents(api, token, siteId)
       setEvents(list)
     } catch {
       setEvents([])
@@ -88,7 +90,7 @@ export function EventsEditor({ siteId }: { siteId: string }) {
   const handleDelete = async () => {
     if (!deleteTarget || !tenantSlug) return
     const token = await getToken()
-    const ok = await deleteContentEvent(tenantSlug, token, siteId, deleteTarget.id)
+    const ok = await deleteContentEvent(api, token, siteId, deleteTarget.id)
     if (ok) {
       void load()
       setDeleteTarget(null)
@@ -213,6 +215,7 @@ function EventFormSheet({
   setError: (v: string | null) => void
 }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [title, setTitle] = useState("")
   const [eventDate, setEventDate] = useState("")
   const [venue, setVenue] = useState("")
@@ -246,7 +249,7 @@ function EventFormSheet({
       }
       if (event) {
         const updated = await updateContentEvent(
-          tenantSlug,
+          api,
           token,
           siteId,
           event.id,
@@ -256,7 +259,7 @@ function EventFormSheet({
         else setError("Failed to update event")
       } else {
         const created = await createContentEvent(
-          tenantSlug,
+          api,
           token,
           siteId,
           payload

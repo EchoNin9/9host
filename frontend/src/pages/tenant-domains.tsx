@@ -36,7 +36,7 @@ function DomainForm({
   onClose,
   sites,
 }: {
-  onSubmit: (body: { domain: string; site_id: string }) => Promise<Domain | null>
+  onSubmit: (body: { domain: string; site_id: string }) => Promise<Domain>
   onClose: () => void
   sites: { id: string; name: string }[]
 }) {
@@ -52,9 +52,10 @@ function DomainForm({
     setSaving(true)
     setError(null)
     try {
-      const result = await onSubmit({ domain: d, site_id: siteId })
-      if (result) onClose()
-      else setError("Failed to add domain. Check format (e.g. example.com) or try again.")
+      await onSubmit({ domain: d, site_id: siteId })
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add domain. Check format (e.g. example.com) or try again.")
     } finally {
       setSaving(false)
     }
@@ -113,42 +114,26 @@ function DomainForm({
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const s = status?.toUpperCase() ?? "PENDING"
-  if (s === "ACTIVE") {
+function StatusBadge({ status }: { status: Domain["status"] }) {
+  if (status === "ACTIVE") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
         Active
       </span>
     )
   }
-  if (s === "PENDING_VALIDATION") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-        <Loader2 className="size-3 animate-spin" />
-        Validating SSL
-      </span>
-    )
-  }
-  if (s === "VERIFIED") {
-    return (
-      <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
-        Verified
-      </span>
-    )
-  }
   return (
-    <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-      {status || "Pending"}
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+      <Loader2 className="size-3 animate-spin" />
+      Pending validation
     </span>
   )
 }
 
 function DomainsContent() {
-  const { tenantSlug } = useTenant()
   const { canEdit } = useTenantRole()
-  const { domains, loading, error, add, remove, activate, polling } = useDomains(tenantSlug)
-  const { sites } = useSites(tenantSlug)
+  const { domains, loading, error, add, remove, activate, polling } = useDomains()
+  const { sites } = useSites()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [setupDomain, setSetupDomain] = useState<Domain | null>(null)
   const [activating, setActivating] = useState<string | null>(null)
@@ -173,13 +158,13 @@ function DomainsContent() {
     setActivateError(null)
     try {
       const result = await activate(d.domain)
-      if (result) {
-        // Show setup guide with ACM validation records
-        setSetupDomain(result.domain)
-      }
+      setSetupDomain({
+        ...result.domain,
+        validation_records: result.validation_records ?? result.domain.validation_records,
+      })
     } catch (e) {
       setActivateError(
-        e instanceof Error ? e.message : "Activation failed. Check DNS records and try again."
+        e instanceof Error ? e.message : "Status check failed. Check DNS records and try again."
       )
     } finally {
       setActivating(null)
@@ -210,10 +195,7 @@ function DomainsContent() {
     )
   }
 
-  const canActivate = (d: Domain) => {
-    const s = d.status?.toUpperCase() ?? ""
-    return s === "PENDING" || s === "VERIFIED" || s === ""
-  }
+  const canActivate = (d: Domain) => d.status === "PENDING_VALIDATION"
 
   return (
     <div className="space-y-6">
@@ -315,7 +297,7 @@ function DomainsContent() {
                           disabled={activating === d.domain}
                         >
                           <ShieldCheck className="mr-2 size-4" />
-                          {activating === d.domain ? "Activating..." : "Activate SSL"}
+                          {activating === d.domain ? "Checking..." : "Check status"}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
@@ -343,26 +325,24 @@ function DomainsContent() {
                       {activating === d.domain ? (
                         <>
                           <Loader2 className="mr-1 size-3 animate-spin" />
-                          Activating...
+                          Checking...
                         </>
                       ) : (
                         <>
                           <ShieldCheck className="mr-1 size-3" />
-                          Activate SSL
+                          Check status
                         </>
                       )}
                     </Button>
                   )}
-                  {(d.verification_cname_target || d.verification_txt_record || (d.acm_validation_records?.length ?? 0) > 0) && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() => setSetupDomain(d)}
-                    >
-                      DNS setup
-                    </Button>
-                  )}
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setSetupDomain(d)}
+                  >
+                    DNS setup
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -375,7 +355,7 @@ function DomainsContent() {
 
 function TenantDomains() {
   const { tenantSlug } = useTenant()
-  const { tenant } = useTenantMetadata(tenantSlug)
+  const { tenant } = useTenantMetadata()
   const isVip = (tenant?.tier?.toLowerCase() ?? "") === "vip"
 
   return (

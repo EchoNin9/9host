@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import type { FeatureKey } from "@/lib/feature-flags"
-import { getRequiredTier } from "@/lib/feature-flags"
+import { getRequiredTier, isBillingEnabled } from "@/lib/feature-flags"
 
 const FEATURE_LABELS: Record<FeatureKey, { title: string; description: string }> = {
   custom_domains: {
@@ -59,6 +59,10 @@ export function UpgradePrompt({
   title,
   description,
 }: UpgradePromptProps) {
+  if (!isBillingEnabled()) {
+    return null
+  }
+
   const tier = feature ? getRequiredTier(feature) : "pro"
   const labels = feature ? FEATURE_LABELS[feature] : null
   const displayTitle = title ?? labels?.title ?? "Upgrade required"

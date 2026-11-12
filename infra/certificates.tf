@@ -6,12 +6,14 @@
 # ------------------------------------------------------------------------------
 
 locals {
-  # All hostnames: stage.echo9.net, prod.echo9.net, stage.echo9.ca, prod.echo9.ca
+  # All Admin SPA hostnames: stage.*, prod.* (cutover compat) and T-08 app.* per domain
   acm_domains = flatten([
-    for d in var.domains : ["stage.${d}", "prod.${d}"]
+    for d in var.domains : ["stage.${d}", "prod.${d}", "app.${d}"]
   ])
   # Task 1.78: Wildcard for sites/tenant routing (*.echo9.net, *.echo9.ca)
-  acm_wildcard_domains = [for d in var.domains : "*.${d}"]
+  # T-08: + bare landing apex (echo9.net). www.echo9.net is covered by *.echo9.net.
+  # ACM reuses the *.echo9.net DNS validation CNAME for the apex.
+  acm_wildcard_domains = concat([for d in var.domains : "*.${d}"], [var.landing_domain])
 }
 
 # ACM certificate — all stage/prod hostnames (CloudFront requires us-east-1)
@@ -38,6 +40,19 @@ resource "aws_acm_certificate" "wildcard" {
   lifecycle {
     create_before_destroy = true
   }
+}
+
+# T-08: Block CloudFront updates until the (possibly replaced) certs are ISSUED, so a
+# SAN change never attaches a PENDING_VALIDATION cert (InvalidViewerCertificate).
+# No-op for certs that are already issued.
+resource "aws_acm_certificate_validation" "main" {
+  provider        = aws.us_east_1
+  certificate_arn = aws_acm_certificate.main.arn
+}
+
+resource "aws_acm_certificate_validation" "wildcard" {
+  provider        = aws.us_east_1
+  certificate_arn = aws_acm_certificate.wildcard.arn
 }
 
 # NOTE: Add the validation CNAME records (see outputs) to CloudNS.

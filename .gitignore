@@ -14,11 +14,14 @@ api/typing_extensions.py
 api/bin/
 api/*.dist-info/
 api/__pycache__/
+api/**/__pycache__/
+__pycache__/
 *.so
 
 # OpenTofu (Terraform-compatible)
 infra/.terraform/
 infra/api.zip
+infra/.build/
 infra/*.tfstate
 infra/*.tfstate.*
 infra/cloudns/.terraform/
@@ -28,5 +31,14 @@ infra/backend-config.hcl
 infra/bootstrap/.terraform/
 infra/bootstrap/*.tfstate
 infra/bootstrap/*.tfstate.*
+# Virtualenvs & Test Caches
+.venv/
+api/.venv/
+.pytest_cache/
+
 *.tfvars
 !*.tfvars.example
+
+# Local secrets (never commit)
+.env
+.env.*

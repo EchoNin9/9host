@@ -49,12 +49,12 @@ data "aws_secretsmanager_secret_version" "cloudns" {
 }
 
 locals {
-  domains         = length(var.domains) > 0 ? var.domains : data.terraform_remote_state.infra.outputs.domains
-  acm_records     = data.terraform_remote_state.infra.outputs.acm_validation_records
-  acm_wildcard    = data.terraform_remote_state.infra.outputs.acm_wildcard_validation_records
-  cf_staging      = data.terraform_remote_state.infra.outputs.cloudfront_staging_domain
-  cf_production   = data.terraform_remote_state.infra.outputs.cloudfront_production_domain
-  cf_sites        = data.terraform_remote_state.infra.outputs.cloudfront_sites_domain
+  domains       = length(var.domains) > 0 ? var.domains : data.terraform_remote_state.infra.outputs.domains
+  acm_records   = data.terraform_remote_state.infra.outputs.acm_validation_records
+  acm_wildcard  = data.terraform_remote_state.infra.outputs.acm_wildcard_validation_records
+  cf_staging    = data.terraform_remote_state.infra.outputs.cloudfront_staging_domain
+  cf_production = data.terraform_remote_state.infra.outputs.cloudfront_production_domain
+  cf_sites      = data.terraform_remote_state.infra.outputs.cloudfront_sites_domain
 }
 
 # DNS zone per domain (echo9.net, echo9.ca)
@@ -67,8 +67,11 @@ resource "cloudns_dns_zone" "zone" {
 # ACM validation CNAMEs (Task 1.12, 1.14)
 # ACM name format: _xxx.stage.echo9.net. -> zone echo9.net, record name _xxx.stage
 locals {
-  acm_by_domain  = var.manage_records ? { for r in local.acm_records : r.domain => r } : {}
-  zone_from_fqdn = { for d, r in local.acm_by_domain : d => replace(replace(r.domain, "stage.", ""), "prod.", "") }
+  acm_by_domain = var.manage_records ? { for r in local.acm_records : r.domain => r } : {}
+  # T-08: resolve the zone by suffix match (stage./prod./app. and any future prefix)
+  zone_from_fqdn = {
+    for d, r in local.acm_by_domain : d => one([for z in local.domains : z if r.domain == z || endswith(r.domain, ".${z}")])
+  }
 }
 
 resource "cloudns_dns_record" "acm_validation" {
@@ -112,7 +115,9 @@ resource "cloudns_dns_record" "wildcard" {
 
 # Task 1.78: Wildcard ACM validation CNAMEs (*.echo9.net)
 locals {
-  acm_wildcard_by_domain = var.manage_records ? { for r in local.acm_wildcard : r.domain => r } : {}
+  # T-08: the wildcard cert also carries the bare landing apex (echo9.net); ACM issues the
+  # SAME validation CNAME for "echo9.net" and "*.echo9.net", so only wildcard entries are kept.
+  acm_wildcard_by_domain = var.manage_records ? { for r in local.acm_wildcard : r.domain => r if startswith(r.domain, "*.") } : {}
   zone_from_wildcard     = { for d, r in local.acm_wildcard_by_domain : d => replace(r.domain, "*.", "") }
 }
 
@@ -123,4 +128,42 @@ resource "cloudns_dns_record" "acm_wildcard_validation" {
   type     = "CNAME"
   value    = trimsuffix(each.value.value, ".")
   ttl      = 300
+}
+
+# ------------------------------------------------------------------------------
+# T-08: Edge split records (docs/UNATTENDED_ORCHESTRATION.md §4). Gated separately from
+# manage_records because the legacy stage/prod/*/ACM records are live but unmanaged.
+# ------------------------------------------------------------------------------
+
+# app.{domain} -> CloudFront production Admin SPA (US-03)
+resource "cloudns_dns_record" "app" {
+  for_each = var.manage_edge_records ? toset(local.domains) : []
+  zone     = cloudns_dns_zone.zone[each.key].domain
+  name     = "app"
+  type     = "CNAME"
+  value    = local.cf_production
+  ttl      = 300
+}
+
+# sites-origin.echo9.net -> CloudFront sites (Cloudflare for SaaS Worker upstream)
+resource "cloudns_dns_record" "sites_origin" {
+  for_each = var.manage_edge_records ? toset([var.primary_domain]) : []
+  zone     = cloudns_dns_zone.zone[each.key].domain
+  name     = "sites-origin"
+  type     = "CNAME"
+  value    = local.cf_sites
+  ttl      = 300
+}
+
+# tools.echo9.net -> 301 web redirect to https://tools.e9.cx (replaces the @/www redirect)
+resource "cloudns_dns_record" "tools_redirect" {
+  for_each     = var.manage_edge_records ? toset([var.primary_domain]) : []
+  zone         = cloudns_dns_zone.zone[each.key].domain
+  name         = "tools"
+  type         = "WR"
+  value        = "https://tools.e9.cx"
+  redirecttype = 301
+  frame        = "0"
+  savepath     = 0
+  ttl          = 300
 }

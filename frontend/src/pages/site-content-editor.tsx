@@ -2,6 +2,7 @@ import { Link, useParams, Navigate } from "react-router-dom"
 import { useState } from "react"
 import { FileText, Newspaper, Calendar, Image, Palette, ExternalLink, Upload, LayoutTemplate, Globe } from "lucide-react"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 import { useSites } from "@/hooks/use-sites"
 import { getToken, fetchDraftPublish, fetchDraftToken, publishSite } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -21,8 +22,9 @@ import { TemplateSelector } from "@/components/content-editors/template-selector
  */
 function SiteContentEditor() {
   const { tenantSlug, tenantBasePath } = useTenant()
+  const { api } = useTenantScope()
   const { siteId } = useParams<{ siteId: string }>()
-  const { sites, loading, refetch } = useSites(tenantSlug)
+  const { sites, loading, refetch } = useSites()
   const base = tenantBasePath || `/${tenantSlug}`
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -43,8 +45,8 @@ function SiteContentEditor() {
         setPreviewError("Not authenticated")
         return
       }
-      await fetchDraftPublish(tenantSlug, token, siteId)
-      const data = await fetchDraftToken(tenantSlug, token, siteId)
+      await fetchDraftPublish(api, token, siteId)
+      const data = await fetchDraftToken(api, token, siteId)
       if (data?.preview_url) {
         window.open(data.preview_url, "_blank", "noopener,noreferrer")
       } else {
@@ -68,7 +70,7 @@ function SiteContentEditor() {
         setPublishError("Not authenticated")
         return
       }
-      const result = await publishSite(tenantSlug, token, siteId)
+      const result = await publishSite(api, token, siteId)
       if (result) {
         const siteSlug = site?.slug
         const liveUrl = siteSlug ? `https://${siteSlug}.echo9.net` : null

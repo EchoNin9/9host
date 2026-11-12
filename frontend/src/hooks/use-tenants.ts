@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { getToken } from "@/lib/api"
+import { getAuthMode, getToken } from "@/lib/api"
 import { fetchTenants, type Tenant } from "@/lib/api"
 
 export interface UseTenantsResult {
@@ -21,8 +21,14 @@ export function useTenants(): UseTenantsResult {
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
     setError(null)
+    // /api/tenants is Cognito-only; a TUSER (site-login) session would just get a 401.
+    if (getAuthMode() === "tuser") {
+      setTenants([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     try {
       const token = await getToken()
       const list = await fetchTenants(token)

@@ -108,8 +108,30 @@ resource "aws_s3_bucket_versioning" "sites" {
   }
 }
 
+# Bug #9 (T-08): Bound versioning bloat — expire noncurrent versions after 7 days
+# (rollback window for published/v{N}/ + current/ overwrites), abort stale multipart uploads.
+resource "aws_s3_bucket_lifecycle_configuration" "sites" {
+  bucket = aws_s3_bucket.sites.id
+
+  rule {
+    id     = "9host-sites-noncurrent-expiry"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 7
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.sites]
+}
+
 # Task 1.97: Allow CloudFront sites distribution to read from 9host-sites
-# Custom domain distributions (created dynamically) also need access.
 resource "aws_s3_bucket_policy" "sites" {
   bucket = aws_s3_bucket.sites.id
 
@@ -127,20 +149,6 @@ resource "aws_s3_bucket_policy" "sites" {
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.sites.arn
-          }
-        }
-      },
-      {
-        Sid    = "AllowCustomDomainDistributions"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudfront.amazonaws.com"
-        }
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.sites.arn}/*"
-        Condition = {
-          StringLike = {
-            "AWS:SourceArn" = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
           }
         }
       }
@@ -187,17 +195,39 @@ resource "aws_s3_bucket_versioning" "media" {
   }
 }
 
+# Bug #9 (T-08): Expire noncurrent media versions after 7 days, abort stale multipart uploads.
+resource "aws_s3_bucket_lifecycle_configuration" "media" {
+  bucket = aws_s3_bucket.media.id
+
+  rule {
+    id     = "9host-media-noncurrent-expiry"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 7
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.media]
+}
+
 # CORS for browser uploads: presigned POST from stage/prod frontends
 # *.echo9.net covers stage.echo9.net, prod.echo9.net, tenant.stage.echo9.net, etc.
 resource "aws_s3_bucket_cors_configuration" "media" {
   bucket = aws_s3_bucket.media.id
 
   cors_rule {
-    allowed_headers   = ["*"]
-    allowed_methods   = ["POST", "PUT"]
-    allowed_origins   = ["https://*.echo9.net", "https://*.echo9.ca", "http://localhost:5173", "http://localhost:3000"]
-    expose_headers    = ["ETag"]
-    max_age_seconds   = 3600
+    allowed_headers = ["*"]
+    allowed_methods = ["POST", "PUT"]
+    allowed_origins = ["https://*.echo9.net", "https://*.echo9.ca", "http://localhost:5173", "http://localhost:3000"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
   }
 }
 
@@ -233,20 +263,6 @@ resource "aws_s3_bucket_policy" "media" {
         Condition = {
           StringEquals = {
             "AWS:SourceArn" = aws_cloudfront_distribution.staging.arn
-          }
-        }
-      },
-      {
-        Sid    = "AllowCustomDomainDistributions"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudfront.amazonaws.com"
-        }
-        Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.media.arn}/*"
-        Condition = {
-          StringLike = {
-            "AWS:SourceArn" = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/*"
           }
         }
       }

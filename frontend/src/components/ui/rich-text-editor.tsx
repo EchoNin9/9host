@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { MediaPicker, uploadFileAndGetUrl } from "@/components/content-editors/media-picker"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 interface RichTextEditorProps {
   value: string
@@ -42,6 +43,7 @@ interface RichTextEditorProps {
 
 export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTextEditorProps) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [dropActive, setDropActive] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -145,7 +147,7 @@ export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTex
       if (!tenantSlug || !siteId || !editor) return
       setUploading(true)
       try {
-        const url = await uploadFileAndGetUrl(tenantSlug, siteId, file)
+        const url = await uploadFileAndGetUrl(api, siteId, file)
         if (url) {
           editor.chain().focus().setImage({ src: url }).run()
         }
@@ -153,7 +155,7 @@ export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTex
         setUploading(false)
       }
     },
-    [tenantSlug, siteId, editor]
+    [api, siteId, editor]
   )
 
   // Drag-over visual feedback

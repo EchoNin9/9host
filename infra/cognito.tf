@@ -16,8 +16,8 @@ resource "aws_cognito_user_pool" "main" {
     minimum_length                   = 8
     require_lowercase                = true
     require_uppercase                = true
-    require_numbers                 = true
-    require_symbols                 = false
+    require_numbers                  = true
+    require_symbols                  = false
     temporary_password_validity_days = 7
   }
 
@@ -60,16 +60,18 @@ resource "aws_cognito_user_pool_client" "frontend" {
   name         = "9host-frontend"
   user_pool_id = aws_cognito_user_pool.main.id
 
-  generate_secret                      = false
-  supported_identity_providers         = ["COGNITO"]
+  generate_secret              = false
+  supported_identity_providers = ["COGNITO"]
   callback_urls = concat(
     [for d in var.domains : "https://stage.${d}"],
     [for d in var.domains : "https://prod.${d}"],
+    [for d in var.domains : "https://app.${d}"],
     ["http://localhost:5173", "http://localhost:5173/auth/callback"]
   )
   logout_urls = concat(
     [for d in var.domains : "https://stage.${d}"],
     [for d in var.domains : "https://prod.${d}"],
+    [for d in var.domains : "https://app.${d}"],
     ["http://localhost:5173"]
   )
   allowed_oauth_flows_user_pool_client = true
@@ -77,9 +79,9 @@ resource "aws_cognito_user_pool_client" "frontend" {
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
   prevent_user_existence_errors        = "ENABLED"
   enable_token_revocation              = true
-  access_token_validity                = 1   # hours
-  id_token_validity                    = 1   # hours
-  refresh_token_validity               = 30  # days
+  access_token_validity                = 1  # hours
+  id_token_validity                    = 1  # hours
+  refresh_token_validity               = 30 # days
   token_validity_units {
     access_token  = "hours"
     id_token      = "hours"

@@ -14,3 +14,25 @@ variable "domains" {
   type        = list(string)
   default     = ["echo9.net"]
 }
+
+# T-08: Public landing page served by the sites distribution at (www.)<landing_domain>.
+variable "landing_domain" {
+  description = "Bare landing hostname served by the sites distribution (plus www.). Must be one of var.domains."
+  type        = string
+  default     = "echo9.net"
+}
+
+variable "serve_landing_domain" {
+  description = "Attach <landing_domain> and www.<landing_domain> as aliases on the sites distribution. Enable only after those aliases are removed from any other CloudFront distribution."
+  type        = bool
+  default     = false
+}
+
+variable "landing_site" {
+  description = "Optional landing site mapping written to 9host-site-hosts-kvs for <landing_domain> and www.<landing_domain>. null = no KVS keys."
+  type = object({
+    tenant  = string
+    site_id = string
+  })
+  default = null
+}

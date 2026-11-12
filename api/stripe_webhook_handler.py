@@ -6,13 +6,16 @@ No Cognito auth — Stripe authenticates via webhook signing secret.
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 
 import boto3
 
 from dynamodb_helpers import get_tenant_item
-from stripe_helpers import get_stripe_api_key, get_stripe_webhook_secret
+from stripe_helpers import _get_stripe_config, get_stripe_api_key, get_stripe_webhook_secret
+
+logger = logging.getLogger(__name__)
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -50,19 +53,6 @@ def _tier_from_price_id(price_id: str) -> str:
     return "FREE"
 
 
-def _get_stripe_config() -> dict | None:
-    arn = os.environ.get("STRIPE_SECRET_ARN")
-    if not arn:
-        return None
-    try:
-        client = boto3.client("secretsmanager")
-        resp = client.get_secret_value(SecretId=arn)
-        raw = resp.get("SecretString", "{}")
-        return json.loads(raw) if raw else None
-    except Exception:
-        return None
-
-
 def _handle_subscription_event(subscription: dict, table) -> None:
     """
     Update tenant from subscription. metadata.tenant_slug required.
@@ -79,7 +69,7 @@ def _handle_subscription_event(subscription: dict, table) -> None:
 
     now = datetime.now(timezone.utc).isoformat()
 
-    if status == "active":
+    if status in ("active", "trialing"):
         price_id = None
         items = subscription.get("items") or {}
         data = items.get("data") or []
@@ -104,6 +94,12 @@ def _handle_subscription_event(subscription: dict, table) -> None:
             ExpressionAttributeValues=values,
         )
     else:
+        # Before downgrading, check if tenant is VIP (Bug #6b)
+        resp = table.get_item(Key=get_tenant_item(tenant_slug))
+        tenant = resp.get("Item")
+        if tenant and (tenant.get("tier") or "FREE").upper() == "VIP":
+            return
+
         table.update_item(
             Key=get_tenant_item(tenant_slug),
             UpdateExpression="SET tier = :tier, updated_at = :u REMOVE stripe_subscription_id",
@@ -152,6 +148,13 @@ def stripe_webhook_handler(event: dict, context: dict) -> dict:
         return _json_response(405, {"error": "Method not allowed."})
 
     body = event.get("body") or ""
+    if event.get("isBase64Encoded"):
+        import base64
+        if isinstance(body, str):
+            body = base64.b64decode(body.encode("utf-8")).decode("utf-8")
+        elif isinstance(body, bytes):
+            body = base64.b64decode(body).decode("utf-8")
+
     sig_header = _get_header(event, "Stripe-Signature")
     secret = get_stripe_webhook_secret()
 
@@ -164,9 +167,11 @@ def stripe_webhook_handler(event: dict, context: dict) -> dict:
         stripe.api_key = get_stripe_api_key()
         evt = stripe.Webhook.construct_event(body, sig_header, secret)
     except ValueError as e:
-        return _json_response(400, {"error": f"Invalid payload: {e}"})
+        logger.warning("Stripe webhook invalid payload: %s", e)
+        return _json_response(400, {"error": "Invalid payload"})
     except Exception as e:
-        return _json_response(400, {"error": f"Invalid signature: {e}"})
+        logger.warning("Stripe webhook invalid signature: %s", e)
+        return _json_response(400, {"error": "Invalid signature"})
 
     event_type = evt.get("type", "")
     data = evt.get("data") or {}

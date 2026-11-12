@@ -31,8 +31,34 @@ Multi-tenant SaaS website hosting platform. Tenants get subdomains at `<slug>.ec
 - CORS headers applied via `_with_cors()` wrapper in `handler.py`.
 
 ### CloudFront Functions
-- Runtime: `cloudfront-js-2.0` (ES5-like, no ES6+ features, no async/await).
+- Runtime: `cloudfront-js-2.0` (ES5-like, no ES6+ features). `async`/`await` is used only for KeyValueStore reads.
 - Must be pure functions — no external calls, no sub-requests.
+
+## Testing
+
+- **Backend (Pytest):**
+  ```bash
+  cd api && ../.venv/bin/pytest -q
+  ```
+  Run specific test file:
+  ```bash
+  cd api && ../.venv/bin/pytest tests/test_html_sanitizer.py -v
+  ```
+
+- **Frontend (Vitest):**
+  ```bash
+  npm --prefix frontend test -- --run
+  ```
+
+- **Frontend Typecheck & Build:**
+  ```bash
+  npm --prefix frontend run build
+  ```
+
+- **Edge functions (Node):**
+  ```bash
+  node --test infra/tests/*.test.mjs
+  ```
 
 ## Commit & PR Message Format
 
@@ -49,20 +75,25 @@ agent2 task 2.1: Add tenant admin sidebar with Shadcn/UI
 agent1 task 1.11, 1.12: CloudNS provider + DNS records for echo9.net
 ```
 
-## Key Directories
+## Key Directories & Architecture Docs
 
 | Path | Purpose |
 |------|---------|
+| `GLOSSARY.md` | Ubiquitous language & deep-module definitions |
+| `docs/SPEC.md` | Technical specification for the 5 deep modules & 9 bug fixes |
+| `docs/UNATTENDED_ORCHESTRATION.md` | Unattended Opus 4.6 runbook & dependency-graphed tickets (`T-01`–`T-12`) |
+| `docs/adr/` | Architectural Decision Records (`ADR-0001`, `ADR-0002`) |
 | `api/` | Lambda handler code (Python) |
 | `api/templates/` | Template renderers for static site publish |
 | `frontend/src/` | React SPA source |
-| `infra/` | OpenTofu config + CloudFront Functions |
+| `infra/` | OpenTofu config + CloudFront Functions + Cloudflare Worker. The Lambda bundle is built by `scripts/build-lambda-package.sh` into `infra/.build/api_lambda/` — run it before `tofu validate/plan` |
 | `docs/` | Architecture docs, schema, plans |
 
 ## Important Patterns
 
-- **Single DynamoDB table** (`9host-main`): pk/sk with GSIs (byUser, byDomain, bySiteSlug)
-- **Static HTML publish**: Template + DynamoDB content rendered to HTML, uploaded to S3 `published/current/`
-- **Versioned publish**: `published/v{N}/` immutable snapshots, `current.json` atomic pointer
-- **Site serving**: CloudFront Function rewrites `/site/{tenant}/{site_id}/*` to S3 keys
-- **Draft preview**: JWT-based token, CF Function validates at edge, serves from `draft/` prefix
+- **Split Edge Routing**: `app.echo9.net` / `stage.echo9.net` serve the React Admin SPA; `*.echo9.net` and `(www.)echo9.net` serve static HTML directly from `S3-9host-sites` at `/` via `cf-site-content.js` + CloudFront KeyValueStore (`9host-site-hosts-kvs`).
+- **Custom Domains (Cloudflare for SaaS)**: Custom hostnames point `CNAME -> proxy.echonin9.com`, where a Cloudflare Worker forwards `X-Forwarded-Host` to CloudFront (`cf-site-content.js` + KVS).
+- **Single DynamoDB table** (`9host-main` behind `TenantStore`): pk/sk with GSIs (`byUser`, `byDomain`, `bySiteSlug`, `byEntity`).
+- **Hybrid Auth (`RequestContext`)**: Cognito User Pool (`USER#{sub}`) for Tenant Admins & Superadmins + DynamoDB `TUSER` / `ROLE` / `GROUP` entities for tenant-managed collaborators.
+- **Static HTML publish (`SiteCompiler` + `SiteStoragePort`)**: Pure `compile_site(snapshot, mode)` with HTML sanitization and root-relative links (`/`), uploaded to S3 `published/v{N}/` + `published/current/` and synced to CloudFront KVS.
+- **Feature-Flagged Billing**: Controlled by `VITE_ENABLE_BILLING` (default `false` in MVP).

@@ -1,30 +1,24 @@
 """
-9host API Lambda handler — main entry point for API Gateway.
+9host API Lambda handler — main entry point for API Gateway (HTTP API v2 proxy).
 
-Dispatches requests to route handlers via declarative route registry.
-Uses tenant middleware (X-Tenant-Slug, subdomain, or path param) for
-tenant-scoped operations.
+Dispatches requests via a declarative route registry. Migrated handlers take a
+``RequestContext`` (auth, tenant, effective role resolved once) and run inside
+``run_with_context``; legacy ``(event, context)`` handlers are called directly. Everything
+is wrapped in the safe error boundary (Bug #8: no tracebacks in 500s).
+
+``/api/admin/tenants/{slug}/{sites|domains|users|tusers|roles}`` reuse the tenant handlers
+with an admin-impersonated RequestContext (superadmin only).
 """
 
-import json
+import dataclasses
 
-from admin_users_handler import (
-    admin_stats_handler,
-    admin_users_handler as admin_global_users_handler,
-)
 from admin_handler import (
     create_tenant_handler,
+    delete_tenant_handler,
+    edge_kvs_handler,
     get_tenant_by_slug_handler,
     list_all_tenants_handler,
     patch_tenant_handler as admin_patch_tenant_handler,
-)
-from admin_tenant_resources import (
-    admin_domains_handler,
-    admin_roles_handler,
-    admin_sites_handler,
-    admin_users_handler,
-    delete_tenant_handler,
-    put_tenant_settings_handler,
 )
 from admin_templates_handler import (
     create_template_handler,
@@ -33,252 +27,196 @@ from admin_templates_handler import (
     list_templates_handler,
     update_template_handler,
 )
+from admin_users_handler import admin_stats_handler, admin_users_handler as admin_global_users_handler
 from analytics_handler import get_analytics_handler
-from domains_handler import domains_handler
-from handler_example import get_tenant_handler, patch_tenant_handler, put_tenant_handler
-from sites_handler import sites_handler
-from roles_handler import roles_handler
-from tenant_users_handler import tenant_users_handler
-from users_handler import users_handler
 from billing_handler import billing_checkout_handler, billing_portal_handler
-from site_auth_handler import site_login_handler
-from stripe_webhook_handler import stripe_webhook_handler
-from tenants_handler import create_tenant_handler as self_serve_create_tenant_handler, get_tenants_handler
-from templates_handler import get_templates_handler
-from tenant_templates_handler import tenant_templates_handler
-from validate_slug_handler import validate_slug_handler
-from upload_handler import upload_url_handler
-from content_handler import content_handler
-from publish_handler import draft_publish_handler, publish_handler
+from content_handler import ENTITIES as CONTENT_ENTITIES, content_handler
+from domains_handler import domains_handler
 from draft_handler import draft_token_handler
+from handler_example import get_tenant_handler, patch_tenant_handler, put_tenant_handler
+from publish_handler import draft_publish_handler, publish_handler
+from request_context import (
+    CORS_HEADERS,
+    RequestContext,
+    finalize_response,
+    internal_error_response,
+    respond,
+    run_with_context,
+)
+from roles_handler import roles_handler
 from rollback_handler import rollback_handler
-from default_site_handler import default_site_handler
+from site_auth_handler import site_login_handler
+from sites_handler import sites_handler
+from stripe_webhook_handler import stripe_webhook_handler
+from tenant_store import DynamoDBTenantStore
+from tenant_templates_handler import tenant_templates_handler
+from tenant_users_handler import tenant_users_handler
+from templates_handler import get_templates_handler
+from tenants_handler import create_tenant_handler as self_serve_create_tenant_handler, get_tenants_handler
+from upload_handler import upload_url_handler
+from users_handler import users_handler
+from validate_slug_handler import validate_slug_handler
 
-
-# ---------------------------------------------------------------------------
-# CORS
-# ---------------------------------------------------------------------------
-
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "*",
-    "Access-Control-Max-Age": "300",
-}
+NOT_FOUND = {"error": "Not found"}
 
 
 def _with_cors(resp: dict) -> dict:
-    """Merge CORS headers into the response so cross-origin fetches succeed."""
-    h = resp.get("headers") or {}
-    resp["headers"] = {**CORS_HEADERS, **h}
-    return resp
+    """Merge CORS headers into the response and serialize non-string bodies (Decimal-safe)."""
+    return finalize_response(resp)
 
 
-def _json_response(status: int, body: dict, headers: dict | None = None) -> dict:
-    h = {"Content-Type": "application/json", **CORS_HEADERS}
-    if headers:
-        h.update(headers)
-    return {
-        "statusCode": status,
-        "headers": h,
-        "body": json.dumps(body),
-    }
-
-
-def _error_500(message: str = "Internal server error", detail: dict | None = None) -> dict:
-    """Return 500 with CORS headers (Task 1.52: prevent 502 on unhandled exceptions)."""
-    body = {"error": message}
-    if detail:
-        body["detail"] = detail
-    return {
-        "statusCode": 500,
-        "headers": {**CORS_HEADERS, "Content-Type": "application/json"},
-        "body": json.dumps(body),
-    }
+def _ctx(fn):
+    """Adapt a ``handler(ctx)`` to the ``(event, context)`` route signature."""
+    return lambda event, context: run_with_context(event, fn)
 
 
 # ---------------------------------------------------------------------------
-# Route registry (Task 1.143)
-#
-# Each entry is (method, path, handler) where:
-#   method  — HTTP verb ("GET", "POST", …) or "*" for any method
-#   path    — exact path (matched after stripping trailing slash)
-#   handler — callable(event, context) returning a response dict
-#
-# For prefix routes that delegate to sub-routers, use _PREFIX_ROUTES below.
+# Tenant site sub-router: /api/tenant/sites[/{id}[/{action}|/{content}...]]
 # ---------------------------------------------------------------------------
 
-_EXACT_ROUTES: list[tuple[str, str, callable]] = [
-    # Health
-    ("GET", "/api/health", lambda e, c: _json_response(200, {"status": "ok", "service": "9host-api"})),
-    # Auth
-    ("POST", "/api/auth/site-login", site_login_handler),
-    # Tenants (self-serve)
-    ("GET", "/api/tenants", get_tenants_handler),
-    ("POST", "/api/tenants", self_serve_create_tenant_handler),
-    # Validation
-    ("GET", "/api/validate-slug", validate_slug_handler),
-    # Tenant metadata
-    ("GET", "/api/tenant/default-site", default_site_handler),
-    ("GET", "/api/tenant", get_tenant_handler),
-    ("PUT", "/api/tenant", put_tenant_handler),
-    ("PATCH", "/api/tenant", patch_tenant_handler),
-    # Tenant analytics
-    ("GET", "/api/tenant/analytics", get_analytics_handler),
-    # Billing
-    ("POST", "/api/tenant/billing/checkout", billing_checkout_handler),
-    ("POST", "/api/tenant/billing/portal", billing_portal_handler),
-    # Templates (public)
-    ("GET", "/api/templates", get_templates_handler),
-    # Stripe webhook
-    ("POST", "/api/webhooks/stripe", stripe_webhook_handler),
-    # Superadmin
-    ("GET", "/api/admin/users", admin_global_users_handler),
-    ("GET", "/api/admin/stats", admin_stats_handler),
-    ("GET", "/api/admin/tenants", list_all_tenants_handler),
-    ("POST", "/api/admin/tenants", create_tenant_handler),
-    ("GET", "/api/admin/templates", list_templates_handler),
-    ("POST", "/api/admin/templates", create_template_handler),
-]
+_SITE_ACTIONS = {
+    ("POST", "upload-url"): upload_url_handler,
+    ("POST", "publish"): publish_handler,
+    ("POST", "rollback"): rollback_handler,
+    ("GET", "draft-token"): draft_token_handler,
+    ("POST", "draft-publish"): draft_publish_handler,
+}
 
-# Build a lookup dict: {(method, path): handler} for O(1) matching
-_EXACT_LOOKUP: dict[tuple[str, str], callable] = {(m, p): h for m, p, h in _EXACT_ROUTES}
+
+def tenant_sites_router(ctx: RequestContext) -> dict:
+    parts = [p for p in ctx.path[len("/api/tenant/sites"):].split("/") if p]
+    if len(parts) == 2 and (ctx.method, parts[1]) in _SITE_ACTIONS:
+        return _SITE_ACTIONS[(ctx.method, parts[1])](ctx)
+    if len(parts) >= 2 and parts[1].lower() in CONTENT_ENTITIES:
+        return content_handler(ctx)
+    return sites_handler(ctx)
 
 
 # ---------------------------------------------------------------------------
-# Prefix routes — checked in order, first match wins.
-# (prefix, handler_func)  where handler_func(event, context, path, method)
+# Superadmin: /api/admin/tenants/{slug}[/resource...]
 # ---------------------------------------------------------------------------
 
-def _route_tenant_sites(event, context, path, method):
-    """Sub-router for /api/tenant/sites/..."""
-    if "/upload-url" in path and path.endswith("/upload-url") and method == "POST":
-        return upload_url_handler(event, context)
-    if "/publish" in path and path.endswith("/publish") and method == "POST":
-        return publish_handler(event, context)
-    if "/rollback" in path and path.endswith("/rollback") and method == "POST":
-        return rollback_handler(event, context)
-    if "/draft-token" in path and path.endswith("/draft-token") and method == "GET":
-        return draft_token_handler(event, context)
-    if "/draft-publish" in path and path.endswith("/draft-publish") and method == "POST":
-        return draft_publish_handler(event, context)
-    if "/pages" in path or "/posts" in path or "/events" in path or "/media" in path:
-        return content_handler(event, context)
-    return sites_handler(event, context)
+_ADMIN_DELEGATES = {
+    "sites": tenant_sites_router,
+    "domains": domains_handler,
+    "users": users_handler,
+    "tusers": tenant_users_handler,
+    "roles": roles_handler,
+}
+
+
+def _as_tenant_request(ctx: RequestContext, slug: str, resource: str, rest: list[str]) -> dict:
+    """Run a tenant handler for ``slug`` as an impersonating superadmin (effective role admin)."""
+    ctx.require_superadmin()
+    if not DynamoDBTenantStore().get_tenant(slug):
+        return respond(404, {"error": f"Tenant not found: {slug}"})
+    tenant_path = "/".join(["/api/tenant", resource, *rest])
+    tenant_ctx = dataclasses.replace(
+        ctx,
+        event={**ctx.event, "rawPath": tenant_path, "path": tenant_path},
+        tenant_slug=slug,
+        effective_role="admin",
+        is_impersonating=True,
+        tenant_item=None,
+    )
+    return _ADMIN_DELEGATES[resource](tenant_ctx)
 
 
 def _route_admin_tenants(event, context, path, method):
-    """Sub-router for /api/admin/tenants/{slug}[/resource]."""
-    suffix = path[len("/api/admin/tenants/"):].strip("/")
-    parts = suffix.split("/") if suffix else []
-    slug_lower = (parts[0] or "").lower() if parts else ""
-    if not slug_lower:
-        return _json_response(404, {"error": "Not found"})
+    parts = [p for p in path[len("/api/admin/tenants/"):].split("/") if p]
+    if not parts:
+        return respond(404, NOT_FOUND)
+    slug, resource, rest = parts[0].lower(), (parts[1] if len(parts) > 1 else None), parts[2:]
 
-    if len(parts) == 1:
-        if method == "GET":
-            return get_tenant_by_slug_handler(event, context, slug_lower)
-        if method == "PATCH":
-            return admin_patch_tenant_handler(event, context, slug_lower)
-        if method == "DELETE":
-            return delete_tenant_handler(event, context, slug_lower)
-    elif parts[1] == "domains":
-        return admin_domains_handler(event, context, slug_lower, "/".join(parts[1:]))
-    elif parts[1] == "sites":
-        return admin_sites_handler(event, context, slug_lower, "/".join(parts[1:]))
-    elif parts[1] == "users":
-        return admin_users_handler(event, context, slug_lower, "/".join(parts[1:]))
-    elif parts[1] == "roles" and len(parts) == 2 and method == "GET":
-        return admin_roles_handler(event, context, slug_lower)
-    elif parts[1] == "settings" and len(parts) == 2:
-        if method == "GET":
-            return get_tenant_by_slug_handler(event, context, slug_lower)
-        if method == "PUT":
-            return put_tenant_settings_handler(event, context, slug_lower)
-    elif len(parts) >= 2:
-        return _json_response(404, {"error": "Not found"})
-
-    return _json_response(404, {"error": "Not found"})
+    if resource in _ADMIN_DELEGATES:
+        return run_with_context(event, lambda ctx: _as_tenant_request(ctx, slug, resource, rest))
+    if resource is None and method == "DELETE":
+        return run_with_context(event, lambda ctx: delete_tenant_handler(ctx, slug))
+    handler = None
+    if resource is None:
+        handler = {"GET": get_tenant_by_slug_handler, "PATCH": admin_patch_tenant_handler}.get(method)
+    elif resource == "settings" and not rest:
+        handler = {"GET": get_tenant_by_slug_handler, "PUT": admin_patch_tenant_handler}.get(method)
+    return handler(event, context, slug) if handler else respond(404, NOT_FOUND)
 
 
 def _route_admin_templates(event, context, path, method):
     """Sub-router for /api/admin/templates/{slug}."""
     slug_part = path[len("/api/admin/templates/"):].strip("/")
     if not slug_part or "/" in slug_part:
-        return _json_response(404, {"error": "Not found"})
-    slug_lower = slug_part.lower()
-    if method == "GET":
-        return get_template_handler(event, context, slug_lower)
-    if method == "PUT":
-        return update_template_handler(event, context, slug_lower)
-    if method == "DELETE":
-        return delete_template_handler(event, context, slug_lower)
-    return _json_response(405, {"error": "Method not allowed."})
+        return respond(404, NOT_FOUND)
+    handler = {"GET": get_template_handler, "PUT": update_template_handler, "DELETE": delete_template_handler}.get(method)
+    if not handler:
+        return respond(405, {"error": "Method not allowed."})
+    return handler(event, context, slug_part.lower())
 
 
-# Ordered list — first match wins
-_PREFIX_ROUTES: list[tuple[str, callable]] = [
-    ("/api/tenant/sites", _route_tenant_sites),
-    ("/api/tenant/domains", lambda e, c, p, m: domains_handler(e, c)),
-    ("/api/tenant/users", lambda e, c, p, m: users_handler(e, c)),
-    ("/api/tenant/tusers", lambda e, c, p, m: tenant_users_handler(e, c)),
-    ("/api/tenant/roles", lambda e, c, p, m: roles_handler(e, c)),
+# ---------------------------------------------------------------------------
+# Route registry
+# ---------------------------------------------------------------------------
+
+_EXACT_ROUTES = [
+    ("GET", "/api/health", lambda e, c: respond(200, {"status": "ok", "service": "9host-api"})),
+    ("POST", "/api/auth/site-login", site_login_handler),
+    ("GET", "/api/tenants", get_tenants_handler),
+    ("POST", "/api/tenants", self_serve_create_tenant_handler),
+    ("GET", "/api/validate-slug", validate_slug_handler),
+    ("GET", "/api/tenant", get_tenant_handler),
+    ("PUT", "/api/tenant", put_tenant_handler),
+    ("PATCH", "/api/tenant", patch_tenant_handler),
+    ("GET", "/api/tenant/analytics", get_analytics_handler),
+    ("POST", "/api/tenant/billing/checkout", billing_checkout_handler),
+    ("POST", "/api/tenant/billing/portal", billing_portal_handler),
+    ("GET", "/api/templates", get_templates_handler),
+    ("POST", "/api/webhooks/stripe", stripe_webhook_handler),
+    ("GET", "/api/admin/users", admin_global_users_handler),
+    ("GET", "/api/admin/stats", admin_stats_handler),
+    ("GET", "/api/admin/edge-kvs", _ctx(edge_kvs_handler)),
+    ("GET", "/api/admin/tenants", list_all_tenants_handler),
+    ("POST", "/api/admin/tenants", create_tenant_handler),
+    ("GET", "/api/admin/templates", list_templates_handler),
+    ("POST", "/api/admin/templates", create_template_handler),
+]
+_EXACT_LOOKUP = {(m, p): h for m, p, h in _EXACT_ROUTES}
+
+# Ordered — first match wins. handler(event, context, path, method)
+_PREFIX_ROUTES = [
+    ("/api/tenant/sites", lambda e, c, p, m: run_with_context(e, tenant_sites_router)),
+    ("/api/tenant/domains", lambda e, c, p, m: run_with_context(e, domains_handler)),
+    ("/api/tenant/users", lambda e, c, p, m: run_with_context(e, users_handler)),
+    ("/api/tenant/tusers", lambda e, c, p, m: run_with_context(e, tenant_users_handler)),
+    ("/api/tenant/roles", lambda e, c, p, m: run_with_context(e, roles_handler)),
     ("/api/tenant/templates", lambda e, c, p, m: tenant_templates_handler(e, c)),
-    ("/api/webhooks/stripe", lambda e, c, p, m: stripe_webhook_handler(e, c)),
     ("/api/admin/tenants/", _route_admin_tenants),
     ("/api/admin/templates/", _route_admin_templates),
 ]
 
-# Methods that return 405 for non-matching methods on exact-path routes
-_METHOD_RESTRICTED: dict[str, set[str]] = {
+# Exact-path routes that answer 405 (not 404) for other methods
+_METHOD_RESTRICTED = {
     "/api/tenant/billing/checkout": {"POST"},
     "/api/tenant/billing/portal": {"POST"},
 }
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def lambda_handler(event: dict, context: dict) -> dict:
-    """API Gateway HTTP API (v2) proxy integration entry point."""
+    """API Gateway HTTP API (v2) proxy entry point, behind the safe error boundary (Bug #8)."""
     try:
-        return _lambda_handler_impl(event, context)
-    except Exception as e:
-        import traceback
-
-        tb = traceback.format_exc()
-        print(f"[9host] 500: {type(e).__name__}: {e}\n{tb}")  # CloudWatch
-        detail = {
-            "type": type(e).__name__,
-            "message": str(e),
-            "traceback": tb,
-        }
-        return _error_500(str(e), detail=detail)
+        return _with_cors(_lambda_handler_impl(event, context))
+    except Exception as e:  # noqa: BLE001 - full traceback to CloudWatch, scrubbed 500 to client
+        return internal_error_response(event, e)
 
 
 def _lambda_handler_impl(event: dict, context: dict) -> dict:
     path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
-    method = (event.get("requestContext", {}).get("http", {}).get("method") or
-              event.get("httpMethod") or "GET")
-
-    # CORS preflight
+    method = (event.get("requestContext", {}).get("http", {}).get("method") or event.get("httpMethod") or "GET").upper()
     if method == "OPTIONS":
         return {"statusCode": 200, "headers": CORS_HEADERS, "body": ""}
-
-    # 1. Exact route lookup — O(1)
     handler = _EXACT_LOOKUP.get((method, path))
     if handler:
-        return _with_cors(handler(event, context))
-
-    # 2. Check if path matches an exact route but wrong method → 405
-    if path in _METHOD_RESTRICTED and method not in _METHOD_RESTRICTED[path]:
-        return _json_response(405, {"error": "Method not allowed."})
-
-    # 3. Prefix routes — checked in order
+        return handler(event, context)
+    if path in _METHOD_RESTRICTED:
+        return respond(405, {"error": "Method not allowed."})
     for prefix, route_fn in _PREFIX_ROUTES:
         if path.startswith(prefix):
-            return _with_cors(route_fn(event, context, path, method))
-
-    # 4. Fallback
-    return _with_cors(get_tenant_handler(event, context))
+            return route_fn(event, context, path, method)
+    return respond(404, NOT_FOUND)

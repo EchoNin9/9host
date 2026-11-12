@@ -13,9 +13,11 @@ import {
 } from "@/components/ui/card"
 import { getToken, fetchTemplates, updateSite, type Template, type Site } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
+import { useTenantScope } from "@/context/tenant-scope"
 
 export function TemplateSelector({ site, onSaved }: { site: Site; onSaved?: () => void }) {
   const { tenantSlug } = useTenant()
+  const { api } = useTenantScope()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -27,7 +29,7 @@ export function TemplateSelector({ site, onSaved }: { site: Site; onSaved?: () =
     setLoading(true)
     try {
       const token = await getToken()
-      const list = await fetchTemplates(tenantSlug, token)
+      const list = await fetchTemplates(api, token)
       setTemplates(list)
     } catch {
       setTemplates([])
@@ -47,7 +49,7 @@ export function TemplateSelector({ site, onSaved }: { site: Site; onSaved?: () =
     setSuccessMsg(null)
     try {
       const token = await getToken()
-      const updated = await updateSite(tenantSlug, token, site.id, { template_id: templateSlug })
+      const updated = await updateSite(api, token, site.id, { template_id: templateSlug })
       if (updated) {
         setSuccessMsg(`Template changed to "${templateSlug}". Re-publish to apply.`)
         onSaved?.()

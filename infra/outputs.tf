@@ -76,13 +76,13 @@ output "cloudfront_production_distribution_id" {
 }
 
 output "cloudfront_production_domain" {
-  description = "CloudFront production distribution domain (add CNAME prod.{domain} -> this in CloudNS)"
+  description = "CloudFront production Admin SPA domain (CNAME app.{domain} and prod.{domain} -> this in CloudNS)"
   value       = aws_cloudfront_distribution.production.domain_name
 }
 
 output "cloudfront_production_url" {
-  description = "Production frontend URL (after DNS)"
-  value       = "https://prod.${var.domains[0]}"
+  description = "Production Admin SPA URL (after DNS)"
+  value       = "https://app.${var.domains[0]}"
 }
 
 # Task 1.78: Wildcard distribution for sites + tenant subdomains (*.echo9.net)

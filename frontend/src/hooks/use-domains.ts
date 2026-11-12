@@ -1,5 +1,6 @@
 "use client"
 
+import { useTenantScope } from "@/context/tenant-scope"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { getToken } from "@/lib/api"
 import {
@@ -16,9 +17,11 @@ export interface UseDomainsResult {
   loading: boolean
   error: string | null
   refetch: () => Promise<void>
-  add: (body: { domain: string; site_id: string; status?: string }) => Promise<Domain | null>
+  /** Throws with the backend error message on failure. */
+  add: (body: { domain: string; site_id: string }) => Promise<Domain>
   remove: (domain: string) => Promise<boolean>
-  activate: (domain: string) => Promise<ActivateDomainResponse | null>
+  /** Re-checks Cloudflare status; throws with the backend error message on failure. */
+  activate: (domain: string) => Promise<ActivateDomainResponse>
   /** True when any domain has PENDING_VALIDATION status and polling is active */
   polling: boolean
 }
@@ -31,7 +34,8 @@ const POLL_INTERVAL = 10_000
 /** Stop polling after 30 minutes. */
 const POLL_MAX_DURATION = 30 * 60 * 1000
 
-export function useDomains(tenantSlug: string | null): UseDomainsResult {
+export function useDomains(): UseDomainsResult {
+  const { tenantSlug, api } = useTenantScope()
   const [domains, setDomains] = useState<Domain[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +53,7 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
     setError(null)
     try {
       const token = await getToken()
-      const list = await fetchDomains(tenantSlug, token)
+      const list = await fetchDomains(api, token)
       setDomains(list)
     } catch (e) {
       setDomains([])
@@ -57,7 +61,7 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   // Task 2.118: Auto-poll when any domain is PENDING_VALIDATION
   const hasPending = domains.some(
@@ -78,7 +82,7 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
         }
         try {
           const token = await getToken()
-          const list = await fetchDomains(tenantSlug!, token)
+          const list = await fetchDomains(api, token)
           setDomains(list)
         } catch {
           // ignore polling errors
@@ -96,43 +100,41 @@ export function useDomains(tenantSlug: string | null): UseDomainsResult {
         pollTimerRef.current = null
       }
     }
-  }, [hasPending, tenantSlug])
+  }, [hasPending, api])
 
   useEffect(() => {
     void load()
   }, [load])
 
   const add = useCallback(
-    async (body: { domain: string; site_id: string; status?: string }) => {
-      if (!tenantSlug) return null
+    async (body: { domain: string; site_id: string }) => {
       const token = await getToken()
-      const domain = await createDomain(tenantSlug, token, body)
-      if (domain) void load()
+      const domain = await createDomain(api, token, body)
+      void load()
       return domain
     },
-    [tenantSlug, load]
+    [api, load]
   )
 
   const remove = useCallback(
     async (domain: string) => {
       if (!tenantSlug) return false
       const token = await getToken()
-      const ok = await deleteDomainApi(tenantSlug, token, domain)
+      const ok = await deleteDomainApi(api, token, domain)
       if (ok) void load()
       return ok
     },
-    [tenantSlug, load]
+    [tenantSlug, api, load]
   )
 
   const activate = useCallback(
-    async (domain: string): Promise<ActivateDomainResponse | null> => {
-      if (!tenantSlug) return null
+    async (domain: string): Promise<ActivateDomainResponse> => {
       const token = await getToken()
-      const result = await activateDomainApi(tenantSlug, token, domain)
-      if (result) void load()
+      const result = await activateDomainApi(api, token, domain)
+      void load()
       return result
     },
-    [tenantSlug, load]
+    [api, load]
   )
 
   return { domains, loading, error, refetch: load, add, remove, activate, polling }

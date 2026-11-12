@@ -41,8 +41,16 @@ jobs:
         with:
           tofu_wrapper: false
 
-      - name: Install Lambda Python dependencies
-        run: pip install -r api/requirements.txt -t api/
+      - name: Set up Python (Lambda runtime)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Lambda package
+        run: scripts/build-lambda-package.sh
+
+      - name: Install boto3 for data scripts
+        run: python -m pip install --quiet boto3
 
       - name: OpenTofu init (remote state)
         working-directory: infra

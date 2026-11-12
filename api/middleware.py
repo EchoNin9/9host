@@ -193,25 +193,17 @@ def with_tenant(
     def wrapped(event: dict, context: dict) -> Any:
         domains_val = domains or os.environ.get("DOMAINS")
         tenant_slug = extract_tenant_slug(event, domains=domains_val)
-        # #region agent log
-        # #endregion
 
         # X-Impersonate-Tenant: superadmin can override tenant_slug
         impersonate = _get_header(event, "x-impersonate-tenant")
         if impersonate and _valid_slug(impersonate):
-            # #region agent log
-            try:
-                from auth_helpers import get_sub_from_access_token, is_superadmin
+            from auth_helpers import get_sub_from_access_token, is_superadmin
 
-                region = os.environ.get("AWS_REGION", "us-east-1")
-                user_pool_id = os.environ.get("USER_POOL_ID", "")
-                sub = get_sub_from_access_token(event, region=region)
-                if sub and is_superadmin(sub, user_pool_id, region=region):
-                    tenant_slug = impersonate.strip().lower()
-            except Exception as imp_err:
-                import traceback
-                raise
-            # #endregion
+            region = os.environ.get("AWS_REGION", "us-east-1")
+            user_pool_id = os.environ.get("USER_POOL_ID", "")
+            sub = get_sub_from_access_token(event, region=region)
+            if sub and is_superadmin(sub, user_pool_id, region=region):
+                tenant_slug = impersonate.strip().lower()
 
         event["tenant_slug"] = tenant_slug
         return handler(event, context)

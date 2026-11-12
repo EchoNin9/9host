@@ -14,6 +14,7 @@ from tier_config import (
 
 import json
 import os
+import time
 
 import boto3
 
@@ -48,6 +49,31 @@ def _user_is_tenant_member(table, sub: str, tenant_slug: str) -> bool:
         if item.get("gsi1sk") == f"TENANT#{tenant_slug}#PROFILE":
             return True
     return False
+
+
+_OWNER_EMAIL_TTL_SECONDS = 300  # 5 minutes
+_clock = time.monotonic  # patchable in tests
+_owner_email_cache: dict[str, tuple[float, str]] = {}  # owner sub -> (expires_at, email)
+
+
+def _owner_email(owner_sub: str, region: str) -> str:
+    """Owner email via Cognito admin_get_user, cached per owner sub for 5 minutes."""
+    now = _clock()
+    hit = _owner_email_cache.get(owner_sub)
+    if hit and hit[0] > now:
+        return hit[1]
+    email = ""
+    try:
+        client = boto3.client("cognito-idp", region_name=region)
+        resp = client.admin_get_user(UserPoolId=os.environ.get("USER_POOL_ID", ""), Username=owner_sub)
+        for attr in resp.get("UserAttributes", []):
+            if attr.get("Name") == "email":
+                email = attr.get("Value", "")
+                break
+    except Exception:
+        return ""  # failures are not cached
+    _owner_email_cache[owner_sub] = (now + _OWNER_EMAIL_TTL_SECONDS, email)
+    return email
 
 
 @with_tenant
@@ -86,20 +112,7 @@ def get_tenant_handler(event: dict, context: dict) -> dict:
     owner_sub = item.get("owner_sub")
 
     # Resolve owner email from Cognito (Task 1.50)
-    owner_email = ""
-    if owner_sub:
-        try:
-            client = boto3.client("cognito-idp", region_name=region)
-            resp = client.admin_get_user(
-                UserPoolId=os.environ.get("USER_POOL_ID", ""),
-                Username=owner_sub,
-            )
-            for attr in resp.get("UserAttributes", []):
-                if attr.get("Name") == "email":
-                    owner_email = attr.get("Value", "")
-                    break
-        except Exception:
-            pass
+    owner_email = _owner_email(owner_sub, region) if owner_sub else ""
 
     # Resolved features: tier base + module_overrides override (Task 1.28, 1.94)
     resolved_features = {}

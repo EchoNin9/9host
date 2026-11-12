@@ -17,3 +17,16 @@ variable "manage_records" {
   type        = bool
   default     = true
 }
+
+# T-08: app / sites-origin / tools records. Independent of manage_records (legacy records).
+variable "manage_edge_records" {
+  description = "Create/manage T-08 edge records (app.*, sites-origin, tools WR)."
+  type        = bool
+  default     = true
+}
+
+variable "primary_domain" {
+  description = "Zone for single-zone T-08 records (sites-origin, tools). Must be in domains."
+  type        = string
+  default     = "echo9.net"
+}

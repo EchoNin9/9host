@@ -131,7 +131,7 @@ data "aws_iam_policy_document" "deploy" {
     ]
   }
 
-  # Create/update IAM roles (e.g. 9host-acm-handler) — CI needs CreateRole, TagRole, AttachRolePolicy, PassRole
+  # Create/update IAM roles (e.g. 9host-api-lambda) — CI needs CreateRole, TagRole, AttachRolePolicy, PassRole
   statement {
     sid    = "IAMRole"
     effect = "Allow"
@@ -142,7 +142,8 @@ data "aws_iam_policy_document" "deploy" {
       "iam:UntagRole",
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
-      "iam:PassRole"
+      "iam:PassRole",
+      "iam:ListInstanceProfilesForRole"
     ]
     resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/9host-*"]
   }
@@ -205,6 +206,7 @@ data "aws_iam_policy_document" "deploy" {
       "s3:GetBucketLocation",
       "s3:GetBucketLogging",
       "s3:GetLifecycleConfiguration",
+      "s3:PutLifecycleConfiguration",
       "s3:GetReplicationConfiguration",
       "s3:GetBucketObjectLockConfiguration",
       "s3:GetEncryptionConfiguration",
@@ -363,6 +365,25 @@ data "aws_iam_policy_document" "deploy" {
       "cloudfront:PublishFunction",
       "cloudfront:DescribeFunction",
       "cloudfront:ListFunctions"
+    ]
+    resources = ["*"]
+  }
+
+  # T-06: 9host-site-hosts-kvs (CloudFront KeyValueStore) + its __preview_jwt_secret__ key
+  statement {
+    sid    = "CloudFrontKeyValueStore"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateKeyValueStore",
+      "cloudfront:DescribeKeyValueStore",
+      "cloudfront:UpdateKeyValueStore",
+      "cloudfront:DeleteKeyValueStore",
+      "cloudfront:ListKeyValueStores",
+      "cloudfront-keyvaluestore:DescribeKeyValueStore",
+      "cloudfront-keyvaluestore:GetKey",
+      "cloudfront-keyvaluestore:PutKey",
+      "cloudfront-keyvaluestore:DeleteKey",
+      "cloudfront-keyvaluestore:ListKeys"
     ]
     resources = ["*"]
   }

@@ -14,6 +14,7 @@ import bcrypt
 import boto3
 import jwt
 
+import secrets_cache
 from dynamodb_helpers import get_tenant_item, pk_tenant, sk_tuser
 
 
@@ -26,16 +27,8 @@ def _json_response(status: int, body: dict) -> dict:
 
 
 def _get_jwt_secret() -> str | None:
-    """Fetch JWT signing key from Secrets Manager."""
-    arn = os.environ.get("JWT_SECRET_ARN")
-    if not arn:
-        return None
-    try:
-        client = boto3.client("secretsmanager")
-        resp = client.get_secret_value(SecretId=arn)
-        return resp.get("SecretString", "").strip() or None
-    except Exception:
-        return None
+    """JWT signing key from Secrets Manager (5-minute module cache, Bug #7)."""
+    return secrets_cache.get_secret_string(os.environ.get("JWT_SECRET_ARN"))
 
 
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")

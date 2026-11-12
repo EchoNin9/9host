@@ -1,6 +1,8 @@
 """
 Superadmin API — GET /api/admin/tenants, POST /api/admin/tenants (Task 1.34),
-GET /api/admin/tenants/{slug} (Task 1.22), PATCH /api/admin/tenants/{slug} (Task 1.29).
+GET /api/admin/tenants/{slug} (Task 1.22), PATCH /api/admin/tenants/{slug} (Task 1.29; also
+PUT /api/admin/tenants/{slug}/settings), DELETE /api/admin/tenants/{slug} (Task 1.36),
+GET /api/admin/edge-kvs (HostMappingKVS routing table + cross-tenant domain health).
 
 Requires Cognito auth and superadmin group membership.
 """
@@ -12,7 +14,12 @@ from datetime import datetime, timezone
 
 import boto3
 
+import site_storage
 from auth_helpers import get_sub_from_access_token, is_superadmin
+from cloudflare_saas import CloudflareAPIError
+from custom_domain_handler import remove_domain
+from request_context import RequestContext, respond
+from tenant_store import DynamoDBTenantStore
 from tier_config import VALID_TIERS
 from dynamodb_helpers import (
     get_tenant_item,
@@ -212,12 +219,17 @@ def list_all_tenants_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Scan for tenant items (pk begins_with TENANT#, sk = TENANT)
-    resp = table.scan(
-        FilterExpression="begins_with(pk, :prefix) AND sk = :sk",
-        ExpressionAttributeValues={":prefix": "TENANT#", ":sk": "TENANT"},
-    )
+    # Superadmin cross-tenant bypass. Scan kept: no GSI indexes tenant items (missing an
+    # "ENTITY#TENANT" byEntity partition); byEntity only covers USER/TUSER rows.
+    scan_kwargs = {
+        "FilterExpression": "begins_with(pk, :prefix) AND sk = :sk",
+        "ExpressionAttributeValues": {":prefix": "TENANT#", ":sk": "TENANT"},
+    }
+    resp = table.scan(**scan_kwargs)
     items = resp.get("Items", [])
+    while "LastEvaluatedKey" in resp:
+        resp = table.scan(**scan_kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
+        items.extend(resp.get("Items", []))
 
     tenants = []
     for item in items:
@@ -346,8 +358,13 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
         updates.append("module_overrides = :mo")
         expr_vals[":mo"] = clean_mo
 
+    owner = (body.get("owner_sub") or "").strip() if isinstance(body.get("owner_sub"), str) else ""
+    if owner:
+        updates.append("owner_sub = :owner")
+        expr_vals[":owner"] = owner
+
     if not updates:
-        return _json_response(400, {"error": "Provide at least one of: tier, name, module_overrides"})
+        return _json_response(400, {"error": "Provide at least one of: tier, name, module_overrides, owner_sub"})
 
     from datetime import datetime, timezone
 
@@ -369,14 +386,60 @@ def patch_tenant_handler(event: dict, context: dict, tenant_slug: str) -> dict:
     # Fetch updated item
     resp = table.get_item(Key=get_tenant_item(tenant_slug))
     updated = resp.get("Item", {})
+    owner_sub = updated.get("owner_sub")
     return _json_response(
         200,
         {
             "slug": tenant_slug,
             "name": updated.get("name", tenant_slug),
             "tier": updated.get("tier", "FREE"),
-            "owner_sub": updated.get("owner_sub"),
+            "owner_sub": owner_sub,
+            "owner_email": _get_email_from_cognito_sub(owner_sub, os.environ.get("AWS_REGION", "us-east-1")) if owner_sub else "",
             "module_overrides": updated.get("module_overrides") or {},
             "updated_at": updated.get("updated_at"),
         },
     )
+
+
+def delete_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
+    """DELETE /api/admin/tenants/{slug} — cascade delete the tenant partition. Also removes the
+    tenant's custom domains (Cloudflare + KVS) and its sites' {slug}.{domain} KVS mappings."""
+    ctx.require_superadmin()
+    store = DynamoDBTenantStore()
+    if not store.get_tenant(tenant_slug):
+        return respond(404, {"error": f"Tenant not found: {tenant_slug}"})
+    from publish_handler import _base_domain
+
+    for row in store.list_domains(tenant_slug):
+        try:
+            remove_domain(store.table, row)
+        except CloudflareAPIError:
+            site_storage.delete_host_mapping(row["sk"][len("DOMAIN#"):])
+    for site in store.list_sites(tenant_slug):
+        if site.get("slug"):
+            site_storage.delete_host_mapping(f"{site['slug']}.{_base_domain()}")
+    store.delete_tenant_cascade(tenant_slug)
+    return respond(204)
+
+
+def edge_kvs_handler(ctx: RequestContext) -> dict:
+    """GET /api/admin/edge-kvs (superadmin only).
+
+    entries: HostMappingKVS routing keys (internal "__" keys such as the preview JWT secret are
+    never returned; [] when SITE_HOSTS_KVS_ARN is unset). domains: every custom domain across
+    tenants (explicit superadmin cross-tenant bypass)."""
+    ctx.require_superadmin()
+    entries = sorted(site_storage.list_host_mappings(), key=lambda e: e["hostname"])
+    domains = [
+        {
+            "domain": row["sk"][len("DOMAIN#"):],
+            "tenant_slug": row["pk"][len("TENANT#"):],
+            "site_id": row.get("site_id", ""),
+            "status": row.get("status", ""),
+            "cf_status": row.get("cf_status"),
+            "ssl_status": row.get("ssl_status"),
+        }
+        for row in DynamoDBTenantStore().list_all_domains()
+    ]
+    domains.sort(key=lambda d: (d["tenant_slug"], d["domain"]))
+    return respond(200, {"entries": entries, "domains": domains})

@@ -1,10 +1,11 @@
 /**
- * Domain Setup Guide (DNS Wizard) — Task 2.81, 2.117
- * Two paths: Our DNS (CloudNS) vs Own DNS (CNAME + TXT).
- * Shows CNAME target, TXT, and ACM validation CNAME records from API.
+ * Domain Setup Guide (DNS wizard) — Cloudflare for SaaS custom hostnames.
+ * The tenant adds one CNAME → proxy.echonin9.com plus the TXT validation record(s)
+ * returned by the API (hostname ownership and/or SSL). Rendered inside the
+ * custom_domains FeatureGate on the Domains page.
  */
 
-import { Copy, Check, Globe, Link, Server, ShieldCheck } from "lucide-react"
+import { Copy, Check, Globe, Server, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 import {
   Sheet,
@@ -15,6 +16,8 @@ import {
 import { Button } from "@/components/ui/button"
 import type { Domain } from "@/lib/api"
 
+const PROXY_CNAME_TARGET = "proxy.echonin9.com"
+
 interface DomainSetupGuideProps {
   domain: Domain
   open: boolean
@@ -24,7 +27,7 @@ interface DomainSetupGuideProps {
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
-    navigator.clipboard.writeText(value)
+    void navigator.clipboard.writeText(value)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -36,16 +39,26 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   )
 }
 
+function RecordField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}:</p>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs font-mono">{value}</code>
+        <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
+      </div>
+    </div>
+  )
+}
+
 export function DomainSetupGuideDialog({
   domain,
   open,
   onOpenChange,
 }: DomainSetupGuideProps) {
-  const cname = domain.verification_cname_target
-  const txt = domain.verification_txt_record
-  const acmRecords = domain.acm_validation_records ?? []
-  const isPending = domain.status?.toUpperCase() === "PENDING_VALIDATION"
-  const isActive = domain.status?.toUpperCase() === "ACTIVE"
+  const target = domain.cname_target || PROXY_CNAME_TARGET
+  const txtRecords = domain.validation_records ?? []
+  const isActive = domain.status === "ACTIVE"
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -54,157 +67,60 @@ export function DomainSetupGuideDialog({
           <SheetTitle>DNS Setup: {domain.domain}</SheetTitle>
         </SheetHeader>
         <p className="text-sm text-muted-foreground">
-          Add these DNS records at your domain provider to connect and verify your domain.
+          Add these records at your DNS provider. SSL is issued automatically once they resolve.
         </p>
 
         <div className="space-y-6">
-          {/* Step 1: Domain ownership verification */}
           <div>
             <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
               <Globe className="size-4" />
-              Step 1: Domain Ownership (CNAME + TXT)
+              Step 1: Point your domain (CNAME)
             </h3>
-            <p className="text-xs text-muted-foreground mb-3">
-              Add these records at your DNS provider (e.g. Cloudflare, GoDaddy, Namecheap).
-            </p>
-            {cname && (
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">CNAME record</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-sm">
-                    {domain.domain} → {cname}
-                  </code>
-                  <CopyButton value={`${domain.domain} CNAME ${cname}`} label="Copy CNAME" />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Host: <code className="bg-muted px-1">{domain.domain}</code> or @
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Target: <code className="bg-muted px-1">{cname}</code>
-                </p>
-              </div>
-            )}
-            {txt && (
-              <div className="rounded-lg border p-3 space-y-1 mt-2">
-                <p className="text-xs font-medium text-muted-foreground">TXT record (verification)</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-sm font-mono">
-                    {txt}
-                  </code>
-                  <CopyButton value={txt} label="Copy TXT" />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Host: <code className="bg-muted px-1">_9host-verify.{domain.domain}</code>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Value: <code className="bg-muted px-1">{txt}</code>
-                </p>
-              </div>
-            )}
-            {!cname && !txt && (
-              <p className="text-sm text-muted-foreground">
-                Verification records will appear after the domain is added.
+            <div className="rounded-lg border p-3 space-y-2">
+              <RecordField label="Name" value={domain.domain} />
+              <RecordField label="Target" value={target} />
+              <p className="text-xs text-muted-foreground">
+                For an apex domain (e.g. example.com) use your provider&apos;s CNAME flattening,
+                ALIAS or ANAME record.
               </p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
+              <ShieldCheck className="size-4" />
+              Step 2: Validation (TXT)
+            </h3>
+            {txtRecords.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {isActive
+                  ? "No validation records needed — this domain is active."
+                  : "Validation records will appear here once Cloudflare issues them."}
+              </p>
+            ) : (
+              txtRecords.map((rec) => (
+                <div key={`${rec.name}:${rec.value}`} className="rounded-lg border p-3 space-y-2 mt-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    TXT record ({rec.purpose === "ssl" ? "SSL certificate" : "domain ownership"})
+                  </p>
+                  <RecordField label="Name" value={rec.name} />
+                  <RecordField label="Value" value={rec.value} />
+                </div>
+              ))
             )}
           </div>
 
-          {/* Step 2: ACM certificate validation (Task 2.117) */}
-          {acmRecords.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
-                <ShieldCheck className="size-4" />
-                Step 2: SSL Certificate Validation
-              </h3>
-              <p className="text-xs text-muted-foreground mb-3">
-                Add these CNAME records to validate your SSL certificate.
-                {isPending && " Certificate is pending validation."}
-                {isActive && " Certificate is active."}
-              </p>
-              {acmRecords.map((rec, i) => (
-                <div key={i} className="rounded-lg border p-3 space-y-1 mt-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    {rec.type} record (SSL validation)
-                  </p>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Name:</p>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs font-mono">
-                          {rec.name}
-                        </code>
-                        <CopyButton value={rec.name} label="Copy name" />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Value:</p>
-                      <div className="flex items-center gap-2">
-                        <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs font-mono">
-                          {rec.value}
-                        </code>
-                        <CopyButton value={rec.value} label="Copy value" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="rounded-lg border p-3 text-xs space-y-1">
+            <p>
+              Status: <strong>{isActive ? "Active" : "Pending validation"}</strong>
+              {domain.cf_status && <> · hostname {domain.cf_status}</>}
+              {domain.ssl_status && <> · SSL {domain.ssl_status}</>}
+            </p>
+            {domain.verification_errors?.map((err) => (
+              <p key={err} className="text-destructive">{err}</p>
+            ))}
+          </div>
 
-          {/* Step 3: Final DNS — point domain to per-domain CloudFront distribution */}
-          {domain.cloudfront_domain_name && (
-            <div>
-              <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
-                <Link className="size-4" />
-                Step 3: Point Your Domain
-              </h3>
-              <p className="text-xs text-muted-foreground mb-3">
-                {isActive
-                  ? "Your SSL certificate is active. Point your domain to your dedicated distribution."
-                  : "Once your certificate is validated, point your domain to this address."}
-              </p>
-              <div className="rounded-lg border p-3 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">CNAME record</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-sm">
-                    {domain.domain} → {domain.cloudfront_domain_name}
-                  </code>
-                  <CopyButton
-                    value={domain.cloudfront_domain_name}
-                    label="Copy distribution domain"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Host: <code className="bg-muted px-1">{domain.domain}</code> or @
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Target: <code className="bg-muted px-1">{domain.cloudfront_domain_name}</code>
-                </p>
-              </div>
-              <div className="rounded-lg border p-3 space-y-1 mt-2">
-                <p className="text-xs font-medium text-muted-foreground">www redirect (CNAME)</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-sm">
-                    www.{domain.domain} → {domain.cloudfront_domain_name}
-                  </code>
-                  <CopyButton
-                    value={domain.cloudfront_domain_name}
-                    label="Copy distribution domain for www"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Host: <code className="bg-muted px-1">www.{domain.domain}</code>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Target: <code className="bg-muted px-1">{domain.cloudfront_domain_name}</code>
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Visitors to www.{domain.domain} will be automatically redirected to {domain.domain}.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* CloudNS option */}
           <div>
             <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
               <Server className="size-4" />

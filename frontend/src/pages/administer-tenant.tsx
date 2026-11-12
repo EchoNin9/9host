@@ -1,8 +1,5 @@
-"use client"
-
 import { useState, useCallback, useEffect } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
-import { fetchAuthSession } from "aws-amplify/auth"
 import {
   Card,
   CardContent,
@@ -12,12 +9,6 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,32 +20,19 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { useImpersonation } from "@/hooks/use-impersonation"
+import { useTenantUsers } from "@/hooks/use-tenant-users"
+import { TenantScopeProvider } from "@/context/tenant-scope"
+import { TenantTierProvider } from "@/contexts/tenant-tier-provider"
+import { TenantSites } from "@/pages/tenant-sites"
+import { TenantDomains } from "@/pages/tenant-domains"
+import { TenantUsers } from "@/pages/tenant-users"
+import { SiteContentEditor } from "@/pages/site-content-editor"
 import {
   fetchAdminTenant,
   deleteAdminTenant,
+  getToken,
   putAdminTenantSettings,
-  fetchAdminDomains,
-  createAdminDomain,
-  deleteAdminDomain,
-  fetchAdminSites,
-  createAdminSite,
-  updateAdminSite,
-  deleteAdminSite,
-  fetchAdminTenantUsers,
-  fetchAdminTenantRoles,
-  createAdminUser,
-  updateAdminUser,
-  deleteAdminUser,
-  fetchAdminUserPermissions,
-  updateAdminUserPermissions,
-  fetchAdminTemplates,
   type AdminTenantDetail,
-  type Domain,
-  type Site,
-  type TenantUser,
-  type TenantRole,
-  type ModulePermissions,
-  MODULE_KEYS,
 } from "@/lib/api"
 import { ArrowLeft, Globe, GlobeLock, Settings, Trash2, Users } from "lucide-react"
 
@@ -64,25 +42,31 @@ const DEFAULT_MODULE_OVERRIDES: Record<string, boolean> = Object.fromEntries(
   ALL_MODULE_KEYS.map((k) => [k, false])
 )
 
-type TabId = "domains" | "sites" | "users" | "settings"
+const TABS = [
+  { id: "settings", label: "Settings", icon: Settings },
+  { id: "users", label: "Users", icon: Users },
+  { id: "sites", label: "Sites", icon: Globe },
+  { id: "domains", label: "Domains", icon: GlobeLock },
+] as const
 
+/**
+ * Superadmin console for one tenant (/admin/tenants/:slug[/:tab]).
+ * Sites, domains, users and the content editor are the tenant dashboard's own
+ * views, scoped to this tenant with superadmin impersonation.
+ */
 function AdministerTenantPage() {
-  const { slug } = useParams<{ slug: string }>()
+  const { slug, tab = "settings", siteId } = useParams<{ slug: string; tab?: string; siteId?: string }>()
   const navigate = useNavigate()
   const { isSuperadmin, loading: superadminLoading } = useAdminTenants()
   const { setImpersonate } = useImpersonation()
   const [tenant, setTenant] = useState<AdminTenantDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<TabId>("settings")
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   const loadTenant = useCallback(async () => {
     if (!slug) return
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const t = await fetchAdminTenant(token, slug)
-    setTenant(t)
+    setTenant(await fetchAdminTenant(await getToken("cognito"), slug))
   }, [slug])
 
   useEffect(() => {
@@ -96,9 +80,7 @@ function AdministerTenantPage() {
   const handleDelete = async () => {
     if (!slug) return
     setDeleting(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const ok = await deleteAdminTenant(token, slug)
+    const ok = await deleteAdminTenant(await getToken("cognito"), slug)
     setDeleting(false)
     if (ok) {
       setDeleteOpen(false)
@@ -112,12 +94,8 @@ function AdministerTenantPage() {
   if (loading) return <div className="flex min-h-screen items-center justify-center">Loading…</div>
   if (!tenant) return <div className="p-6">Tenant not found.</div>
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: "settings", label: "Settings", icon: <Settings className="size-4" /> },
-    { id: "users", label: "Users", icon: <Users className="size-4" /> },
-    { id: "sites", label: "Sites", icon: <Globe className="size-4" /> },
-    { id: "domains", label: "Domains", icon: <GlobeLock className="size-4" /> },
-  ]
+  const basePath = `/admin/tenants/${slug}`
+  const activeTab = siteId ? "sites" : tab
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -148,35 +126,39 @@ function AdministerTenantPage() {
         </div>
       </div>
 
-      <div className="flex gap-2 border-b">
-        {tabs.map((t) => (
-          <button
+      <nav aria-label="Tenant sections" className="flex gap-2 border-b">
+        {TABS.map((t) => (
+          <Link
             key={t.id}
-            onClick={() => setTab(t.id)}
+            to={t.id === "settings" ? basePath : `${basePath}/${t.id}`}
+            aria-current={activeTab === t.id ? "page" : undefined}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
+              activeTab === t.id
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t.icon}
+            <t.icon className="size-4" />
             {t.label}
-          </button>
+          </Link>
         ))}
-      </div>
+      </nav>
 
-      {tab === "domains" && (
-        <AdminDomainsTab tenantSlug={slug} />
-      )}
-      {tab === "sites" && (
-        <AdminSitesTab tenantSlug={slug} />
-      )}
-      {tab === "users" && (
-        <AdminUsersTab tenantSlug={slug} />
-      )}
-      {tab === "settings" && (
-        <AdminSettingsTab tenant={tenant} onSaved={loadTenant} />
-      )}
+      <TenantScopeProvider tenantSlug={slug} basePath={basePath} isSuperadminImpersonating>
+        <TenantTierProvider>
+          {siteId ? (
+            <SiteContentEditor />
+          ) : activeTab === "sites" ? (
+            <TenantSites />
+          ) : activeTab === "domains" ? (
+            <TenantDomains />
+          ) : activeTab === "users" ? (
+            <TenantUsers />
+          ) : (
+            <AdminSettingsTab tenant={tenant} onSaved={loadTenant} />
+          )}
+        </TenantTierProvider>
+      </TenantScopeProvider>
 
       <AlertDialog open={deleteOpen} onOpenChange={(o) => !o && !deleting && setDeleteOpen(false)}>
         <AlertDialogContent>
@@ -198,768 +180,7 @@ function AdministerTenantPage() {
   )
 }
 
-function AdminDomainsTab({ tenantSlug }: { tenantSlug: string }) {
-  const [domains, setDomains] = useState<Domain[]>([])
-  const [sites, setSites] = useState<Site[]>([])
-  const [loading, setLoading] = useState(true)
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [addDomain, setAddDomain] = useState("")
-  const [addSiteId, setAddSiteId] = useState("")
-  const [saving, setSaving] = useState(false)
-
-  const load = useCallback(async () => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const [d, s] = await Promise.all([
-      fetchAdminDomains(token, tenantSlug),
-      fetchAdminSites(token, tenantSlug),
-    ])
-    setDomains(d)
-    setSites(s)
-  }, [tenantSlug])
-
-  useEffect(() => {
-    void load().finally(() => setLoading(false))
-  }, [load])
-
-  const handleAdd = async () => {
-    const d = addDomain.trim().toLowerCase()
-    if (!d || !addSiteId) return
-    setSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await createAdminDomain(token, tenantSlug, { domain: d, site_id: addSiteId })
-    setSaving(false)
-    if (result) {
-      setSheetOpen(false)
-      setAddDomain("")
-      setAddSiteId("")
-      void load()
-    }
-  }
-
-  const handleRemove = async (domain: string) => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const ok = await deleteAdminDomain(token, tenantSlug, domain)
-    if (ok) void load()
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Domains</CardTitle>
-          <CardDescription>Manage custom domains for this tenant</CardDescription>
-        </div>
-        <Button onClick={() => setSheetOpen(true)}>Add domain</Button>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : domains.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No domains yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="pb-2 text-left font-medium">Domain</th>
-                  <th className="pb-2 text-left font-medium">Site</th>
-                  <th className="pb-2 text-left font-medium">Status</th>
-                  <th className="pb-2 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {domains.map((d) => (
-                  <tr key={d.domain} className="border-b">
-                    <td className="py-3">{d.domain}</td>
-                    <td className="py-3">{sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}</td>
-                    <td className="py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          d.status === "verified"
-                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {d.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => handleRemove(d.domain)}>Remove</Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Add domain</SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-4">
-            <div>
-              <label className="text-sm font-medium">Domain</label>
-              <Input
-                value={addDomain}
-                onChange={(e) => setAddDomain(e.target.value)}
-                placeholder="example.com"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Site</label>
-              <select
-                value={addSiteId}
-                onChange={(e) => setAddSiteId(e.target.value)}
-                className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-              >
-                <option value="">Select site</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-            <Button onClick={handleAdd} disabled={saving || !addDomain.trim() || !addSiteId}>
-              {saving ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </Card>
-  )
-}
-
-function AdminSitesTab({ tenantSlug }: { tenantSlug: string }) {
-  const [sites, setSites] = useState<Site[]>([])
-  const [templates, setTemplates] = useState<{ slug: string; name: string }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [editSite, setEditSite] = useState<Site | null>(null)
-  const [name, setName] = useState("")
-  const [slug, setSlug] = useState("")
-  const [templateId, setTemplateId] = useState("")
-  const [saving, setSaving] = useState(false)
-
-  const load = useCallback(async () => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const [s, t] = await Promise.all([
-      fetchAdminSites(token, tenantSlug),
-      fetchAdminTemplates(token),
-    ])
-    setSites(s)
-    setTemplates(t)
-  }, [tenantSlug])
-
-  useEffect(() => {
-    void load().finally(() => setLoading(false))
-  }, [load])
-
-  const openCreate = () => {
-    setEditSite(null)
-    setName("")
-    setSlug("")
-    setTemplateId("")
-    setSheetOpen(true)
-  }
-
-  const openEdit = (site: Site) => {
-    setEditSite(site)
-    setName(site.name)
-    setSlug(site.slug)
-    setTemplateId(site.template_id ?? "")
-    setSheetOpen(true)
-  }
-
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
-  const handleSave = async () => {
-    if (!name.trim()) return
-    setSaving(true)
-    setErrorMsg(null)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    if (editSite) {
-      const result = await updateAdminSite(token, tenantSlug, editSite.id, { name, slug: slug || undefined })
-      if (result?.site) { setSheetOpen(false); void load() }
-      else if (result?.error) { setErrorMsg(result.error) }
-    } else {
-      const body: { name: string; slug?: string; template_id?: string } = { name: name.trim() }
-      if (slug.trim()) body.slug = slug.trim().toLowerCase()
-      if (templateId) body.template_id = templateId
-      const result = await createAdminSite(token, tenantSlug, body)
-      if (result?.site) { setSheetOpen(false); void load() }
-      else if (result?.error) { setErrorMsg(result.error) }
-    }
-    setSaving(false)
-  }
-
-  const handleDelete = async (siteId: string) => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const ok = await deleteAdminSite(token, tenantSlug, siteId)
-    if (ok) void load()
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Sites</CardTitle>
-          <CardDescription>Manage sites for this tenant</CardDescription>
-        </div>
-        <Button onClick={openCreate}>Add site</Button>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : sites.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No sites yet.</p>
-        ) : (
-          <div className="divide-y">
-            {sites.map((s) => (
-              <div key={s.id} className="flex items-center justify-between py-3">
-                <div>
-                  <span className="font-medium">{s.name}</span>
-                  <span className="ml-2 text-sm text-muted-foreground">({s.slug})</span>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(s)}>Edit</Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id)}>Delete</Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>{editSite ? "Edit site" : "Add site"}</SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-4">
-            {errorMsg && (
-              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
-                {errorMsg}
-              </div>
-            )}
-            <div>
-              <label className="text-sm font-medium">Name</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Slug</label>
-              <Input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="my-site" className="mt-1" />
-            </div>
-            {!editSite && (
-              <div>
-                <label className="text-sm font-medium">Template</label>
-                <select
-                  value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
-                  className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-                >
-                  <option value="">None</option>
-                  {templates.map((t) => (
-                    <option key={t.slug} value={t.slug}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <Button onClick={handleSave} disabled={saving || !name.trim()}>
-              {saving ? "Saving…" : editSite ? "Save" : "Create"}
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-    </Card>
-  )
-}
-
-function AdminUsersTab({ tenantSlug }: { tenantSlug: string }) {
-  const [users, setUsers] = useState<TenantUser[]>([])
-  const [roles, setRoles] = useState<TenantRole[]>([])
-  const [loading, setLoading] = useState(true)
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [permUser, setPermUser] = useState<TenantUser | null>(null)
-  const [editUser, setEditUser] = useState<TenantUser | null>(null)
-  const [editNameUser, setEditNameUser] = useState<TenantUser | null>(null)
-  const [addMode, setAddMode] = useState<"cognito" | "tuser">("cognito")
-  const [addEmail, setAddEmail] = useState("")
-  const [addUsername, setAddUsername] = useState("")
-  const [addPassword, setAddPassword] = useState("")
-  const [addDisplayName, setAddDisplayName] = useState("")
-  const [addRole, setAddRole] = useState("member")
-  const [saving, setSaving] = useState(false)
-  const [addError, setAddError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const [list, rolesList] = await Promise.all([
-      fetchAdminTenantUsers(token, tenantSlug),
-      fetchAdminTenantRoles(token, tenantSlug),
-    ])
-    setUsers(list)
-    setRoles(rolesList)
-  }, [tenantSlug])
-
-  useEffect(() => {
-    void load().finally(() => setLoading(false))
-  }, [load])
-
-  const handleAdd = async () => {
-    setAddError(null)
-    setSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-
-    if (addMode === "tuser") {
-      const username = addUsername.trim()
-      if (!username || !addPassword || addPassword.length < 8) {
-        setAddError("Username and password (min 8 chars) are required.")
-        setSaving(false)
-        return
-      }
-      const result = await createAdminUser(token, tenantSlug, {
-        type: "tuser",
-        username,
-        password: addPassword,
-        display_name: addDisplayName.trim() || undefined,
-        role: addRole,
-      })
-      setSaving(false)
-      if (result.success) {
-        setSheetOpen(false)
-        setAddUsername("")
-        setAddPassword("")
-        setAddDisplayName("")
-        setAddRole("member")
-        void load()
-      } else {
-        setAddError(result.error)
-      }
-    } else {
-      const email = addEmail.trim()
-      if (!email) {
-        setAddError("Email is required.")
-        setSaving(false)
-        return
-      }
-      const result = await createAdminUser(token, tenantSlug, { email, role: addRole })
-      setSaving(false)
-      if (result.success) {
-        setSheetOpen(false)
-        setAddEmail("")
-        setAddRole("member")
-        void load()
-      } else {
-        setAddError(result.error)
-      }
-    }
-  }
-
-  const handleRemove = async (userSub: string) => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const ok = await deleteAdminUser(token, tenantSlug, userSub)
-    if (ok) void load()
-  }
-
-  const handleRoleChange = async (userSub: string, role: string) => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await updateAdminUser(token, tenantSlug, userSub, { role })
-    if (result) {
-      setEditUser(null)
-      void load()
-    }
-  }
-
-  const handleDisplayNameChange = async (userSub: string, name: string) => {
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await updateAdminUser(token, tenantSlug, userSub, { name })
-    if (result) {
-      setEditNameUser(null)
-      void load()
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>Manage users in this tenant</CardDescription>
-        </div>
-        <Button onClick={() => { setAddError(null); setSheetOpen(true) }}>Add user</Button>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : users.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No users yet.</p>
-        ) : (
-          <div className="divide-y">
-            {users.map((u) => (
-              <div key={u.sub} className="flex items-center justify-between py-3">
-                <div>
-                  <span className="font-medium">
-                    {u.type === "tuser" ? (u.name || u.sub) : (u.email || u.name || u.sub)}
-                  </span>
-                  <span className="ml-2 text-sm text-muted-foreground">({u.role}{u.type === "tuser" ? " · DB user" : ""})</span>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setEditNameUser(u)}>Edit name</Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditUser(u)}>Edit role</Button>
-                  <Button size="sm" variant="outline" onClick={() => setPermUser(u)}>Permissions</Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleRemove(u.sub)}>Remove</Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>Add user</SheetTitle>
-          </SheetHeader>
-          <div className="mt-4 space-y-4">
-            <div>
-              <label className="text-sm font-medium">User type</label>
-              <div className="mt-2 flex gap-4">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="addMode"
-                    checked={addMode === "cognito"}
-                    onChange={() => setAddMode("cognito")}
-                    className="h-4 w-4"
-                  />
-                  Cognito user
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="radio"
-                    name="addMode"
-                    checked={addMode === "tuser"}
-                    onChange={() => setAddMode("tuser")}
-                    className="h-4 w-4"
-                  />
-                  DB user (TUSER)
-                </label>
-              </div>
-            </div>
-
-            {addMode === "cognito" ? (
-              <>
-                <div>
-                  <label className="text-sm font-medium">Email</label>
-                  <Input
-                    type="email"
-                    value={addEmail}
-                    onChange={(e) => setAddEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="mt-1"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Cognito user email. User must have an account.
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Role</label>
-                  <select
-                    value={addRole}
-                    onChange={(e) => setAddRole(e.target.value)}
-                    className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-                  >
-                    <option value="admin">admin</option>
-                    <option value="manager">manager</option>
-                    <option value="editor">editor</option>
-                    <option value="member">member</option>
-                  </select>
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className="text-sm font-medium">Username</label>
-                  <Input
-                    value={addUsername}
-                    onChange={(e) => setAddUsername(e.target.value)}
-                    placeholder="jdoe"
-                    className="mt-1"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Alphanumeric, dots, underscores, hyphens.
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Password</label>
-                  <Input
-                    type="password"
-                    value={addPassword}
-                    onChange={(e) => setAddPassword(e.target.value)}
-                    placeholder="min 8 characters"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Display name (optional)</label>
-                  <Input
-                    value={addDisplayName}
-                    onChange={(e) => setAddDisplayName(e.target.value)}
-                    placeholder="Jane Doe"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Role</label>
-                  <select
-                    value={addRole}
-                    onChange={(e) => setAddRole(e.target.value)}
-                    className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-                  >
-                    <option value="member">member</option>
-                    <option value="manager">manager</option>
-                    {roles.map((r) => (
-                      <option key={r.name} value={r.name}>{r.name}</option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    manager, member, or custom role.
-                  </p>
-                </div>
-              </>
-            )}
-
-            {addError && (
-              <p className="text-sm text-destructive">{addError}</p>
-            )}
-            <Button
-              onClick={handleAdd}
-              disabled={
-                saving ||
-                (addMode === "cognito" ? !addEmail.trim() : !addUsername.trim() || addPassword.length < 8)
-              }
-            >
-              {saving ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-      {editUser && (
-        <EditRoleSheet
-          user={editUser}
-          roles={roles}
-          onClose={() => setEditUser(null)}
-          onSave={async (role) => {
-            await handleRoleChange(editUser.sub, role)
-          }}
-        />
-      )}
-      {permUser && (
-        <PermissionsSheet
-          tenantSlug={tenantSlug}
-          user={permUser}
-          onClose={() => setPermUser(null)}
-          onSaved={() => { void load(); setPermUser(null) }}
-        />
-      )}
-      {editNameUser && (
-        <EditDisplayNameSheet
-          user={editNameUser}
-          onClose={() => setEditNameUser(null)}
-          onSave={async (name) => {
-            await handleDisplayNameChange(editNameUser.sub, name)
-          }}
-        />
-      )}
-    </Card>
-  )
-}
-
-function EditRoleSheet({
-  user,
-  roles,
-  onClose,
-  onSave,
-}: {
-  user: TenantUser
-  roles: TenantRole[]
-  onClose: () => void
-  onSave: (role: string) => Promise<void>
-}) {
-  const [role, setRole] = useState(user.role)
-  const [saving, setSaving] = useState(false)
-  const isTuser = user.type === "tuser"
-  return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Edit role: {isTuser ? user.sub : (user.email || user.name || user.sub)}</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium">Role</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
-            >
-              {isTuser ? (
-                <>
-                  <option value="member">member</option>
-                  <option value="manager">manager</option>
-                  {roles.map((r) => (
-                    <option key={r.name} value={r.name}>{r.name}</option>
-                  ))}
-                </>
-              ) : (
-                <>
-                  <option value="admin">admin</option>
-                  <option value="manager">manager</option>
-                  <option value="editor">editor</option>
-                  <option value="member">member</option>
-                </>
-              )}
-            </select>
-          </div>
-          <Button
-            onClick={async () => {
-              setSaving(true)
-              await onSave(role)
-              setSaving(false)
-            }}
-            disabled={saving}
-          >
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function EditDisplayNameSheet({
-  user,
-  onClose,
-  onSave,
-}: {
-  user: TenantUser
-  onClose: () => void
-  onSave: (name: string) => Promise<void>
-}) {
-  const [displayName, setDisplayName] = useState(user.name || "")
-  const [saving, setSaving] = useState(false)
-  const isTuser = user.type === "tuser"
-  const label = isTuser ? user.sub : (user.email || user.name || user.sub)
-  return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Edit display name: {label}</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="text-sm font-medium">Display name</label>
-            <Input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder={isTuser ? user.sub : "Display name"}
-              className="mt-1"
-            />
-          </div>
-          <Button
-            onClick={async () => {
-              setSaving(true)
-              await onSave(displayName.trim())
-              setSaving(false)
-            }}
-            disabled={saving}
-          >
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-function PermissionsSheet({
-  tenantSlug,
-  user,
-  onClose,
-  onSaved,
-}: {
-  tenantSlug: string
-  user: TenantUser
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [perms, setPerms] = useState<ModulePermissions | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    async function load() {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
-      const p = await fetchAdminUserPermissions(token, tenantSlug, user.sub)
-      setPerms(p ?? { sites: true, domains: true, analytics: true, settings: true, users: true })
-      setLoading(false)
-    }
-    void load()
-  }, [tenantSlug, user.sub])
-
-  const handleSave = async () => {
-    if (!perms) return
-    setSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await updateAdminUserPermissions(token, tenantSlug, user.sub, perms)
-    setSaving(false)
-    if (result) onSaved()
-  }
-
-  return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>Permissions: {user.type === "tuser" ? user.sub : (user.email || user.name || user.sub)}</SheetTitle>
-        </SheetHeader>
-        <div className="mt-4 space-y-4">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : perms ? (
-            <>
-              {MODULE_KEYS.map((key) => (
-                <label key={key} className="flex items-center justify-between rounded-lg border p-3">
-                  <span className="capitalize">{key}</span>
-                  <input
-                    type="checkbox"
-                    checked={perms[key]}
-                    onChange={(e) => setPerms({ ...perms, [key]: e.target.checked })}
-                    className="h-4 w-4"
-                  />
-                </label>
-              ))}
-              <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
-            </>
-          ) : null}
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
+/** Platform-level tenant settings (tier, owner, module overrides) — superadmin only. */
 function AdminSettingsTab({
   tenant,
   onSaved,
@@ -970,7 +191,6 @@ function AdminSettingsTab({
   const [name, setName] = useState(tenant.name)
   const [tier, setTier] = useState(tenant.tier)
   const [ownerSub, setOwnerSub] = useState<string>(tenant.owner_sub ?? "")
-  const [cognitoUsers, setCognitoUsers] = useState<{ sub: string; email: string; name: string }[]>([])
   const [moduleOverrides, setModuleOverrides] = useState<Record<string, boolean>>(
     tenant.module_overrides ?? DEFAULT_MODULE_OVERRIDES
   )
@@ -984,27 +204,15 @@ function AdminSettingsTab({
     setModuleOverrides(tenant.module_overrides ?? DEFAULT_MODULE_OVERRIDES)
   }, [tenant.slug, tenant.name, tenant.tier, tenant.owner_sub, tenant.module_overrides])
 
-  useEffect(() => {
-    async function loadUsers() {
-      const session = await fetchAuthSession()
-      const token = session.tokens?.accessToken?.toString() ?? null
-      const list = await fetchAdminTenantUsers(token, tenant.slug)
-      const cognito = (list ?? []).filter((u) => u.type !== "tuser").map((u) => ({
-        sub: u.sub,
-        email: u.email ?? "",
-        name: u.name ?? u.email ?? u.sub,
-      }))
-      setCognitoUsers(cognito)
-    }
-    void loadUsers()
-  }, [tenant.slug])
+  const { users } = useTenantUsers()
+  const cognitoUsers = users
+    .filter((u) => u.type !== "tuser")
+    .map((u) => ({ sub: u.sub, email: u.email ?? "", name: u.name ?? u.email ?? u.sub }))
 
   const handleSave = async () => {
     setSaveError(null)
     setSaving(true)
-    const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    const result = await putAdminTenantSettings(token, tenant.slug, {
+    const result = await putAdminTenantSettings(await getToken("cognito"), tenant.slug, {
       name,
       tier,
       module_overrides: moduleOverrides,
@@ -1026,12 +234,13 @@ function AdminSettingsTab({
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <label className="text-sm font-medium">Name</label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+          <label htmlFor="admin-tenant-name" className="text-sm font-medium">Name</label>
+          <Input id="admin-tenant-name" value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
         </div>
         <div>
-          <label className="text-sm font-medium">Tier</label>
+          <label htmlFor="admin-tenant-tier" className="text-sm font-medium">Tier</label>
           <select
+            id="admin-tenant-tier"
             value={tier}
             onChange={(e) => setTier(e.target.value)}
             className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
@@ -1043,11 +252,12 @@ function AdminSettingsTab({
           </select>
         </div>
         <div>
-          <label className="text-sm font-medium">Owner</label>
+          <label htmlFor="admin-tenant-owner" className="text-sm font-medium">Owner</label>
           <p className="text-xs text-muted-foreground mt-1 mb-2">
             Cognito users only. DB users (TUSER) cannot be owner.
           </p>
           <select
+            id="admin-tenant-owner"
             value={ownerSub}
             onChange={(e) => setOwnerSub(e.target.value)}
             className="mt-1 flex h-9 w-full rounded-md border border-input px-3 py-1 text-sm"
@@ -1060,8 +270,8 @@ function AdminSettingsTab({
             ))}
           </select>
         </div>
-        <div>
-          <label className="text-sm font-medium">Module overrides</label>
+        <fieldset>
+          <legend className="text-sm font-medium">Module overrides</legend>
           <div className="mt-2 space-y-2">
             {ALL_MODULE_KEYS.map((key) => (
               <label key={key} className="flex items-center gap-2">
@@ -1075,7 +285,7 @@ function AdminSettingsTab({
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
         {saveError && (
           <p className="text-sm text-destructive">{saveError}</p>
         )}

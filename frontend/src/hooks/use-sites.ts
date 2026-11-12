@@ -1,5 +1,6 @@
 "use client"
 
+import { useTenantScope } from "@/context/tenant-scope"
 import { useCallback, useEffect, useState } from "react"
 import { getToken } from "@/lib/api"
 import {
@@ -26,7 +27,8 @@ export interface UseSitesResult {
 /**
  * Fetches and mutates sites for the current tenant.
  */
-export function useSites(tenantSlug: string | null): UseSitesResult {
+export function useSites(): UseSitesResult {
+  const { tenantSlug, api } = useTenantScope()
   const [sites, setSites] = useState<Site[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +43,7 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
     setError(null)
     try {
       const token = await getToken()
-      const list = await fetchSites(tenantSlug, token)
+      const list = await fetchSites(api, token)
       setSites(list)
     } catch (e) {
       setSites([])
@@ -49,7 +51,7 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
     } finally {
       setLoading(false)
     }
-  }, [tenantSlug])
+  }, [tenantSlug, api])
 
   useEffect(() => {
     void load()
@@ -59,11 +61,11 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
     async (body: { name: string; slug?: string; status?: string; template_id?: string | null }) => {
       if (!tenantSlug) return null
       const token = await getToken()
-      const site = await createSite(tenantSlug, token, body)
+      const site = await createSite(api, token, body)
       if (site) void load()
       return site
     },
-    [tenantSlug, load]
+    [tenantSlug, api, load]
   )
 
   const update = useCallback(
@@ -73,22 +75,22 @@ export function useSites(tenantSlug: string | null): UseSitesResult {
     ) => {
       if (!tenantSlug) return null
       const token = await getToken()
-      const site = await updateSite(tenantSlug, token, siteId, body)
+      const site = await updateSite(api, token, siteId, body)
       if (site) void load()
       return site
     },
-    [tenantSlug, load]
+    [tenantSlug, api, load]
   )
 
   const remove = useCallback(
     async (siteId: string) => {
       if (!tenantSlug) return false
       const token = await getToken()
-      const ok = await deleteSiteApi(tenantSlug, token, siteId)
+      const ok = await deleteSiteApi(api, token, siteId)
       if (ok) void load()
       return ok
     },
-    [tenantSlug, load]
+    [tenantSlug, api, load]
   )
 
   return { sites, loading, error, refetch: load, create, update, remove }
