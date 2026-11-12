@@ -6,14 +6,15 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 
 ## 1. Current state (verified 2026-11-12)
 
-- **Live:** `develop` and `main` are both deployed (PR #16, merge `f3f7741`). The overhaul `T-01`–`T-12` and the §6 cutover are complete.
+- **Live:** `develop` and `main` are both deployed (PR #17, merge `440f83a`, 2026-11-12). Tasks A–F below are done except A (`jinks.ca` pending); outcomes in §5. **Next run: §7.**
 - **Admin SPA:** `app.echo9.net` (prod) and `stage.echo9.net` (staging).
 - **Tenant sites:** `*.echo9.net` is served as static HTML by CloudFront `E1P9K5ZO6DTDWR` (`d2nqdv42n1qlhv.cloudfront.net`) via `cf-site-content.js` + KVS `9host-site-hosts-kvs` (`arn:aws:cloudfront::452644920012:key-value-store/10537886-08ea-4b05-87c9-68a1684e6f41`). Unmapped hosts return 404.
-- **Admin SPA distributions:** production `E26B25DDJUH6YE` (`d1y8o0nam8q0rq`), aliases `app` + `prod`; staging `E1NLQ7KZ99HQJ5` (`d327su5s05gt98`).
+- **Admin SPA distributions:** production `E26B25DDJUH6YE` (`d1y8o0nam8q0rq`), alias `app` only (`prod` retired, NXDOMAIN); staging `E1NLQ7KZ99HQJ5` (`d327su5s05gt98`).
+- **Landing (staging):** `preview.echo9.net` → CloudFront `EYLR0G6R8Z1BK` (`dggrw8k6efaha.cloudfront.net`), bucket `9host-landing`, synced from `landing/` by CI. Not a tenant site; never in the KVS.
 - **Custom domains:** Cloudflare for SaaS on zone `echonin9.com` (fallback origin `proxy.echonin9.com`, Worker `9host-custom-domain-proxy`). Customers point `CNAME`/`ALIAS -> proxy.echonin9.com` plus a `_cf-custom-hostname` TXT.
   - Live: `oliverjinks.com` and `www.oliverjinks.com`.
-  - `jinks.ca`: the owner changed its DNS; waiting for Cloudflare to issue the certificate.
-- **Published sites** (tenant `jinks`). Their HTML still uses the old `/site/{tenant}/{site_id}/` links until republished:
+  - Live: `jinks.ca` (ACTIVE 2026-11-12, KVS key present, 200). `www.jinks.ca` is not configured (no Cloudflare custom hostname, no KVS key).
+- **Published sites** (tenant `jinks`). Republished 2026-11-12 with root-relative links:
 
   | Subdomain | Site ID |
   |---|---|
@@ -22,10 +23,10 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
   | `oliverjinks-com` | `4ee567a5-e8a7-4164-9bdb-2a2cab21868a` |
 
 - **Baseline checks (all must stay green):**
-  - `cd api && ../.venv/bin/pytest -q` (217)
-  - `npm --prefix frontend test -- --run` (28)
+  - `cd api && ../.venv/bin/pytest -q` (361)
+  - `npm --prefix frontend test -- --run` (43)
   - `npm --prefix frontend run build`
-  - `node --test infra/tests/*.test.mjs` (14)
+  - `node --test infra/tests/*.test.mjs` (21)
   - `scripts/build-lambda-package.sh && AWS_PROFILE=echo9 AWS_REGION=us-east-1 tofu -chdir=infra validate`
 
 ## 2. Guardrails (hard rules)
@@ -35,7 +36,7 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 3. **Local tofu:**
    - **Root config:** init with `-backend-config="bucket=9host-tofu-state-452644920012" -backend-config="key=9host/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="dynamodb_table=9host-tofu-state-lock"`, and pass `-var='github_org_repo=EchoNin9/9host' -var='domains=["echo9.net"]'`.
    - **Applying:** `tofu plan -out=<file>`, then `tofu show <file>`, then `tofu apply <file>`. Applies without a reviewed plan are refused by the session's safety checks.
-   - **`infra/cloudns`:** state is local, and provider `ClouDNS/cloudns` 1.0.10 cannot read records, so always use `-refresh=false` there **and `-target` the one record you mean to change** (a full plan wants to re-create the existing, unmanaged ACM validation records). `T-16` found no upstream fix (1.3.3 has the same bug); see `T-24`. After a create, the provider's read-back fails and taints the record: run `tofu untaint` on it.
+   - **`infra/cloudns`:** state is local and manages only the zone (`T-24`). The `echo9.net` edge records (`app`, `sites-origin`, `tools`, `preview`) are managed by `infra/cloudns/scripts/edge_records.py` (dry run by default; `--apply` to write; the dry run must show the intended change only). Pre-T-24 state backup: `infra/cloudns/terraform.tfstate.pre-T24.backup`.
 4. **ClouDNS edits:** allowed only on zone `echo9.net`, and only for the records named in a task. **Never read or edit `jinks.ca`** (owner's personal zone and a real-customer test). Never touch MX/NS/TXT mail records anywhere.
 5. **AWS:** `--profile echo9`, `us-east-1`, account `452644920012`. Only modify or delete resources named `9host*` or listed here.
    - Do not touch `E164B9WJ8ALT9F` (landing/other domains), `E1S4CU3NV8WOAL` (URL shortener), or any non-9host distribution or certificate.
@@ -182,3 +183,65 @@ The wildcard cert (`aws_acm_certificate.wildcard`) already includes the `echo9.n
 6. **Rollback:**
    - Recreate the WR records `@` and `www` -> `https://tools.e9.cx` (301).
    - The aliases can stay on the landing distribution.
+
+## 7. Next run (fresh Commander, from 2026-11-13)
+
+Same guardrails (§2) and workflow: one commit + push to `develop` per ticket, CI green before the next, never push to `main`. Run the baseline checks (§1) first; expected counts now: pytest 337, vitest 43, edge 19.
+
+Order and acceptance:
+1. **A carry-over: `jinks.ca`.** Poll as in §3 A. If `ACTIVE`, confirm the KVS key and that `https://jinks.ca/` returns 200. If still pending, report `verification_errors` and do not touch its DNS.
+2. **`T-21` edge proxy-secret check** (Opus).
+   - Start from the reverted code in `53a27b4` (`git show 53a27b4 -- infra/cf-site-content.js infra/tests/edge-functions.test.mjs`).
+   - Find the runtime error that made every request 503. Reproduce it with `aws cloudfront test-function` on a scratch function `9host-site-content-t21` (create, test, delete). **Never `update-function` / `publish-function` the live `9host-site-content`.** CI deploys it.
+   - Add a CI step that runs `test-function` against the DEVELOPMENT stage before the publishing apply. The deploy role must allow `cloudfront:TestFunction`; watch the 6144-char policy limit (currently ~6060).
+   - Acceptance:
+     - `test-function` returns 200 / a rewritten URI for a mapped host, and 404 for an unmapped one.
+     - After pushing, `jinks4.echo9.net`, `oliverjinks.com` and `www.oliverjinks.com` return 200 within 5 minutes. Otherwise revert immediately by git revert + push (revert the tests too, or the CI gate blocks the revert).
+   - Leave the Worker secret, `wrangler deploy` and the `__proxy_secret__` KVS key to the owner. Write the exact commands in this file.
+3. **`T-22` production `/media/*` behaviour** (Opus).
+   - Mirror the staging distribution's `/media/*` ordered cache behaviour onto `aws_cloudfront_distribution.production` in `infra/cloudfront.tf`.
+   - Plan locally: only an in-place update of `E26B25DDJUH6YE`, plus Lambda hash noise.
+   - Acceptance: `curl -sI https://app.echo9.net/media/<existing key>` returns the same as on `stage`.
+4. **`T-23` remaining CustomRole permissions** (Opus).
+   - Use `RequestContext.require_permission(module, roles)` (from `T-15`) on the domains, analytics, settings and users routes, with the same semantics: built-in roles are unchanged, and custom roles need `permissions[module] is True`.
+   - Acceptance: tests in `api/tests/test_custom_roles.py` for each key (granted gets 2xx, absent gets 403); built-in role behaviour unchanged.
+5. **`T-24` ClouDNS records** (Opus).
+   - Preferred: move the `echo9.net` edge records (`app`, `sites-origin`, `tools`, `preview`) out of OpenTofu.
+     - `tofu state rm` them in `infra/cloudns`, after backing up `terraform.tfstate`.
+     - Add an idempotent `infra/cloudns/scripts/edge_records.py` that reads targets from root `tofu output` and upserts them through the ClouDNS API (secret `9host-cloudns`).
+     - Keep only the zone in tofu.
+   - The script's dry run must show **no changes** against live DNS before any real run. Never touch `jinks.ca`, `@`, `www`, or MX/NS/TXT records.
+   - Then remove the `-refresh=false` / `-target` rule from §2.3.
+6. **Owner-only, do not do:**
+   - `T-25` (expired cert on `E164B9WJ8ALT9F`).
+   - `T-26` (Admin SPA restyle to the mockups; wait for the owner's go-ahead).
+   - The §6 landing production cutover.
+
+Finish by updating §5 / `AGENTS.md` with outcomes and SHAs, and reporting what changed in production and what is waiting on the owner.
+
+### §7 status (2026-11-12, second Commander run)
+
+Items 1–5 done; item 6 untouched (owner). Every push was green in develop CI, and after each one `jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `app.echo9.net`, `preview.echo9.net` returned 200.
+
+| Item | Outcome | Commit |
+|---|---|---|
+| 1. `jinks.ca` | `ACTIVE`, `verification_errors: []`, KVS key present, `https://jinks.ca/` 200 (first curl 404 during KVS propagation). `www.jinks.ca` not configured — owner decision. | — |
+| 2. `T-21` | Root cause of the T-18 503: cloudfront-js-2.0 rejects `await` inside call arguments (`String(await kvsHandle.get(...))`) with a load-time SyntaxError; Node accepts it. Fixed (await only as a plain assignment), proven with `test-function` on scratch `9host-site-content-t21` (deleted). Fails open while `__proxy_secret__` is absent (today). CI now runs `infra/tests/cf_test_function.py` (DEVELOPMENT stage, mapped + unmapped host) before apply; deploy policy gained `cloudfront:TestFunction` (6072/6144 chars). New edge tests incl. a static `await`-placement guard. LIVE published 11:29 UTC, all sites 200. The commit also carries T-24's deletion of `infra/cloudns/scripts/import-existing-records.sh`. | `5f088e4` |
+| 3. `T-22` | Production `E26B25DDJUH6YE` has the `/media/*` origin + behaviour; media bucket policy allows it. `app` and `stage` both return 200 `binary/octet-stream` 980813 bytes for `/media/jinks/80e9d9b4-…/014445eb-joshing-logo1.png` (app was 403). | `55de689` |
+| 4. `T-23` | `require_permission` on domains (POST/DELETE/activate), analytics (GET), settings (PATCH `/api/tenant`), users (`/api/tenant/users`, `/api/tenant/tusers`). Escalation guard: `/api/tenant/roles` stays built-in admin/manager only; custom-role callers may assign only `member`/`editor` to TUSERs. Built-in roles unchanged. pytest 361. | `f068e73` |
+| 5. `T-24` | `infra/cloudns` manages only the zone; edge records via `infra/cloudns/scripts/edge_records.py` (dry run 0 changes vs live DNS; never applied). State backup `infra/cloudns/terraform.tfstate.pre-T24.backup`. §2.3 updated. | `b9b544f` |
+
+#### Owner: `T-21` proxy-secret rollout (only while all sites are 200)
+Run from the repo root, in one shell.
+1. Deploy the Worker (already sends `X-9host-Proxy-Secret` only when `PROXY_SECRET` is set, so harmless):
+   `set -a; . ./.env.cloudflare; set +a; export CLOUDFLARE_API_TOKEN="$CLOUDFLARE_WORKERS_TOKEN"; (cd infra/cloudflare-worker && npx wrangler deploy)` — rollback `npx wrangler rollback`.
+2. Set the secret: `export PROXY_SECRET="$(openssl rand -hex 32)"; (cd infra/cloudflare-worker && printf %s "$PROXY_SECRET" | npx wrangler secret put PROXY_SECRET)` — rollback `npx wrangler secret delete PROXY_SECRET` (delete the KVS key first if written).
+3. Write the KVS key (enforcement starts):
+   `.venv/bin/python -c "import os,boto3;c=boto3.Session(profile_name='echo9',region_name='us-east-1').client('cloudfront-keyvaluestore');a='arn:aws:cloudfront::452644920012:key-value-store/10537886-08ea-4b05-87c9-68a1684e6f41';c.put_key(KvsARN=a,Key='__proxy_secret__',Value=os.environ['PROXY_SECRET'],IfMatch=c.describe_key_value_store(KvsARN=a)['ETag']);print('ok')"; unset PROXY_SECRET`
+   Verify: `oliverjinks.com` and `www.oliverjinks.com` 200; `curl -s -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Host: oliverjinks.com' https://sites-origin.echo9.net/` → 404.
+   Rollback (instant): same snippet with `c.delete_key(KvsARN=a,Key='__proxy_secret__',IfMatch=...)`.
+
+#### New notes / tickets
+- `T-27` (owner decision): `editor` is not an assignable TUSER role today (400 for every caller). Decide whether it should be.
+- `T-28`: The CI test-function gate uses `jinks4.echo9.net` as its mapped host; change `--mapped-host` in `cf_test_function.py` if that site is ever removed.
+- `www.jinks.ca`: add a Cloudflare custom hostname + KVS key if wanted (owner).

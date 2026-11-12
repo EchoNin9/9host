@@ -49,7 +49,7 @@ def get_analytics_handler(ctx: RequestContext) -> dict:
     GET /api/tenant/analytics — returns placeholder analytics for Pro+ tenants.
     Requires tenant membership and the advanced_analytics feature (tier + module_overrides).
     """
-    tenant_slug, _ = ctx.require_tenant_member()
+    tenant_slug, _ = ctx.require_permission("analytics", ("admin", "manager", "editor", "member"))
     try:
         ctx.require_feature("advanced_analytics")
     except HttpError:

@@ -133,7 +133,7 @@ def _update_member(store, tenant_slug: str, target: str, body: dict) -> dict:
 
 
 def users_handler(ctx: RequestContext) -> dict:
-    tenant_slug, _ = ctx.require_tenant_member(MANAGE_ROLES)
+    tenant_slug, _ = ctx.require_permission("users", MANAGE_ROLES)
     store = DynamoDBTenantStore()
     method = ctx.method
     parts = [unquote(p) for p in ctx.path[len(BASE_PATH):].split("/") if p]

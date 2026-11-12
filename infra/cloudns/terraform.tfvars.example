@@ -1,7 +1,6 @@
-# Copy to terraform.tfvars and fill in. Run: tofu apply -var-file=terraform.tfvars
+# Copy to terraform.tfvars and fill in. Run: tofu plan -refresh=false -var-file=terraform.tfvars
 # CloudNS credentials are in AWS Secrets Manager (9host-cloudns) — never put them here.
+# Only the zones are managed here (T-24); records are handled by scripts/edge_records.py
+# (edge records) or manually (stage, *, ACM validation).
 # domains defaults to main infra output; override if needed:
-# domains = ["echo9.net", "echo9.ca"]
-
-# Set to false when zone/records already exist and import fails (e.g. provider priority bug)
-# manage_records = false
+# domains = ["echo9.net"]

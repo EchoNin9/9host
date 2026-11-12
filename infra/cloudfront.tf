@@ -162,6 +162,39 @@ resource "aws_cloudfront_distribution" "production" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
+  # T-22: Media origin for production (mirrors staging, Task 8.1)
+  origin {
+    domain_name              = aws_s3_bucket.media.bucket_regional_domain_name
+    origin_id                = "S3-9host-media-production"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
+  }
+
+  # T-22: Media — /media/{tenant}/{site}/{filename} → 9host-media (production)
+  ordered_cache_behavior {
+    path_pattern           = "/media/*"
+    target_origin_id       = "S3-9host-media-production"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.media_content.arn
+    }
+
+    min_ttl     = 0
+    default_ttl = 86400
+    max_ttl     = 31536000
+  }
+
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]

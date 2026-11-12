@@ -1,7 +1,13 @@
 # ------------------------------------------------------------------------------
-# CloudNS DNS (Task 1.11, 1.12, 1.14) — echo9.net + echo9.ca zones + DNS records
-# Run: cd infra/cloudns && tofu init && tofu apply -var-file=terraform.tfvars
+# CloudNS DNS (Task 1.11, 1.12, 1.14, T-24) — zones only.
+# Run: cd infra/cloudns && tofu init && tofu plan -refresh=false
 # Credentials from AWS Secrets Manager (9host-cloudns). Never use tfvars for password.
+#
+# T-24: DNS *records* are NOT managed here. Provider ClouDNS/cloudns 1.0.10 (and 1.3.3)
+# cannot read records back (retrec.priority string vs number), so every refresh fails.
+#   - Edge records (app, sites-origin, tools, preview on echo9.net) are upserted by
+#     scripts/edge_records.py (dry-run by default; --apply to write).
+#   - Legacy records (stage, *, ACM validation CNAMEs) are live and managed manually.
 # ------------------------------------------------------------------------------
 
 terraform {
@@ -31,7 +37,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Read main infra outputs (ACM validation, CloudFront domains, domains list, secret ARN)
+# Read main infra outputs (domains list, secret ARN)
 data "aws_caller_identity" "current" {}
 
 data "terraform_remote_state" "infra" {
@@ -49,124 +55,12 @@ data "aws_secretsmanager_secret_version" "cloudns" {
 }
 
 locals {
-  domains       = length(var.domains) > 0 ? var.domains : data.terraform_remote_state.infra.outputs.domains
-  acm_records   = data.terraform_remote_state.infra.outputs.acm_validation_records
-  acm_wildcard  = data.terraform_remote_state.infra.outputs.acm_wildcard_validation_records
-  cf_staging    = data.terraform_remote_state.infra.outputs.cloudfront_staging_domain
-  cf_production = data.terraform_remote_state.infra.outputs.cloudfront_production_domain
-  cf_sites      = data.terraform_remote_state.infra.outputs.cloudfront_sites_domain
-  # Runbook task F: standalone landing distribution (9host-landing); null until root infra applies
-  cf_landing = try(data.terraform_remote_state.infra.outputs.cloudfront_landing_domain, null)
+  domains = length(var.domains) > 0 ? var.domains : data.terraform_remote_state.infra.outputs.domains
 }
 
-# DNS zone per domain (echo9.net, echo9.ca)
+# DNS zone per domain (echo9.net)
 resource "cloudns_dns_zone" "zone" {
   for_each = toset(local.domains)
   domain   = each.value
   type     = "master"
-}
-
-# ACM validation CNAMEs (Task 1.12, 1.14)
-# ACM name format: _xxx.stage.echo9.net. -> zone echo9.net, record name _xxx.stage
-locals {
-  acm_by_domain = var.manage_records ? { for r in local.acm_records : r.domain => r } : {}
-  # T-08: resolve the zone by suffix match (stage./prod./app. and any future prefix)
-  zone_from_fqdn = {
-    for d, r in local.acm_by_domain : d => one([for z in local.domains : z if r.domain == z || endswith(r.domain, ".${z}")])
-  }
-}
-
-resource "cloudns_dns_record" "acm_validation" {
-  for_each = local.acm_by_domain
-  zone     = cloudns_dns_zone.zone[local.zone_from_fqdn[each.key]].domain
-  name     = replace(trimsuffix(each.value.name, "."), ".${local.zone_from_fqdn[each.key]}", "")
-  type     = "CNAME"
-  value    = trimsuffix(each.value.value, ".")
-  ttl      = 300
-}
-
-# stage.{domain} -> CloudFront staging (per zone)
-resource "cloudns_dns_record" "stage" {
-  for_each = var.manage_records ? toset(local.domains) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "stage"
-  type     = "CNAME"
-  value    = local.cf_staging
-  ttl      = 300
-}
-
-# Task 1.78: *.{domain} -> CloudFront sites (tenant + site subdomains)
-resource "cloudns_dns_record" "wildcard" {
-  for_each = var.manage_records ? toset(local.domains) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "*"
-  type     = "CNAME"
-  value    = local.cf_sites
-  ttl      = 300
-}
-
-# Task 1.78: Wildcard ACM validation CNAMEs (*.echo9.net)
-locals {
-  # T-08: the wildcard cert also carries the bare landing apex (echo9.net); ACM issues the
-  # SAME validation CNAME for "echo9.net" and "*.echo9.net", so only wildcard entries are kept.
-  acm_wildcard_by_domain = var.manage_records ? { for r in local.acm_wildcard : r.domain => r if startswith(r.domain, "*.") } : {}
-  zone_from_wildcard     = { for d, r in local.acm_wildcard_by_domain : d => replace(r.domain, "*.", "") }
-}
-
-resource "cloudns_dns_record" "acm_wildcard_validation" {
-  for_each = local.acm_wildcard_by_domain
-  zone     = cloudns_dns_zone.zone[local.zone_from_wildcard[each.key]].domain
-  name     = replace(trimsuffix(each.value.name, "."), ".${local.zone_from_wildcard[each.key]}", "")
-  type     = "CNAME"
-  value    = trimsuffix(each.value.value, ".")
-  ttl      = 300
-}
-
-# ------------------------------------------------------------------------------
-# T-08: Edge split records (docs/UNATTENDED_ORCHESTRATION.md §4). Gated separately from
-# manage_records because the legacy stage/prod/*/ACM records are live but unmanaged.
-# ------------------------------------------------------------------------------
-
-# app.{domain} -> CloudFront production Admin SPA (US-03)
-resource "cloudns_dns_record" "app" {
-  for_each = var.manage_edge_records ? toset(local.domains) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "app"
-  type     = "CNAME"
-  value    = local.cf_production
-  ttl      = 300
-}
-
-# sites-origin.echo9.net -> CloudFront sites (Cloudflare for SaaS Worker upstream)
-resource "cloudns_dns_record" "sites_origin" {
-  for_each = var.manage_edge_records ? toset([var.primary_domain]) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "sites-origin"
-  type     = "CNAME"
-  value    = local.cf_sites
-  ttl      = 300
-}
-
-# tools.echo9.net -> 301 web redirect to https://tools.e9.cx (replaces the @/www redirect)
-resource "cloudns_dns_record" "tools_redirect" {
-  for_each     = var.manage_edge_records ? toset([var.primary_domain]) : []
-  zone         = cloudns_dns_zone.zone[each.key].domain
-  name         = "tools"
-  type         = "WR"
-  value        = "https://tools.e9.cx"
-  redirecttype = 301
-  frame        = "0"
-  savepath     = 0
-  ttl          = 300
-}
-
-# Runbook task F: preview.echo9.net -> CloudFront 9host-landing (standalone landing staging).
-# Skipped until the root infra output cloudfront_landing_domain exists.
-resource "cloudns_dns_record" "landing_preview" {
-  for_each = var.manage_edge_records && local.cf_landing != null ? toset([var.primary_domain]) : []
-  zone     = cloudns_dns_zone.zone[each.key].domain
-  name     = "preview"
-  type     = "CNAME"
-  value    = local.cf_landing
-  ttl      = 300
 }
