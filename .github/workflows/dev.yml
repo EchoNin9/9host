@@ -93,6 +93,8 @@ jobs:
           VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
           VITE_COGNITO_REGION: ${{ vars.VITE_COGNITO_REGION || 'us-east-1' }}
           VITE_API_URL: ${{ steps.api-url.outputs.url }}
+          # T-31: block editor (Puck) on staging only; main.yml leaves it off for app.echo9.net
+          VITE_ENABLE_BLOCK_EDITOR: "true"
 
       # Apply deploy policy first so CI has new permissions (CreateRole, EventBridge, etc.) before plan/apply
       # -refresh=false avoids reading EventBridge/other resources before we have ListTagsForResource
