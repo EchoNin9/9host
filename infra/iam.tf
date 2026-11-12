@@ -142,7 +142,8 @@ data "aws_iam_policy_document" "deploy" {
       "iam:UntagRole",
       "iam:AttachRolePolicy",
       "iam:DetachRolePolicy",
-      "iam:PassRole"
+      "iam:PassRole",
+      "iam:ListInstanceProfilesForRole"
     ]
     resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/9host-*"]
   }
@@ -205,6 +206,7 @@ data "aws_iam_policy_document" "deploy" {
       "s3:GetBucketLocation",
       "s3:GetBucketLogging",
       "s3:GetLifecycleConfiguration",
+      "s3:PutLifecycleConfiguration",
       "s3:GetReplicationConfiguration",
       "s3:GetBucketObjectLockConfiguration",
       "s3:GetEncryptionConfiguration",
