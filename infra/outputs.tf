@@ -76,7 +76,7 @@ output "cloudfront_production_distribution_id" {
 }
 
 output "cloudfront_production_domain" {
-  description = "CloudFront production Admin SPA domain (CNAME app.{domain} and prod.{domain} -> this in CloudNS)"
+  description = "CloudFront production Admin SPA domain (CNAME app.{domain} -> this in CloudNS)"
   value       = aws_cloudfront_distribution.production.domain_name
 }
 

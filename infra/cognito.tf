@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------
 # Cognito User Pool (9host-user-pool) for auth — Task 1.9
-# App client for frontend SPA (stage.echo9.net, prod.echo9.net).
+# App client for frontend SPA (stage.echo9.net, app.echo9.net).
 # Groups: admin, manager, editor, member (per docs/SCHEMA.md).
 # ------------------------------------------------------------------------------
 
@@ -64,13 +64,11 @@ resource "aws_cognito_user_pool_client" "frontend" {
   supported_identity_providers = ["COGNITO"]
   callback_urls = concat(
     [for d in var.domains : "https://stage.${d}"],
-    [for d in var.domains : "https://prod.${d}"],
     [for d in var.domains : "https://app.${d}"],
     ["http://localhost:5173", "http://localhost:5173/auth/callback"]
   )
   logout_urls = concat(
     [for d in var.domains : "https://stage.${d}"],
-    [for d in var.domains : "https://prod.${d}"],
     [for d in var.domains : "https://app.${d}"],
     ["http://localhost:5173"]
   )

@@ -7,7 +7,7 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 ## 1. Current state (verified 2026-11-12)
 
 - **Live:** `develop` and `main` are both deployed (PR #16, merge `f3f7741`). The overhaul `T-01`–`T-12` and the §6 cutover are complete.
-- **Admin SPA:** `app.echo9.net` (prod, also `prod.echo9.net`) and `stage.echo9.net` (staging).
+- **Admin SPA:** `app.echo9.net` (prod) and `stage.echo9.net` (staging).
 - **Tenant sites:** `*.echo9.net` is served as static HTML by CloudFront `E1P9K5ZO6DTDWR` (`d2nqdv42n1qlhv.cloudfront.net`) via `cf-site-content.js` + KVS `9host-site-hosts-kvs` (`arn:aws:cloudfront::452644920012:key-value-store/10537886-08ea-4b05-87c9-68a1684e6f41`). Unmapped hosts return 404.
 - **Admin SPA distributions:** production `E26B25DDJUH6YE` (`d1y8o0nam8q0rq`), aliases `app` + `prod`; staging `E1NLQ7KZ99HQJ5` (`d327su5s05gt98`).
 - **Custom domains:** Cloudflare for SaaS on zone `echonin9.com` (fallback origin `proxy.echonin9.com`, Worker `9host-custom-domain-proxy`). Customers point `CNAME`/`ALIAS -> proxy.echonin9.com` plus a `_cf-custom-hostname` TXT.

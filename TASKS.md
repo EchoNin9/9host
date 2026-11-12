@@ -1,6 +1,6 @@
 # 9host — Multi-Tenant Website Hosting Platform
 
-> **Branch strategy:** `main` = prod (prod.echo9.net) | `develop` = dev (stage.echo9.net)  
+> **Branch strategy:** `main` = prod (app.echo9.net) | `develop` = dev (stage.echo9.net)  
 > **Agent roles:** agent1 (backend/infra) | agent2 (frontend/ui) | agent3 (payments)  
 > **AWS naming:** All AWS resources MUST use prefix `9host` (e.g. 9host-main, 9host-api, 9host-user-pool, 9host-media)  
 > **Agent workflow:** Update task status (TODO → DONE) in this file when completing work.  

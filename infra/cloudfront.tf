@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------
 # CloudFront distributions (T-08 edge split, docs/SPEC.md §3 Module 1A):
 #   Admin SPA ("frontend"):  staging    -> stage.{domain}
-#                            production -> app.{domain} (+ prod.{domain} for cutover)
+#                            production -> app.{domain}
 #   Public Sites & Landing:  sites      -> *.{domain}, {landing}, www.{landing}
 # S3 origins with OAC. ACM certs (us-east-1). Admin SPA routing via cf-spa-routing.js.
 # The Admin SPA calls API Gateway directly (VITE_API_URL), so there is no /api/* behavior.
@@ -142,7 +142,7 @@ resource "aws_s3_bucket_policy" "frontend_staging" {
 }
 
 # ------------------------------------------------------------------------------
-# Production Admin SPA: app.echo9.net (+ prod.echo9.net kept for cutover compat)
+# Production Admin SPA: app.echo9.net
 # ------------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "production" {
   provider = aws.us_east_1
@@ -154,7 +154,7 @@ resource "aws_cloudfront_distribution" "production" {
   price_class         = "PriceClass_100"
   wait_for_deployment = false
 
-  aliases = flatten([for d in var.domains : ["app.${d}", "prod.${d}"]])
+  aliases = flatten([for d in var.domains : ["app.${d}"]])
 
   origin {
     domain_name              = aws_s3_bucket.frontend_production.bucket_regional_domain_name
