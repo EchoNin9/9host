@@ -295,3 +295,20 @@ Next run: `T-31b` (block core, Python registry + golden fixtures) after the TipT
 - `T-31a`: owner chose latest deps — TipTap 3.33.1 (all `@tiptap/*`), Puck 0.24.0 exact on the spike branch (`a47bbec`); single TipTap copy; vitest 44, build green; Puck lazy chunk 157.7 KB gz.
 - `T-21` proxy secret **rolled out** (Commander, owner-approved): Worker deployed (version `2a231778`), `PROXY_SECRET` set, `__proxy_secret__` KVS key written. Custom domains 200; forged `X-Forwarded-Host` to `sites-origin.echo9.net` → 404 within 20 s. Rollback: delete the KVS key (snippet in §7 status).
 - `E164B9WJ8ALT9F`: **disabled**; removed `echonin9.com`, `www.echonin9.com` (Cloudflare redirects them to GitHub) and `echo9.tech`, `www.echo9.tech` (no DNS). `echo9.ca` / `www.echo9.ca` remain attached (both already failed HTTPS on the 2022-expired cert). Owner plan: echo9.ca/echo9.tech become the business site in a separate project (`T-37`); delete distribution, cert and old origins after observation (`T-36`). Re-enable = set `Enabled=true` and restore aliases.
+
+## 9. Next run — WYSIWYG editor (fresh Commander, autonomous)
+
+Spec: `docs/adr/0003-wysiwyg-templates.md` (Accepted; read "Owner Answers" and the UX rule at the end). Same guardrails (§2) and workflow as §8: one ticket per commit + push to `develop`, CI green and the 8-site smoke check after every push, never push to `main`. Owner preferences: dependencies latest/near-latest (Puck exact-pinned, currently 0.24.0; TipTap 3.33.1); no side-slide sheets for template editing/picking; no raw JSON shown to users.
+
+State: the `T-31a` spike is on `develop` (`5ef5f07`, `2b712e6`, `2e7a486`): Puck route `/:tenantSlug/sites/:siteId/editor-spike`, registered only when `VITE_ENABLE_BLOCK_EDITOR=true`, which `dev.yml` sets for stage and `main.yml` does not. Keep that flag as the gate for all editor work until the owner says otherwise.
+
+Order (ADR implementation table): `T-31b` block core (Python registry + golden fixtures) → `T-31c` save path (sanitize on save) → `T-31d` editor UI + full-page template picker (replaces the spike route) → `T-31e` preview + `_home` → `T-32a` template data/versioning (pin + deprecate, drop tenant forks) → `T-32b` full-page template admin (remove the Sheet) → `T-31f` backfill. `T-34` tier gating is out of scope.
+
+Stop and ask the owner before:
+- `T-31f` backfill or any bulk write to `9host-main`: take an on-demand DynamoDB backup first and state its ARN;
+- republishing live tenant sites (`jinks4`, `jinks-ca`, `oliverjinks-com`) with the block compiler: compiled output must be byte-identical for legacy pages (ADR migration rule); diff `published/current/` before/after on stage;
+- any `.tf` change (plan + show first) or new AWS resource.
+
+Subagents: Opus for code tickets, Sonnet for review/CI triage. **Subagents must not use the Chrome tools**; only the Commander does visual checks, in its own new tab, and never clicks tenant rows in the superadmin console (2026-11-12 incident: a subagent left the owner's stage session impersonating `jinks`).
+
+Finish: update §9 status + `AGENTS.md` with outcomes and SHAs; report stage URLs for owner review.
