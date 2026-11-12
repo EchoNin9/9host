@@ -370,31 +370,20 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   # T-06: 9host-site-hosts-kvs (CloudFront KeyValueStore) + its __preview_jwt_secret__ key
+  # T-16: wildcards keep 9host-deploy under IAM's 6144-char managed-policy limit.
+  # Management actions stay on "*" (create/list cannot be scoped to a not-yet-known KVS ARN).
   statement {
-    sid    = "CloudFrontKeyValueStore"
-    effect = "Allow"
-    actions = [
-      "cloudfront:CreateKeyValueStore",
-      "cloudfront:DescribeKeyValueStore",
-      "cloudfront:UpdateKeyValueStore",
-      "cloudfront:DeleteKeyValueStore",
-      "cloudfront:ListKeyValueStores"
-    ]
-    # T-16: management actions stay on "*" (create/list cannot be scoped to a not-yet-known KVS ARN)
+    sid       = "CloudFrontKeyValueStore"
+    effect    = "Allow"
+    actions   = ["cloudfront:*KeyValueStore*"]
     resources = ["*"]
   }
 
   # T-16: data-plane key access scoped to the 9host KVS only
   statement {
-    sid    = "CloudFrontKeyValueStoreKeys"
-    effect = "Allow"
-    actions = [
-      "cloudfront-keyvaluestore:DescribeKeyValueStore",
-      "cloudfront-keyvaluestore:GetKey",
-      "cloudfront-keyvaluestore:PutKey",
-      "cloudfront-keyvaluestore:DeleteKey",
-      "cloudfront-keyvaluestore:ListKeys"
-    ]
+    sid       = "CloudFrontKeyValueStoreKeys"
+    effect    = "Allow"
+    actions   = ["cloudfront-keyvaluestore:*"]
     resources = [aws_cloudfront_key_value_store.site_hosts.arn]
   }
 }
