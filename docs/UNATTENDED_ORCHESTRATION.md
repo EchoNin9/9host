@@ -291,7 +291,9 @@ We verified live API access against `https://api.cloudns.net/dns/records.json` f
 > - ClouDNS `app`, `sites-origin` and `tools` records created. Provider v1.0.10 cannot read records back (`retrec.priority` unmarshal error), so use `-refresh=false` in `infra/cloudns` until fixed (tracked in `T-16`).
 > - Worker `9host-custom-domain-proxy` deployed on `echonin9.com` with a scoped Workers token kept only in local `.env.cloudflare` (`CLOUDFLARE_WORKERS_TOKEN`).
 > - Verified: the three subdomain sites return 200, a draft path returns 403, `stage.echo9.net` serves the new frontend, the `proxy.echonin9.com` → Worker → CloudFront chain works (unmapped host returns 404), and `X-Forwarded-Host` routing works.
-> - **Remaining:** re-add custom domains (`jinks.ca`, `oliverjinks.com`) through the app; merge `develop` → `main` for the production frontend (`app.echo9.net` still has the old bundle); republish sites for root-relative links; `T-19`.
+> - `oliverjinks.com` + `www.oliverjinks.com` are live on Cloudflare for SaaS (KVS mappings written on activation; expect about 1 minute of 404 after a domain first turns ACTIVE while KVS propagates). `testfoo.ca` row and `/aws/lambda/9host-acm-handler` log group deleted.
+> - `develop` merged to `main` (PR #16, `f3f7741`); production deploy run `43159015619` green with no infra changes; `app.echo9.net`, `prod.echo9.net` and `stage.echo9.net` serve the same new frontend; `/api/health` 200; no dependency errors in Lambda logs.
+> - **Remaining:** `jinks.ca` DNS (owner, as a real customer test: apex ALIAS -> `proxy.echonin9.com` + the `_cf-custom-hostname` TXT shown in the app); republish the 3 sites for root-relative links; retire `prod.echo9.net` (alias + ClouDNS record) once unused; `T-19`; `T-13`–`T-18`; standalone `(www.)echo9.net` landing site and the EXPIRED `echo9.net` cert on `E164B9WJ8ALT9F` (outside 9host).
 >
 > **Order from here (historical):**
 > 1. Blocker 2.

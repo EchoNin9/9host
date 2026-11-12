@@ -41,7 +41,7 @@ Before starting work, read:
 - [x] `T-11`: Clean Vendored Wheels from `api/` into Build Artifact Step [agent1] — DONE
 - [x] `T-12`: Full Regression Suite, OpenTofu Validate, & Spec/Standards Review Gate [all] — DONE
 
-**Not deployed.** Nothing has been pushed or applied. Follow `docs/UNATTENDED_ORCHESTRATION.md` §6 before pushing `develop` (push triggers `tofu apply`).
+**Deployed (2026-11-12).** `develop` and `main` are both live (PR #16, merge `f3f7741`); the §6 cutover is complete. Pushes to `develop`/`main` run `tofu apply` + frontend deploy via CI. Remaining operational steps are listed under "PROGRESS 2026-11-12" in runbook §6.
 
 ## Follow-On Tickets (`docs/UNATTENDED_ORCHESTRATION.md` §7)
 
