@@ -118,11 +118,13 @@ def _active_custom_domains(store, tenant_slug: str, site_id: str) -> list[str]:
     ]
 
 
-def _update_site(store, tenant_slug: str, site_id: str, site_item: dict, **fields) -> None:
-    """Persist site metadata changes through TenantStore (keeps SITE_META# + SITE# in sync)."""
-    site = store.get_site(tenant_slug, site_id) or ({**site_item, "id": site_id} if site_item else None)
-    if site:
-        store.put_site(tenant_slug, {**site, **fields})
+def _update_site(store, tenant_slug: str, site_id: str, **fields) -> None:
+    """Field-level, atomic site metadata update (SITE_META# + SITE# mirror; T-14).
+    A site deleted concurrently is left deleted."""
+    try:
+        store.update_site(tenant_slug, site_id, fields)
+    except KeyError:
+        pass
 
 
 def _publish_site(
@@ -153,7 +155,7 @@ def _publish_site(
     if hostnames:
         storage.sync_host_mapping(tenant_slug, site_id, hostnames)  # best-effort: never fails a publish
     _update_site(
-        store, tenant_slug, site_id, site_item,
+        store, tenant_slug, site_id,
         status="published", published_at=now, published_version=result["version"], updated_at=now,
     )
     return result
@@ -194,7 +196,7 @@ def _rollback_site(
     result = storage.rollback(tenant_slug, site_id, version, now=now)
     if result is None:
         return None
-    _update_site(DynamoDBTenantStore(table), tenant_slug, site_id, {}, published_version=version, updated_at=now)
+    _update_site(DynamoDBTenantStore(table), tenant_slug, site_id, published_version=version, updated_at=now)
     return result
 
 

@@ -206,3 +206,51 @@ def test_members_tusers_roles(store_and_raw):
     assert [t["username"] for t in tusers] == ["jane"]
     assert "password_hash" not in tusers[0]
     assert [r["name"] for r in store.list_roles("acme")] == ["editor"]
+
+
+# --- T-14: atomic update_site, migration marker ---------------------------------
+
+def _rows_equal(store, tenant, site_id):
+    meta = store._get(f"TENANT#{tenant}", f"SITE_META#{site_id}")
+    legacy = store._get(f"TENANT#{tenant}", f"SITE#{site_id}")
+    strip = lambda r: {k: v for k, v in r.items() if k not in ("sk", "gsi4pk", "gsi4sk", "id", "entity_type")}  # noqa: E731
+    assert strip(meta) == strip(legacy)
+    return meta
+
+
+def test_update_site_does_not_clobber_concurrent_change(store):
+    site = store.put_site("acme", {"name": "A", "slug": "acme-a", "status": "draft"})
+    stale = store.get_site("acme", site["id"])  # writer 1 reads...
+    store.update_site("acme", site["id"], {"name": "Renamed"})  # ...writer 2 commits first
+    out = store.update_site("acme", site["id"], {"status": "published", "published_version": 3})
+
+    assert stale["name"] == "A"
+    assert out["name"] == "Renamed" and out["status"] == "published" and int(out["published_version"]) == 3
+    meta = _rows_equal(store, "acme", site["id"])
+    assert meta["name"] == "Renamed" and int(meta["published_version"]) == 3
+    assert store.resolve_site_slug("acme-a") == {"tenant_slug": "acme", "site_id": site["id"]}
+
+
+def test_update_site_backfills_legacy_only_site(store_and_raw):
+    store, put_raw = store_and_raw
+    put_raw({"pk": "TENANT#acme", "sk": "SITE#old1", "name": "Old", "slug": "old-one",
+             "gsi4pk": "SLUG#old-one", "gsi4sk": "SITE#old1"})
+    out = store.update_site("acme", "old1", {"status": "published"})
+    assert out["id"] == "old1" and out["name"] == "Old" and out["status"] == "published"
+    _rows_equal(store, "acme", "old1")
+
+
+def test_update_site_missing_site_raises_and_writes_nothing(store):
+    with pytest.raises(KeyError):
+        store.update_site("acme", "ghost", {"status": "published"})
+    assert store._get("TENANT#acme", "SITE_META#ghost") is None
+    assert store._get("TENANT#acme", "SITE#ghost") is None
+
+
+def test_marked_tenant_first_list_sites_skips_legacy_query(store, monkeypatch):
+    store.mark_site_meta_migrated("fresh")
+    prefixes = []
+    real = store._query_prefix
+    monkeypatch.setattr(store, "_query_prefix", lambda pk, p: prefixes.append(p) or real(pk, p))
+    assert store.list_sites("fresh") == []
+    assert prefixes == ["SITE_META#"]

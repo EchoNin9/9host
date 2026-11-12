@@ -239,3 +239,20 @@ def test_remove_host_mapping_deletes_keys(kvs):
     storage.sync_host_mapping("acme", "s1", ["a.echo9.net", "b.com"])
     storage.remove_host_mapping(["A.echo9.net", "b.com", "never-mapped.com"])
     assert kvs.store == {}
+
+
+def test_s3_delete_files_removes_only_the_prefix(dynamodb_table):
+    s3 = boto3.client("s3", region_name="us-east-1")
+    s3.create_bucket(Bucket="9host-sites")
+    for key in ("acme/s1/published/v1/index.html", "acme/s1/draft/index.html", "acme/s2/x.html",
+                "acme/default.json", "acme2/s1/x.html"):
+        s3.put_object(Bucket="9host-sites", Key=key, Body=b"x")
+    storage = S3SiteStorageAdapter(s3)
+    keys = lambda: sorted(o["Key"] for o in s3.list_objects_v2(Bucket="9host-sites").get("Contents", []))  # noqa: E731
+
+    assert storage.delete_files("acme", "s1") == 2
+    assert keys() == ["acme/default.json", "acme/s2/x.html", "acme2/s1/x.html"]
+    assert storage.delete_files("acme") == 2
+    assert keys() == ["acme2/s1/x.html"]
+    with pytest.raises(ValueError):
+        storage.delete_files("")

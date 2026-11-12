@@ -159,6 +159,12 @@ class SiteStoragePort(Protocol):
     def rollback(self, tenant_slug: str, site_id: str, version: int, now: str | None = None) -> dict | None: ...
     def sync_host_mapping(self, tenant_slug: str, site_id: str, hostnames: list[str]) -> None: ...
     def remove_host_mapping(self, hostnames: list[str]) -> None: ...
+    def delete_files(self, tenant_slug: str, site_id: str | None = None) -> int: ...
+
+
+def default_storage() -> SiteStoragePort:
+    """S3-backed port for handlers. Tests replace this via monkeypatch."""
+    return S3SiteStorageAdapter(boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1")))
 
 
 class _SiteStorageBase:
@@ -176,6 +182,9 @@ class _SiteStorageBase:
         raise NotImplementedError
 
     def _list_versions(self, published_prefix: str) -> list[int]:
+        raise NotImplementedError
+
+    def _delete_prefix(self, prefix: str) -> int:
         raise NotImplementedError
 
     # --- shared flow ---
@@ -262,6 +271,13 @@ class _SiteStorageBase:
         for hostname in hostnames:
             delete_host_mapping(hostname)
 
+    def delete_files(self, tenant_slug: str, site_id: str | None = None) -> int:
+        """Delete every object under {tenant}/{site_id}/ (site delete) or {tenant}/ (tenant
+        delete, incl. the legacy default/ copy). Returns the number of objects removed."""
+        if not tenant_slug or "/" in tenant_slug or (site_id is not None and (not site_id or "/" in site_id)):
+            raise ValueError("tenant_slug and site_id must be non-empty path segments")
+        return self._delete_prefix(f"{tenant_slug}/{site_id}/" if site_id else f"{tenant_slug}/")
+
 
 class S3SiteStorageAdapter(_SiteStorageBase):
     def __init__(self, s3_client, bucket: str = S3_SITES_BUCKET):
@@ -308,6 +324,18 @@ class S3SiteStorageAdapter(_SiteStorageBase):
                     versions.append(int(name[1:]))
         return versions
 
+    def _delete_prefix(self, prefix):
+        deleted = 0
+        paginator = self.s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):  # <= 1000 keys per page
+            keys = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+            if keys:
+                resp = self.s3.delete_objects(Bucket=self.bucket, Delete={"Objects": keys, "Quiet": True})
+                if resp.get("Errors"):
+                    raise RuntimeError(f"S3 delete_objects failed under {prefix}: {resp['Errors'][:3]}")
+                deleted += len(keys)
+        return deleted
+
 
 class InMemorySiteStorage(_SiteStorageBase):
     """Dict-backed storage for tests: objects[key] = (body, content_type, cache_control)."""
@@ -339,6 +367,12 @@ class InMemorySiteStorage(_SiteStorageBase):
                 if "/" in key[len(published_prefix):] and name.startswith("v") and name[1:].isdigit():
                     versions.add(int(name[1:]))
         return sorted(versions)
+
+    def _delete_prefix(self, prefix):
+        keys = [k for k in self.objects if k.startswith(prefix)]
+        for key in keys:
+            del self.objects[key]
+        return len(keys)
 
     def sync_host_mapping(self, tenant_slug, site_id, hostnames):
         self.host_mappings.append((tenant_slug, site_id, list(hostnames)))

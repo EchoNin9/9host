@@ -160,6 +160,7 @@ def _delete_site(store, tenant_slug: str, site_id: str) -> dict:
             remove_domain(store.table, row)  # Cloudflare hostname + KVS key + row
         except CloudflareAPIError:
             site_storage.delete_host_mapping(row["sk"][len("DOMAIN#"):])  # row kept for retry
+    site_storage.default_storage().delete_files(tenant_slug, site_id)  # before rows: a failure stays retryable
     store.delete_site_cascade(tenant_slug, site_id)
     slug = site.get("slug", "")
     if slug:

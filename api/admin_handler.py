@@ -173,6 +173,7 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
         "updated_at": now,
     }
     table.put_item(Item=tenant_item)
+    DynamoDBTenantStore(table).mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership
     profile_item = {
@@ -418,6 +419,7 @@ def delete_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
     for site in store.list_sites(tenant_slug):
         if site.get("slug"):
             site_storage.delete_host_mapping(f"{site['slug']}.{_base_domain()}")
+    site_storage.default_storage().delete_files(tenant_slug)  # before rows: a failure stays retryable
     store.delete_tenant_cascade(tenant_slug)
     return respond(204)
 

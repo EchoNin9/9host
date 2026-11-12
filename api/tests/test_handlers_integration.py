@@ -46,11 +46,13 @@ def api(dynamodb_table, rsa_key, monkeypatch):
 
     removed: list[str] = []
     monkeypatch.setattr(site_storage, "delete_host_mapping", removed.append)
+    storage = site_storage.InMemorySiteStorage()
+    monkeypatch.setattr(site_storage, "default_storage", lambda: storage)
 
     dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO", "name": "Acme"})
     DynamoDBTenantStore(dynamodb_table).put_member("acme", {"sub": "owner-1", "role": "admin", "name": "Owner"})
     boto3.client("s3", region_name="us-east-1").create_bucket(Bucket="9host-media")
-    yield type("Api", (), {"table": dynamodb_table, "key": rsa_key, "removed_mappings": removed})
+    yield type("Api", (), {"table": dynamodb_table, "key": rsa_key, "removed_mappings": removed, "storage": storage})
     rc.clear_jwks_cache()
     secrets_cache.clear_cache()
 
@@ -249,6 +251,58 @@ def test_slug_change_and_delete_remove_kvs_mappings(api):
     assert call("DELETE", f"/api/tenant/sites/{site_id}", tok) == (204, None)
     assert set(api.removed_mappings[1:]) == {"myband.com", "new-slug.echo9.net"}
     assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "DOMAIN#myband.com"}).get("Item") is None
+
+
+# ---------------------------------------------------------------------------
+# T-14: S3 cleanup on site / tenant delete; migration marker on tenant create
+# ---------------------------------------------------------------------------
+
+
+def _seed_files(storage, *prefixes):
+    for prefix in prefixes:
+        for key in ("published/current/index.html", "draft/index.html"):
+            storage._put(f"{prefix}{key}", b"x", "text/html")
+
+
+def test_site_delete_empties_storage_prefix(api):
+    tok = owner(api)
+    gone, keep = create_site(api, slug="gone"), create_site(api, slug="keep")
+    _seed_files(api.storage, f"acme/{gone}/", f"acme/{keep}/", f"acme2/{gone}/")
+    assert call("DELETE", f"/api/tenant/sites/{gone}", tok) == (204, None)
+    assert not any(k.startswith(f"acme/{gone}/") for k in api.storage.objects)
+    assert any(k.startswith(f"acme/{keep}/") for k in api.storage.objects)
+    assert any(k.startswith(f"acme2/{gone}/") for k in api.storage.objects)  # other tenant untouched
+
+
+def test_tenant_delete_empties_storage_prefix(api):
+    site_id = create_site(api)
+    _seed_files(api.storage, f"acme/{site_id}/", "acme-other/s1/")
+    api.storage._put("acme/default.json", b"{}", "application/json")
+    assert call("DELETE", "/api/admin/tenants/acme", superadmin(api), tenant=None) == (204, None)
+    assert sorted(api.storage.objects) == ["acme-other/s1/draft/index.html", "acme-other/s1/published/current/index.html"]
+
+
+def test_new_tenant_first_list_sites_skips_legacy_query(api, monkeypatch):
+    tok = cognito(api.key, "founder-1")
+    code, body = call("POST", "/api/tenants", tok, tenant=None, body={"slug": "fresh"})
+    assert code == 201, body
+    prefixes: list[str] = []
+    real = DynamoDBTenantStore._query_prefix
+    monkeypatch.setattr(
+        DynamoDBTenantStore, "_query_prefix", lambda self, pk, p: prefixes.append(p) or real(self, pk, p)
+    )
+    code, body = call("GET", "/api/tenant/sites", tok, tenant="fresh")
+    assert code == 200 and body["sites"] == []
+    assert not any(p.startswith("SITE#") for p in prefixes), prefixes
+
+
+def test_admin_created_tenant_has_migration_marker(api, monkeypatch):
+    import admin_handler
+
+    monkeypatch.setattr(admin_handler, "is_superadmin", lambda sub, pool, region="us-east-1": sub == "super-1")
+    code, body = call("POST", "/api/admin/tenants", superadmin(api), tenant=None, body={"slug": "fresh2"})
+    assert code == 201, body
+    assert api.table.get_item(Key={"pk": "TENANT#fresh2", "sk": "MIGRATION#SITE_META"}).get("Item")
 
 
 # ---------------------------------------------------------------------------

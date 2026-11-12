@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import boto3
 
 from auth_helpers import get_sub_from_access_token
+from tenant_store import DynamoDBTenantStore
 from dynamodb_helpers import (
     get_tenant_item,
     gsi1pk_user,
@@ -193,6 +194,7 @@ def create_tenant_handler(event: dict, context: dict) -> dict:
         "updated_at": now,
     }
     table.put_item(Item=tenant_item)
+    DynamoDBTenantStore(table).mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership
     profile_item = {

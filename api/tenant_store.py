@@ -8,7 +8,11 @@ bySiteSlug GSI.
 Bug #3 (SITE# sort-key collision): site metadata is written to SK=SITE_META#{id} and
 mirrored to legacy SK=SITE#{id} (expand-contract). list_sites reads SITE_META# only. Tenants
 whose sites exist only as legacy SITE#{id} rows are backfilled once (lazily) on the first
-list_sites call, after which a MIGRATION#SITE_META marker row skips the legacy read.
+list_sites call, after which a MIGRATION#SITE_META marker row skips the legacy read. New
+tenants get the marker at creation (mark_site_meta_migrated), so they never read SITE#.
+
+T-14: update_site writes changed fields only (DynamoDB UpdateItem SET on SITE_META# and its
+SITE# mirror in one transaction), so concurrent writers to different fields never lose updates.
 
 Bug #4: adjust_storage_bytes uses ADD / conditional SET instead of the invalid greatest().
 """
@@ -64,6 +68,8 @@ class TenantStore(Protocol):
     def list_sites(self, tenant_slug: str) -> list[dict]: ...
     def get_site(self, tenant_slug: str, site_id: str) -> dict | None: ...
     def put_site(self, tenant_slug: str, site: dict) -> dict: ...
+    def update_site(self, tenant_slug: str, site_id: str, updates: dict) -> dict: ...
+    def mark_site_meta_migrated(self, tenant_slug: str) -> None: ...
     def delete_site_cascade(self, tenant_slug: str, site_id: str) -> None: ...
     def resolve_site_slug(self, site_slug: str) -> dict | None: ...
 
@@ -142,6 +148,10 @@ class _StoreBase:
     def _query_prefix(self, pk: str, sk_prefix: str) -> list[dict]:
         raise NotImplementedError
 
+    def _update_site_rows(self, pk: str, site_id: str, updates: dict) -> bool:
+        """Atomically SET `updates` on SITE_META#{id} and SITE#{id}. False if either row is missing."""
+        raise NotImplementedError
+
     # Tenant
     def get_tenant(self, tenant_slug: str) -> dict | None:
         item = self._get(pk_tenant(tenant_slug), sk_tenant())
@@ -183,6 +193,26 @@ class _StoreBase:
         self._put(meta)
         self._put(legacy)
         return _site_out(meta)
+
+    def update_site(self, tenant_slug: str, site_id: str, updates: dict) -> dict:
+        """Field-level update of an existing site (no read-modify-write). Raises KeyError if the
+        site does not exist. Slug changes need the bySiteSlug GSI attrs: use put_site."""
+        updates = {k: v for k, v in updates.items() if k not in _KEY_ATTRS and k not in ("id", "entity_type")}
+        if "slug" in updates:
+            raise ValueError("update_site cannot change slug; use put_site")
+        pk = pk_tenant(tenant_slug)
+        if updates and not self._update_site_rows(pk, site_id, updates):
+            # Legacy-only site: get_site backfills SITE_META#, then retry once.
+            if self.get_site(tenant_slug, site_id) is None or not self._update_site_rows(pk, site_id, updates):
+                raise KeyError(site_id)
+        site = self.get_site(tenant_slug, site_id)
+        if site is None:
+            raise KeyError(site_id)
+        return site
+
+    def mark_site_meta_migrated(self, tenant_slug: str) -> None:
+        """Write the MIGRATION#SITE_META marker (new tenants have no legacy SITE# rows)."""
+        self._put({"pk": pk_tenant(tenant_slug), "sk": SITE_META_MIGRATION_SK})
 
     def delete_site_cascade(self, tenant_slug: str, site_id: str) -> None:
         pk = pk_tenant(tenant_slug)
@@ -345,6 +375,26 @@ class DynamoDBTenantStore(_StoreBase):
         assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
         return self._query(KeyConditionExpression=Key("pk").eq(pk) & Key("sk").begins_with(sk_prefix))
 
+    def _update_site_rows(self, pk: str, site_id: str, updates: dict) -> bool:
+        assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        update = {
+            "TableName": self.table.name,
+            "UpdateExpression": "SET " + ", ".join(f"#k{i} = :v{i}" for i in range(len(updates))),
+            "ConditionExpression": "attribute_exists(pk)",
+            "ExpressionAttributeNames": {f"#k{i}": k for i, k in enumerate(updates)},
+            "ExpressionAttributeValues": {f":v{i}": v for i, v in enumerate(updates.values())},
+        }
+        try:
+            self.table.meta.client.transact_write_items(TransactItems=[
+                {"Update": {**update, "Key": {"pk": pk, "sk": sk}}} for sk in (sk_site_meta(site_id), sk_site(site_id))
+            ])
+        except ClientError as e:
+            reasons = e.response.get("CancellationReasons") or []
+            if any(r.get("Code") == "ConditionalCheckFailed" for r in reasons):
+                return False
+            raise
+        return True
+
     def update_tenant(self, tenant_slug: str, updates: dict) -> dict:
         updates = {k: v for k, v in updates.items() if k not in _KEY_ATTRS}
         if not updates:
@@ -459,6 +509,15 @@ class InMemoryTenantStore(_StoreBase):
     def _query_prefix(self, pk: str, sk_prefix: str) -> list[dict]:
         assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
         return [dict(v) for (p, s), v in sorted(self.items.items()) if p == pk and s.startswith(sk_prefix)]
+
+    def _update_site_rows(self, pk: str, site_id: str, updates: dict) -> bool:
+        assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        rows = [self.items.get((pk, sk)) for sk in (sk_site_meta(site_id), sk_site(site_id))]
+        if any(r is None for r in rows):
+            return False
+        for row in rows:
+            row.update(updates)
+        return True
 
     def update_tenant(self, tenant_slug: str, updates: dict) -> dict:
         item = self.items.get((pk_tenant(tenant_slug), sk_tenant()))
