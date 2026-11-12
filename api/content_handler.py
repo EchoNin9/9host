@@ -2,7 +2,8 @@
 Content CRUD API (Task 1.95) — GET/POST/PUT/DELETE
 /api/tenant/sites/{site_id}/{pages|posts|events|media}[/{id}] and GET .../media/{id}/url.
 
-Reads require tenant membership; writes require admin/manager/editor (an impersonating
+Reads require tenant membership; writes require admin/manager/editor or a custom role with
+the 'sites' permission (T-15; an impersonating
 superadmin is "admin", Bug #5). All rows go through TenantStore. MEDIA create/delete adjusts
 tenant storage via TenantStore.adjust_storage_bytes (floor at 0, Bug #4).
 """
@@ -152,7 +153,7 @@ def content_handler(ctx: RequestContext) -> dict:
     if not store.get_site(tenant_slug, site_id):
         return respond(404, {"error": "Site not found."})
     if method in ("POST", "PUT", "DELETE"):
-        ctx.require_tenant_member(CONTENT_ROLES)
+        ctx.require_permission("sites", CONTENT_ROLES)
     if entity not in ENTITIES:
         return respond(405, {"error": "Method not allowed."})
 

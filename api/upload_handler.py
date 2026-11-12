@@ -2,7 +2,8 @@
 Upload pre-signed POST (Task 1.89).
 
 POST /api/tenant/sites/{site_id}/upload-url — S3 presigned POST with a content-length-range
-condition (per-tier per-file limit). Admin/manager/editor only.
+condition (per-tier per-file limit). Admin/manager/editor or a custom
+role with the 'sites' permission (T-15).
 """
 
 import os
@@ -38,7 +39,7 @@ def upload_url_handler(ctx: RequestContext) -> dict:
     if len(parts) != 2 or parts[1] != "upload-url":
         return respond(404, {"error": "Not found."})
     site_id = parts[0]
-    ctx.require_tenant_member(UPLOAD_ROLES)
+    ctx.require_permission("sites", UPLOAD_ROLES)
 
     store = DynamoDBTenantStore()
     if not store.get_site(tenant_slug, site_id):

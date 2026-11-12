@@ -50,6 +50,7 @@ JWKS_TTL_SECONDS = 3600  # 1 hour
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$")
 _ADMIN_TENANT_PATH_RE = re.compile(r"^/api/admin/tenants/([^/]+)(?:/|$)")
+BUILTIN_ROLES = frozenset({"admin", "manager", "editor", "member"})
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +119,7 @@ class RequestContext:
     effective_role: str | None  # "admin" | "manager" | "editor" | "member" | custom role
     is_impersonating: bool
     tenant_item: dict | None = None  # Cached tenant METADATA row when loaded
+    _custom_permissions: dict | None = field(default=None, repr=False, compare=False)
     _table: Any = field(default=None, repr=False, compare=False)
 
     @property
@@ -165,6 +167,25 @@ class RequestContext:
         if min_roles and self.effective_role not in {r.lower() for r in min_roles}:
             raise HttpError(403, f"Forbidden. Requires role: {', '.join(min_roles)}.")
         return self.tenant_slug, self.effective_role
+
+    def require_permission(self, module: str, roles: tuple[str, ...]) -> tuple[str, str]:
+        """Like ``require_tenant_member(roles)``, but a tenant-defined CustomRole
+        (``ROLE#{name}``, T-15) also passes when its ``permissions[module]`` is true.
+        Built-in roles are checked against ``roles`` only; the ROLE# row is read at most once."""
+        tenant_slug, role = self.require_tenant_member()
+        if role in {r.lower() for r in roles}:
+            return tenant_slug, role
+        if role not in BUILTIN_ROLES:
+            perms = self._custom_permissions
+            if perms is None:
+                item = _get_table(self._table).get_item(
+                    Key={"pk": f"TENANT#{tenant_slug}", "sk": f"ROLE#{role}"}
+                ).get("Item") or {}
+                perms = item.get("permissions") if isinstance(item.get("permissions"), dict) else {}
+                object.__setattr__(self, "_custom_permissions", perms)
+            if perms.get(module) is True:
+                return tenant_slug, role
+        raise HttpError(403, f"Forbidden. Requires role: {', '.join(roles)} or '{module}' permission.")
 
     def require_feature(self, feature_key: str) -> None:
         """Raise 403 unless the tenant's tier (+ module_overrides) grants ``feature_key``."""

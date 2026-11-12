@@ -200,10 +200,14 @@ def _rollback_site(
     return result
 
 
-def load_site(ctx: RequestContext, action: str, roles: tuple[str, ...]):
+def load_site(ctx: RequestContext, action: str, roles: tuple[str, ...], module: str | None = None):
     """Shared prelude for /api/tenant/sites/{id}/{action}: role check + site lookup.
+    With ``module``, a custom role holding that permission also passes (T-15).
     Returns (store, tenant_slug, site_id, site); raises HttpError (401/403/404)."""
-    tenant_slug, _ = ctx.require_tenant_member(roles)
+    if module:
+        tenant_slug, _ = ctx.require_permission(module, roles)
+    else:
+        tenant_slug, _ = ctx.require_tenant_member(roles)
     parts = [p for p in ctx.path[len("/api/tenant/sites/"):].split("/") if p]
     if len(parts) != 2 or parts[1] != action:
         raise HttpError(404, "Not found.")
@@ -228,7 +232,7 @@ def _compile_inputs(store, tenant_slug: str, site: dict) -> tuple[dict, dict, st
 
 def draft_publish_handler(ctx: RequestContext) -> dict:
     """POST /api/tenant/sites/{id}/draft-publish — render draft to S3 draft/ (Task 1.116)."""
-    store, tenant_slug, site_id, site = load_site(ctx, "draft-publish", CONTENT_ROLES)
+    store, tenant_slug, site_id, site = load_site(ctx, "draft-publish", CONTENT_ROLES, "sites")
     template, features, media_base = _compile_inputs(store, tenant_slug, site)
     result = _draft_publish_site(store.table, _s3(), tenant_slug, site_id, site, template, media_base, features)
     return respond(200, {"draft": result})
