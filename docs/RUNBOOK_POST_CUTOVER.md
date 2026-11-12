@@ -272,3 +272,20 @@ Order:
 3. **`T-31`/`T-32` WYSIWYG** — design spike only this run: `docs/adr/0003-wysiwyg-templates.md` (editor library options, content model, sanitization and `compile_site` purity, migration of existing sites, template-admin UX). No code until the owner approves the ADR.
 
 Owner-only (do not do): `T-21` proxy-secret rollout (§7 status), `T-25` expired cert on `E164B9WJ8ALT9F`, `www.jinks.ca`, `develop` → `main` merges.
+
+### §8 status (2026-11-12, third Commander run)
+
+Items 1–3 done. Every CI push green; after each, `jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `jinks.ca`, `app.echo9.net`, `echo9.net`, `www.echo9.net`, `preview.echo9.net` returned 200. No `.tf` changes.
+
+| Item | Outcome | Commit |
+|---|---|---|
+| `T-29` landing | Redesign: serif/mono type, one vermilion signal colour, CSS/SVG hero, Edit→Compile→Serve band, modules, 5 layouts, domains, custom 404, `favicon.svg`, OG/canonical. No JS, ~40 KB, AA contrast both themes, reduced-motion respected. **Went LIVE on echo9.net/www via develop** (develop CI syncs `landing/` to the shared prod bucket; owner approved for bootstrap — see `T-33`). | `c04f424` |
+| `T-30` Admin SPA | Audit `docs/T-30-ux-audit.md`; tokens + Geist type, new shell/nav/breadcrumbs/user menu, ConfirmDialog, rollback dialog, publish-needs-template, flow fixes. Seams unchanged, no API changes, vitest 44. Verified on stage (desktop). Template sheet left for T-31d/T-32b. | `00a560b` |
+| `T-31`/`T-32` ADR | `docs/adr/0003-wysiwyg-templates.md` **Accepted** with owner answers: Puck (pinned) + TipTap, block-JSON doc rendered by pure Python registry, `_home` page doc, pin+deprecate template versions, drop tenant forks, embeds in / contact form out, all sites at once, no side-slide sheets. | `7f3d631`, `4496b3c`, `d98ea51`, `0e575f7` |
+| `T-31a` spike | GO. `@puckeditor/core@0.23.0` exact, React 19.2 OK, Puck in lazy chunk (~152 KB gz JS + 14 KB CSS). Entry +5.8 KB gz is TipTap 3.20.4→3.33.1 hoisting, not Puck — decide: npm `overrides` or bump app TipTap. Iframe needs template CSS. Drag/typing not browser-verified. Local branch `worktree-agent-a4aef99b10c37b60b`, not pushed. | `917ade4` (branch) |
+
+Incident: during the T-31a check a subagent reused the Commander's Chrome tab on stage and left the owner's session impersonating `jinks` (client-side localStorage only, no API write). Cleared by the Commander via "Stop impersonating".
+
+New tickets: `T-33` landing preview/prod split, `T-34` template tier gating, `T-35` T-30 follow-ups (see `AGENTS.md`).
+
+Next run: `T-31b` (block core, Python registry + golden fixtures) after the TipTap-version decision; `T-33` needs a reviewed `.tf` plan.
