@@ -35,7 +35,7 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 3. **Local tofu:**
    - **Root config:** init with `-backend-config="bucket=9host-tofu-state-452644920012" -backend-config="key=9host/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="dynamodb_table=9host-tofu-state-lock"`, and pass `-var='github_org_repo=EchoNin9/9host' -var='domains=["echo9.net"]'`.
    - **Applying:** `tofu plan -out=<file>`, then `tofu show <file>`, then `tofu apply <file>`. Applies without a reviewed plan are refused by the session's safety checks.
-   - **`infra/cloudns`:** state is local, and provider `ClouDNS/cloudns` 1.0.10 cannot read records, so always use `-refresh=false` there until `T-16` fixes it.
+   - **`infra/cloudns`:** state is local, and provider `ClouDNS/cloudns` 1.0.10 cannot read records, so always use `-refresh=false` there **and `-target` the one record you mean to change** (a full plan wants to re-create the existing, unmanaged ACM validation records). `T-16` found no upstream fix (1.3.3 has the same bug); see `T-24`. After a create, the provider's read-back fails and taints the record: run `tofu untaint` on it.
 4. **ClouDNS edits:** allowed only on zone `echo9.net`, and only for the records named in a task. **Never read or edit `jinks.ca`** (owner's personal zone and a real-customer test). Never touch MX/NS/TXT mail records anywhere.
 5. **AWS:** `--profile echo9`, `us-east-1`, account `452644920012`. Only modify or delete resources named `9host*` or listed here.
    - Do not touch `E164B9WJ8ALT9F` (landing/other domains), `E1S4CU3NV8WOAL` (URL shortener), or any non-9host distribution or certificate.
@@ -124,3 +124,61 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
 - The last `develop` CI run green.
 - `AGENTS.md` ticket checkboxes and this file's task list updated with outcomes and commit SHAs.
 - Final report to the owner: what changed in production, what is waiting for them (landing cutover, `develop` → `main` merge), and any new tickets.
+
+---
+
+## 5. Outcomes (2026-11-12, Commander run)
+
+| Task | Outcome | Commits |
+|---|---|---|
+| A. `jinks.ca` | **Still `PENDING_VALIDATION`** at 07:47 UTC, `verification_errors: []`, no KVS key. Waiting on Cloudflare; re-check with `refresh_domain_status`. Escalate to the owner if still pending 24h after the DNS change. | — |
+| B. Republish | Done via `publish_handler._publish_site`. jinks4 v17→18, jinks-ca v1→2, oliverjinks-com v4→5. All 200, root-relative links, no `/site/jinks/`. `oliverjinks.com` 200. Invalidation `IL33NWU7ETAWGB2H75Q4WOQQA`. | — (data only) |
+| C. Retire `prod` | Done. Cert replaced without the prod SAN, prod alias removed from `E26B25DDJUH6YE`, Cognito prod URLs removed. ClouDNS `740575166` + `740290818` deleted (owner-approved). `prod.echo9.net` is NXDOMAIN. `app`/`stage` 200, owner verified superadmin login on `app`. | `318938f`, `c75b9bc` |
+| D. `T-19` | All automated checks pass (results table in `UNATTENDED_ORCHESTRATION.md` §7). **Needs owner:** Edge & Domains panel in a browser; live manager TUSER login + edit. | `d8c90e2` |
+| E. `T-16` | CI test gate (pytest/vitest/build/edge) before AWS creds; CI on Node 22; deploy-role KVS key actions scoped to the KVS ARN (policy compacted to 5986/6144 chars); `tofu fmt`. ClouDNS provider bug **not** fixed upstream → `T-24`. | `e549b3d`, `ce1e516`, `1398c06` |
+| E. `T-14` | Atomic `update_site`, S3 prefix cleanup on site/tenant delete, migration marker on tenant create. | `e61f57b` |
+| E. `T-13` | All legacy handlers on `RequestContext`; `auth_helpers.py` / `with_tenant` deleted. Auth now runs before input validation (401/403 instead of 400). | `9033b46` |
+| E. `T-15` | Gap was real (custom role with `sites` permission got 403). Content routes now honour `permissions.sites`. Other permission keys → `T-23`. | `519e416` |
+| E. `T-17` | Tenants/domains get `gsi3` `ENTITY#…` keys; superadmin lists query instead of scan; CI backfill step. | `f26969b` |
+| E. `T-18` | Reserved slugs (`api/reserved_slugs.py`), platform hosts incl. `app.`, link `rel`, Cloudflare poll throttle, console polish. **Edge-function part reverted:** the new `cf-site-content.js` threw `FunctionExecutionError` in the real runtime and all tenant sites returned **503 for ~15 min** (07:30–07:45 UTC) → `T-21`. Production `/media/*` behaviour not done (needs `.tf`) → `T-22`. | `53a27b4`, `3394394`, `aa3ad44` |
+| `T-20` (new, owner) | Platform admins listed in their own section of the superadmin Users console; Lambda gets `cognito-idp:ListUsersInGroup`. | `7d2c0d4` |
+| F. Landing | Live at `https://preview.echo9.net/` (CloudFront `EYLR0G6R8Z1BK` / `dggrw8k6efaha.cloudfront.net`, bucket `9host-landing`). 200, tools.e9.cx button, custom 404, no tenant data. ClouDNS `preview` CNAME applied with `-target`. **Production cutover waits for the owner** (§6). | `7eeb732` |
+
+### New tickets
+- `T-21`: Re-land the `X-Forwarded-Host` proxy-secret check in `cf-site-content.js` (code in `53a27b4`). First find the runtime error with `aws cloudfront test-function` against the DEVELOPMENT stage; add a CI step that runs `test-function` before the function is published. Then the Worker secret + `__proxy_secret__` KVS key rollout (order in the `53a27b4` report: Worker secret → Worker deploy → KVS key).
+- `T-22`: Add the `/media/*` cache behaviour to the production Admin SPA distribution (staging has it).
+- `T-23`: Enforce the remaining CustomRole permission keys (`domains`, `analytics`, `settings`, `users`) server-side.
+- `T-24`: ClouDNS provider read bug (`retrec.priority` string vs number, unfixed in 1.3.3): upstream fix to `cloudns-go`, or move the `echo9.net` edge records to an API script and keep only the zone in tofu.
+- `T-25` (owner, report only): `E164B9WJ8ALT9F` has an **expired** `echo9.net` certificate; HTTPS is broken for its `echo9.ca`, `echo9.tech`, `echonin9.com` aliases.
+- `T-26` (owner decision): Align the Admin SPA with `docs/ui-mockups.html` screens 2–4. Today it matches the information architecture only: shadcn/teal theme vs the mockup's dark/coral/Geist (L); Sites cards lack live URLs, version, inline Publish/Rollback (M); sidebar tenant-switcher card (M); domains as a single status table (M); superadmin edge kvs grid + Cognito/TUSER cards (M). The landing page (screen 1) already matches. Keep `proxy.echonin9.com` (the mockup's `proxy.echo9.net` is wrong).
+
+## 6. Landing production cutover (owner-run; do not automate)
+
+The wildcard cert (`aws_acm_certificate.wildcard`) already includes the `echo9.net` apex, and `www` is covered by `*.echo9.net`. No cert change is needed.
+
+1. **Pre-checks:**
+   - The wildcard cert is `ISSUED` with SANs `*.echo9.net` and `echo9.net`.
+   - `https://preview.echo9.net/` returns 200.
+   - `preview` is reserved (done in `T-18`).
+2. **Remove `echo9.net` and `www.echo9.net` from `E164B9WJ8ALT9F`:**
+   - `get-distribution-config`, edit `Aliases`, then `update-distribution --if-match <ETag>`, and wait for `Deployed`.
+   - Its cert is expired, so the update may be rejected (`InvalidViewerCertificate`). If so, attach a valid cert for its remaining aliases in the same update.
+   - There's no visitor impact: those names are currently ClouDNS web redirects, not pointed at that distribution.
+3. **Add the aliases to `9host-landing`:**
+   - In `infra/landing.tf`, add `echo9.net` and `www.echo9.net` to the landing aliases.
+   - Keep `serve_landing_domain = false` and `landing_site = null`.
+   - Plan locally (expect only an in-place `aws_cloudfront_distribution.landing` alias change), then push to `develop`.
+   - `CNAMEAlreadyExists` means step 2 isn't finished.
+4. **Update ClouDNS (`echo9.net` only):**
+   - Verify `180304152` = `@` WR and `180304155` = `www` WR.
+   - Delete `180304152`, then add an `ALIAS @ -> dggrw8k6efaha.cloudfront.net` (TTL 300).
+   - Delete `180304155`, then add a `CNAME www -> dggrw8k6efaha.cloudfront.net`.
+   - Do each delete and add back to back. Leave `tools` alone.
+5. **Verify:**
+   - `echo9.net` and `www.echo9.net` return 200 with the landing page and the tools button.
+   - `tools.echo9.net` still returns 301.
+   - Tenant subdomains still work.
+   - Invalidate `EYLR0G6R8Z1BK` `/*`.
+6. **Rollback:**
+   - Recreate the WR records `@` and `www` -> `https://tools.e9.cx` (301).
+   - The aliases can stay on the landing distribution.
