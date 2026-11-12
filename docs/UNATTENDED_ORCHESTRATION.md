@@ -273,6 +273,32 @@ We verified live API access against `https://api.cloudns.net/dns/records.json` f
 
 ## 6. Deploy Cutover Order (`T-06`–`T-08`) — READ BEFORE PUSHING `develop`
 
+> **STATUS 2026-11-11 (supersedes the step list below where they conflict). Read this first.**
+>
+> **Done:**
+> - Cloudflare for SaaS uses zone **`echonin9.com`** (not `echo9.net`). The zone is active, Custom Hostnames is enabled, and the fallback origin `proxy.echonin9.com` is active.
+> - Proxied `AAAA 100::` records exist for `@`, `www` and `proxy`, and a Redirect Rule sends `(www.)echonin9.com` → `https://github.com/EchoNin9` (301).
+> - AWS secret `9host-cloudflare` (`zone_id`, `account_id`, `api_token`) is created and the token is verified.
+> - Credentials verified: `--profile echo9` (account `452644920012`) and the ClouDNS API via secret `9host-cloudns` (keys `auth_id`, `password`).
+>
+> **Blockers found (do not push or apply until resolved):**
+> 1. **`origin/develop` has diverged:** 5 commits from 2026-04-11/12 (`635d97b`..`133f560`) implement per-domain CloudFront distributions for custom domains, and the live tofu state was applied from them. **Decision (owner, 2026-11-11):** drop that approach; Cloudflare for SaaS only. Merge `origin/develop` into `develop`, resolving every conflict in favour of local (`git merge -X ours origin/develop`, then confirm `api/admin_tenant_resources.py`, `infra/lambda_acm.tf`, `infra/lambda_acm_handler/`, `infra/cf-custom-domain.js` and `infra/cloudfront_custom_domains.tf` are absent and the five checks in §0 pass).
+> 2. **Live per-domain distributions:** `E3EPWB63QJS9R` (`jinks.ca`, `www.jinks.ca`) and `EPRVV3QWR08XT` (`oliverjinks.com`) are unmanaged, created by the old ACM Lambda. They use the `9host-custom-domain` CloudFront Function and the `distribution/*` S3 grant, so the apply would fail deleting that function and would 403 both sites. **Decision (owner, 2026-11-11):** these sites may go offline and will be re-added via Cloudflare for SaaS. Disable, wait for `Deployed`, delete both distributions, then delete their ACM certs. **Get the owner's explicit go-ahead first (irreversible).**
+>
+> **Order from here:**
+> 1. Blocker 2.
+> 2. Blocker 1.
+> 3. Targeted apply of `aws_cloudfront_key_value_store.site_hosts`.
+> 4. `aws cloudfront-keyvaluestore put-key` for the 3 published sites, value `{"tenant":"jinks","site_id":...}`: `jinks4.echo9.net` → `80e9d9b4-3695-4bce-bebb-188cb01e8e15`, `jinks-ca.echo9.net` → `8e19335e-8c56-4668-a900-6fff06bc507c`, `oliverjinks-com.echo9.net` → `4ee567a5-e8a7-4164-9bdb-2a2cab21868a`.
+> 5. Push `develop`. CI applies; `dev.yml` already applies `aws_iam_policy.deploy` first. While CI waits on `aws_acm_certificate_validation.main`, read the new cert's `app.echo9.net` validation CNAME (`aws acm describe-certificate`) and add it via the ClouDNS API. The `prod`, `stage` and apex `echo9.net` validation CNAMEs already exist.
+> 6. ClouDNS module (step 3 below).
+> 7. `wrangler login` (owner) + `wrangler deploy` in `infra/cloudflare-worker/`.
+> 8. Republish sites, then run the `T-19` checks.
+>
+> **Other notes:**
+> - Run local `tofu` with the CI backend config (`-backend-config="bucket=9host-tofu-state-452644920012" -backend-config="key=9host/terraform.tfstate" -backend-config="region=us-east-1" -backend-config="dynamodb_table=9host-tofu-state-lock"`) and `-var='github_org_repo=EchoNin9/9host' -var='domains=["echo9.net"]'`.
+> - `prod.echo9.net` keeps the old frontend against the new API until `develop` is merged to `main`.
+
 `.github/workflows/dev.yml` / `main.yml` run a full `tofu apply` on push. Nothing in `T-06`–`T-08` has been applied. Follow this order:
 
 1. **Certs first (local, before pushing):** `tofu -chdir=infra apply -target=aws_acm_certificate.main -target=aws_acm_certificate.wildcard -var='domains=["echo9.net"]'`, then add the new `app.echo9.net` validation CNAME from `tofu output acm_validation_records` to ClouDNS. If you push first, CI waits ~75 min on `aws_acm_certificate_validation.main` and fails (safely).
