@@ -2,7 +2,7 @@
 Site publish API (Task 1.96, 1.109, 1.115; T-04).
 
 POST /api/tenant/sites/{id}/publish — atomic versioned publish (admin/manager).
-POST /api/tenant/sites/{id}/draft-publish — draft render to draft/ (admin/manager/editor).
+POST /api/tenant/sites/{id}/draft-publish — draft render to draft/ (admin/manager).
 
 Flow: load site content -> SiteSnapshot -> pure compile_site(snapshot, mode)
 (site_compiler.py: root-relative links in live mode, /preview in draft, sanitized
@@ -20,7 +20,7 @@ from tenant_store import DynamoDBTenantStore
 from tier_config import CONTENT_MODULE_KEYS, FEATURE_KEYS, tier_has_feature, tier_has_module
 
 MANAGE_ROLES = ("admin", "manager")
-CONTENT_ROLES = ("admin", "manager", "editor")
+CONTENT_ROLES = ("admin", "manager")
 
 
 def _now() -> str:

@@ -50,7 +50,8 @@ JWKS_TTL_SECONDS = 3600  # 1 hour
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$|^[a-z0-9]$")
 _ADMIN_TENANT_PATH_RE = re.compile(r"^/api/admin/tenants/([^/]+)(?:/|$)")
-BUILTIN_ROLES = frozenset({"admin", "manager", "editor", "member"})
+BUILTIN_ROLES = frozenset({"admin", "manager", "member"})
+LEGACY_ROLE_MAP = {"editor": "member"}  # T-27: built-in editor dropped; stored editor -> least privilege
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +117,7 @@ class RequestContext:
     event: dict
     principal: Principal | None
     tenant_slug: str | None
-    effective_role: str | None  # "admin" | "manager" | "editor" | "member" | custom role
+    effective_role: str | None  # "admin" | "manager" | "member" | custom role
     is_impersonating: bool
     tenant_item: dict | None = None  # Cached tenant METADATA row when loaded
     _custom_permissions: dict | None = field(default=None, repr=False, compare=False)
@@ -419,6 +420,7 @@ def build_request_context(event: dict, table=None) -> RequestContext:
             role = principal.token_role if principal.token_tenant_slug == tenant_slug else None
         else:
             role = _member_role(table, tenant_slug, principal.identifier)
+    role = LEGACY_ROLE_MAP.get(role, role)
     return RequestContext(
         event=event,
         principal=principal,

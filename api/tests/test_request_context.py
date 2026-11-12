@@ -78,7 +78,7 @@ def cognito_token(key, sub="sub-123", groups=None, **overrides):
     return jwt.encode(claims, key, algorithm="RS256", headers={"kid": KID})
 
 
-def tuser_token(username="alice", tenant_slug="acme", role="editor", secret=JWT_SECRET):
+def tuser_token(username="alice", tenant_slug="acme", role="manager", secret=JWT_SECRET):
     now = int(time.time())
     payload = {
         "username": username,
@@ -209,7 +209,7 @@ class TestTenantUser:
         assert p.kind == "tuser"
         assert p.identifier == "alice"
         assert p.token_tenant_slug == "acme"
-        assert p.token_role == "editor"
+        assert p.token_role == "manager"
         assert p.is_superadmin is False
 
     def test_jwt_secret_cached(self, seams):
@@ -223,7 +223,11 @@ class TestTenantUser:
 
     def test_role_from_token_in_own_tenant(self):
         ctx = rc.build_request_context(make_event(tuser_token(), {"x-tenant-slug": "acme"}))
-        assert ctx.require_tenant_member(("editor",)) == ("acme", "editor")
+        assert ctx.require_tenant_member(("manager",)) == ("acme", "manager")
+
+    def test_legacy_editor_token_role_resolves_to_member(self):
+        ctx = rc.build_request_context(make_event(tuser_token(role="editor"), {"x-tenant-slug": "acme"}))
+        assert ctx.effective_role == "member"
 
     def test_locked_to_own_tenant(self):
         ctx = rc.build_request_context(make_event(tuser_token(), {"x-tenant-slug": "other"}))
@@ -308,10 +312,10 @@ class TestRejections:
         assert "Not a member" in json.loads(resp["body"])["error"]
 
     def test_member_role_resolved_and_min_roles_enforced(self, rsa_key, dynamodb_table):
-        put_member(dynamodb_table, "acme", "ed-1", "editor")
+        put_member(dynamodb_table, "acme", "ed-1", "editor")  # T-27: legacy editor -> member
         ev = make_event(cognito_token(rsa_key, sub="ed-1"), {"x-tenant-slug": "acme"})
         ctx = rc.build_request_context(ev, table=dynamodb_table)
-        assert ctx.require_tenant_member() == ("acme", "editor")
+        assert ctx.require_tenant_member() == ("acme", "member")
         with pytest.raises(rc.HttpError) as e:
             ctx.require_tenant_member(("admin", "manager"))
         assert e.value.status == 403

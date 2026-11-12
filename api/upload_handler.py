@@ -2,7 +2,7 @@
 Upload pre-signed POST (Task 1.89).
 
 POST /api/tenant/sites/{site_id}/upload-url — S3 presigned POST with a content-length-range
-condition (per-tier per-file limit). Admin/manager/editor or a custom
+condition (per-tier per-file limit). Admin/manager or a custom
 role with the 'sites' permission (T-15).
 """
 
@@ -17,7 +17,7 @@ from tenant_store import DynamoDBTenantStore
 from tier_config import upload_limit_bytes
 
 S3_MEDIA_BUCKET = "9host-media"
-UPLOAD_ROLES = ("admin", "manager", "editor")
+UPLOAD_ROLES = ("admin", "manager")
 # Sanitize: replace unsafe chars with underscore. Block path traversal.
 FILENAME_UNSAFE = re.compile(r"[^a-zA-Z0-9._-]|[.]{2,}|[/\\]")
 

@@ -2,7 +2,7 @@
 Content CRUD API (Task 1.95) — GET/POST/PUT/DELETE
 /api/tenant/sites/{site_id}/{pages|posts|events|media}[/{id}] and GET .../media/{id}/url.
 
-Reads require tenant membership; writes require admin/manager/editor or a custom role with
+Reads require tenant membership; writes require admin/manager or a custom role with
 the 'sites' permission (T-15; an impersonating
 superadmin is "admin", Bug #5). All rows go through TenantStore. MEDIA create/delete adjusts
 tenant storage via TenantStore.adjust_storage_bytes (floor at 0, Bug #4).
@@ -20,7 +20,7 @@ from request_context import RequestContext, respond
 from tenant_store import DynamoDBTenantStore
 
 S3_MEDIA_BUCKET = "9host-media"
-CONTENT_ROLES = ("admin", "manager", "editor")
+CONTENT_ROLES = ("admin", "manager")
 
 # Reserved paths/slugs — deny-list for pages and posts (Task 1.95)
 RESERVED_PAGE_PATHS = frozenset({

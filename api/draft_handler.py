@@ -2,7 +2,7 @@
 Draft preview token API (Task 1.117).
 
 GET /api/tenant/sites/{id}/draft-token — HS256 JWT for the draft preview URL (1 hour),
-admin/manager/editor only. The signing key comes from secrets_cache (Bug #7).
+admin/manager only. The signing key comes from secrets_cache (Bug #7).
 """
 
 import hashlib

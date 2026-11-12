@@ -87,7 +87,7 @@ def test_custom_role_does_not_gain_manager_routes(roles):
     assert call("GET", "/api/tenant/roles", writer)[0] == 403
 
 
-@pytest.mark.parametrize("role,expected", [("admin", 201), ("manager", 201), ("editor", 201), ("member", 403)])
+@pytest.mark.parametrize("role,expected", [("admin", 201), ("manager", 201), ("member", 403)])
 def test_builtin_roles_unchanged(roles, role, expected):
     site_id = create_site(roles)
     assert call("POST", f"/api/tenant/sites/{site_id}/pages", tuser(role=role), body={"path": "x"})[0] == expected
@@ -125,13 +125,13 @@ def test_require_permission_reads_role_row_once_and_never_for_builtins():
     assert e.value.status == 403
     assert table.reads == ["ROLE#writer"]
 
-    for role in ("admin", "manager", "editor", "member"):
+    for role in ("admin", "manager", "member"):
         builtin = _ctx(role, table)
         if role == "member":
             with pytest.raises(rc.HttpError):
-                builtin.require_permission("sites", ("admin", "manager", "editor"))
+                builtin.require_permission("sites", ("admin", "manager"))
         else:
-            assert builtin.require_permission("sites", ("admin", "manager", "editor"))[1] == role
+            assert builtin.require_permission("sites", ("admin", "manager"))[1] == role
     assert table.reads == ["ROLE#writer"]
 
 
@@ -196,7 +196,7 @@ def test_users_permission_covers_tusers_but_not_roles(module_api):
     assert call("GET", "/api/tenant/analytics", tuser("cd", role="can-domains"))[0] == 403
 
 
-@pytest.mark.parametrize("role", ["admin", "manager", "editor", "member"])
+@pytest.mark.parametrize("role", ["admin", "manager", "member"])
 def test_builtin_roles_unchanged_on_module_routes(module_api, role):
     token = tuser(role=role)
     manage = role in ("admin", "manager")
@@ -215,7 +215,7 @@ def test_custom_users_role_cannot_assign_privileged_roles(module_api):
     actor = tuser("cr", role="can-users")
     base = "/api/tenant/tusers"
     mk = lambda u, **kw: {"username": u, "password": "password1", **kw}
-    for role in ("manager", "admin", "can-users", "writer"):
+    for role in ("manager", "admin", "can-users", "writer", "editor"):
         assert call("POST", base, actor, body=mk(f"x-{role}", role=role))[0] == 403, role
     assert call("POST", base, actor, body=mk("plain", role="member"))[0] == 201
     assert call("POST", base, actor, body=mk("dflt"))[0] == 201  # default role is member

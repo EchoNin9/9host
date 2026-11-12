@@ -20,7 +20,7 @@ function siteTokenRole(): string {
 
 /**
  * Returns the user's role in the current tenant and whether they can create/edit/delete.
- * admin and manager can mutate; editor and member cannot (Task 2.16).
+ * admin and manager can mutate; member cannot (Task 2.16).
  * When impersonating, superadmin can do everything.
  */
 export function useTenantRole(): {
