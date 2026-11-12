@@ -376,3 +376,21 @@ Accepted at the `T-12` review gate. Same rules as before: commit locally as `age
   - Cloudflare for SaaS: add a test custom domain, reach `ACTIVE`, load it over HTTPS.
   - Browser smoke on `app.echo9.net`: Cognito login, `TUSER` site-login (manager can edit), superadmin console incl. Edge & Domains panel.
 - **Acceptance:** a short pass/fail table appended to this section; each failure becomes its own ticket.
+
+#### T-19 results (2026-11-12)
+
+Run read-only against the live stack (profile `echo9`, us-east-1). Secrets were never printed.
+
+| # | Check | Result | Evidence |
+|---|-------|--------|----------|
+| 1a | Draft-preview link loads | PASS | Token minted via the real `draft_handler.draft_token_handler` (site jinks4, `80e9d9b4-3695-4bce-bebb-188cb01e8e15`, tenant `jinks`; draft exists in S3 with `index.html`). `https://jinks4.echo9.net/preview/?token=<valid>` returns 200. The KVS `__preview_jwt_secret__` value verifies that token (HS256), so the derived key matches Secrets Manager and `Buffer`/`crypto.createHmac` work on `cloudfront-js-2.0`. |
+| 1b | Tampered token gets 403 | PASS | Altered signature 403, altered payload 403, no token 403. |
+| 1c | `/{tenant}/{site_id}/draft/index.html` on a site host is refused | PASS (note) | Returns 403, not the 404 the spec text says. Still denied and not served; see note below. |
+| 2 | CloudWatch `/aws/lambda/9host-api`, last 24h | PASS | 622 invocations (REPORT lines). 0 matches for `MissingDependencyException`, `falling back to get_user`, `get_user`, `jwks`, `RS256`, `cryptography`, `awscrt`; 0 matches for `?ERROR ?Traceback`. The literal "falling back to get_user" is not in the code (`request_context.py` falls back silently), so the absence of `get_user`/`cryptography` strings is the useful signal. |
+| 3 | Publish writes subdomain KVS keys | PASS | `list_keys` on `9host-site-hosts-kvs` shows `jinks4.echo9.net`, `jinks-ca.echo9.net`, `oliverjinks-com.echo9.net` (plus `oliverjinks.com`, `www.oliverjinks.com`, `__preview_jwt_secret__`). |
+| 4 | Edge & Domains panel hides `__` keys | PASS (code/test); browser NEEDS OWNER | `site_storage.list_host_mappings` skips keys starting with `__`; `admin_handler.edge_kvs_handler` is superadmin-only. Test in `api/tests/test_handlers_integration.py` (~l.372-387) feeds `__preview_jwt_secret__` and asserts neither it nor its value is returned; passes. Real browser view of the panel at `app.echo9.net` needs owner (browser login). |
+| 5 | TUSER site-login, manager can edit | PARTIAL, NEEDS OWNER (live) | Code: site-mutating handlers use `MANAGE_ROLES = ("admin","manager")` / `CONTENT_ROLES` incl. manager; `api/tests/test_request_context.py` role-resolution and TUSER tests plus `test_handlers_integration.py` TUSER tests pass (11 passed). A live login needs a real TUSER credential, and creating one in prod is out of scope; owner must log in as a manager TUSER and edit a site. |
+
+Note on 1c: the 403 on `/jinks/<id>/draft/index.html` for a `*.echo9.net` host is a deliberate deny rather than 404 (or a 403 from the S3 origin); the spec wording "404" is slightly off. No ticket raised.
+
+Failures: none. Outstanding owner checks: browser view of the Edge & Domains panel, live manager TUSER login/edit, and the Cloudflare for SaaS custom-domain item (see RUNBOOK task A, not part of this run).
