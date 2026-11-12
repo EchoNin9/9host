@@ -18,7 +18,7 @@ import site_storage
 from cloudflare_saas import CloudflareAPIError
 from custom_domain_handler import remove_domain
 from request_context import RequestContext, respond
-from tenant_store import DynamoDBTenantStore
+from tenant_store import DynamoDBTenantStore, entity_keys_tenant
 from tier_config import VALID_TIERS
 from dynamodb_helpers import (
     get_tenant_item,
@@ -28,7 +28,6 @@ from dynamodb_helpers import (
     gsi3sk_user,
     pk_tenant,
     query_by_site_slug,
-    sk_tenant,
     sk_user_profile,
 )
 
@@ -137,18 +136,16 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
     email, user_name = _get_user_email_name(event, region)
 
     # Create tenant (Task 1.88: storage_used_bytes default 0)
-    tenant_item = {
-        "pk": pk_tenant(slug),
-        "sk": sk_tenant(),
+    store = DynamoDBTenantStore(table)
+    store.put_tenant(slug, {  # byEntity GSI keys included (T-17)
         "name": name,
         "tier": tier,
         "owner_sub": sub,
         "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
-    }
-    table.put_item(Item=tenant_item)
-    DynamoDBTenantStore(table).mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
+    })
+    store.mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership
     profile_item = {
@@ -193,28 +190,17 @@ def list_all_tenants_handler(ctx: RequestContext) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Superadmin cross-tenant bypass. Scan kept: no GSI indexes tenant items (missing an
-    # "ENTITY#TENANT" byEntity partition); byEntity only covers USER/TUSER rows.
-    scan_kwargs = {
-        "FilterExpression": "begins_with(pk, :prefix) AND sk = :sk",
-        "ExpressionAttributeValues": {":prefix": "TENANT#", ":sk": "TENANT"},
-    }
-    resp = table.scan(**scan_kwargs)
-    items = resp.get("Items", [])
-    while "LastEvaluatedKey" in resp:
-        resp = table.scan(**scan_kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
-        items.extend(resp.get("Items", []))
-
-    tenants = []
-    for item in items:
-        slug = item.get("pk", "").replace("TENANT#", "")
-        if slug:
-            tenants.append({
-                "slug": slug,
-                "name": item.get("name", slug),
-                "tier": item.get("tier", "FREE"),
-                "owner_sub": item.get("owner_sub"),
-            })
+    # Superadmin cross-tenant bypass via the byEntity GSI (ENTITY#TENANT), no Scan (T-17).
+    tenants = [
+        {
+            "slug": t["slug"],
+            "name": t.get("name", t["slug"]),
+            "tier": t.get("tier", "FREE"),
+            "owner_sub": t.get("owner_sub"),
+        }
+        for t in DynamoDBTenantStore(table).list_all_tenants()
+        if t["slug"]
+    ]
 
     # Sort by slug
     tenants.sort(key=lambda t: t["slug"])
@@ -341,6 +327,10 @@ def patch_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     updates.append("updated_at = :u")
     expr_vals[":u"] = now
+    # Self-heal the byEntity index entry (T-17).
+    for attr, value in entity_keys_tenant(tenant_slug).items():
+        updates.append(f"{attr} = :{attr}")
+        expr_vals[f":{attr}"] = value
 
     update_expr = "SET " + ", ".join(updates)
     kwargs = {

@@ -189,18 +189,16 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
     email, user_name = _get_user_email_name(event, region)
 
     # Create tenant (Task 1.88: storage_used_bytes default 0). Self-serve: tier = FREE only.
-    tenant_item = {
-        "pk": pk_tenant(slug),
-        "sk": sk_tenant(),
+    store = DynamoDBTenantStore(table)
+    store.put_tenant(slug, {  # byEntity GSI keys included (T-17)
         "name": name,
         "tier": "FREE",
         "owner_sub": sub,
         "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
-    }
-    table.put_item(Item=tenant_item)
-    DynamoDBTenantStore(table).mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
+    })
+    store.mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership
     profile_item = {

@@ -27,6 +27,8 @@ from cloudflare_saas import (
     CustomHostnameRecord,
 )
 
+from tenant_store import entity_keys_domain
+
 logger = logging.getLogger(__name__)
 
 STATUS_PENDING = "PENDING_VALIDATION"
@@ -128,6 +130,7 @@ def register_domain(table, tenant_slug: str, domain: str, site_id: str) -> dict:
         "sk": f"DOMAIN#{domain}",
         "gsi2pk": f"DOMAIN#{domain}",
         "gsi2sk": f"TENANT#{tenant_slug}",
+        **entity_keys_domain(tenant_slug, domain),  # byEntity: superadmin list_all_domains (T-17)
         "site_id": site_id,
         "created_at": now,
         "updated_at": now,
@@ -185,6 +188,7 @@ def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> d
 
     fields = _fields_for(rec, tenant_from_item(item), domain_from_item(item), item.get("site_id", ""))
     fields["updated_at"] = _now()
+    fields.update(entity_keys_domain(tenant_from_item(item), domain_from_item(item)))  # self-heal (T-17)
     names = {f"#{k}": k for k in fields}
     values = {f":{k}": v for k, v in fields.items()}
     table.update_item(

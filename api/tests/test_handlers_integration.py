@@ -21,7 +21,7 @@ import handler
 import request_context as rc
 import secrets_cache
 import site_storage
-from tenant_store import DynamoDBTenantStore
+from tenant_store import DynamoDBTenantStore, entity_keys_domain
 
 ISSUER = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_dummy"  # conftest USER_POOL_ID
 KID = "kid-1"
@@ -411,10 +411,12 @@ def test_edge_kvs_superadmin_only_and_hides_internal_keys(api, monkeypatch):
     code, body = call("GET", "/api/admin/edge-kvs", superadmin(api), tenant=None)
     assert code == 200 and body == {"entries": [], "domains": []}
 
+    # Rows written after the byEntity backfill marker carry their GSI keys, as register_domain does (T-17).
     api.table.put_item(Item={"pk": "TENANT#acme", "sk": "DOMAIN#myband.com", "site_id": "s1", "status": "ACTIVE",
-                             "cf_status": "active", "ssl_status": "active"})
+                             "cf_status": "active", "ssl_status": "active",
+                             **entity_keys_domain("acme", "myband.com")})
     api.table.put_item(Item={"pk": "TENANT#zeta", "sk": "DOMAIN#zeta.org", "site_id": "z1",
-                             "status": "PENDING_VALIDATION"})
+                             "status": "PENDING_VALIDATION", **entity_keys_domain("zeta", "zeta.org")})
     fake = FakeKVS([
         {"Items": [
             {"Key": "__preview_jwt_secret__", "Value": "super-secret-key"},

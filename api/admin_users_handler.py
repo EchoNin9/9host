@@ -12,6 +12,7 @@ import boto3
 
 from dynamodb_helpers import query_all_users_by_entity
 from request_context import RequestContext
+from tenant_store import DynamoDBTenantStore
 
 
 def _json_response(status: int, body: dict) -> dict:
@@ -133,20 +134,8 @@ def admin_stats_handler(ctx: RequestContext) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Count tenants. Scan kept: no GSI indexes tenant items (missing an "ENTITY#TENANT"
-    # byEntity partition); superadmin cross-tenant bypass.
-    tenant_resp = table.scan(
-        FilterExpression="begins_with(pk, :pk) AND sk = :sk",
-        ExpressionAttributeValues={":pk": "TENANT#", ":sk": "TENANT"},
-    )
-    total_tenants = len(tenant_resp.get("Items", []))
-    while "LastEvaluatedKey" in tenant_resp:
-        tenant_resp = table.scan(
-            FilterExpression="begins_with(pk, :pk) AND sk = :sk",
-            ExpressionAttributeValues={":pk": "TENANT#", ":sk": "TENANT"},
-            ExclusiveStartKey=tenant_resp["LastEvaluatedKey"],
-        )
-        total_tenants += len(tenant_resp.get("Items", []))
+    # Count tenants via the byEntity GSI (ENTITY#TENANT); superadmin cross-tenant bypass, no Scan (T-17).
+    total_tenants = len(DynamoDBTenantStore(table).list_all_tenants())
 
     # Count users (USER# and TUSER#)
     total_cognito = 0
