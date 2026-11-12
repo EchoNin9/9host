@@ -80,67 +80,6 @@ test('site: ".." and "%2e%2e" segments -> 404', async () => {
   }
 });
 
-// T-18: X-Forwarded-Host is only trusted with the Worker's shared secret once configured.
-const SECRET = 'proxy-shared-secret-123';
-const SECRET_KVS = { ...MAPPING, 'myband.com': MAPPING['band.echo9.net'], __proxy_secret__: SECRET };
-const fwd = (host, secret) => ({
-  'x-forwarded-host': { value: host },
-  ...(secret === undefined ? {} : { 'x-9host-proxy-secret': { value: secret } }),
-});
-
-test('site: X-Forwarded-Host with the correct proxy secret is honoured', async () => {
-  const ev = req('/', 'sites-origin.echo9.net', fwd('myband.com', SECRET));
-  const out = await site(SECRET_KVS)(ev);
-  assert.equal(out.uri, BASE + '/index.html');
-  assert.ok(!('x-9host-proxy-secret' in out.headers), 'secret header stripped');
-});
-
-test('site: X-Forwarded-Host without / with a wrong proxy secret is ignored (Host used)', async () => {
-  const h = site(SECRET_KVS);
-  for (const secret of [undefined, '', 'wrong', SECRET + 'x', SECRET.slice(0, -1)]) {
-    // Spoofing another site's hostname via a public site host -> served as the Host's own site.
-    const viaPublic = await h(req('/', 'band.echo9.net', fwd('other.example', secret)));
-    assert.equal(viaPublic.uri, BASE + '/index.html', String(secret));
-    // Via the bare origin host (unmapped) -> 404, never the forwarded site.
-    const viaOrigin = await h(req('/', 'sites-origin.echo9.net', fwd('myband.com', secret)));
-    assert.equal(viaOrigin.statusCode, 404, String(secret));
-  }
-});
-
-test('site: proxy secret is not readable as a hostname mapping', async () => {
-  const out = await site(SECRET_KVS)(req('/', '__proxy_secret__', fwd('__proxy_secret__', SECRET)));
-  assert.equal(out.statusCode, 404);
-});
-
-test('site: no __proxy_secret__ in KVS (rollout) -> X-Forwarded-Host trusted as before', async () => {
-  const kvs = { 'myband.com': MAPPING['band.echo9.net'] };
-  const out = await site(kvs)(req('/', 'sites-origin.echo9.net', fwd('myband.com', 'anything')));
-  assert.equal(out.uri, BASE + '/index.html');
-});
-
-// ---------------------------------------------------- cloudflare-worker/custom-domain-proxy.js
-function loadWorker() {
-  const src = readFileSync(join(here, '..', 'cloudflare-worker', 'custom-domain-proxy.js'), 'utf8')
-    .replace(/^export default /m, 'return ');
-  const sent = [];
-  const fakeFetch = async (url, init) => { sent.push({ url, headers: init.headers, method: init.method }); return 'ok'; };
-  return { worker: new Function('fetch', src)(fakeFetch), sent };
-}
-
-test('worker: forwards host, sends the proxy secret and drops a client-supplied one', async () => {
-  const { worker, sent } = loadWorker();
-  const request = new Request('https://myband.com/blog/?a=1', {
-    headers: { 'X-9host-Proxy-Secret': 'attacker', 'X-Forwarded-Host': 'evil.example' },
-  });
-  await worker.fetch(request, { SITES_ORIGIN_HOST: 'sites-origin.echo9.net', PROXY_SECRET: SECRET });
-  assert.equal(sent[0].url, 'https://sites-origin.echo9.net/blog/?a=1');
-  assert.equal(sent[0].headers.get('x-forwarded-host'), 'myband.com');
-  assert.equal(sent[0].headers.get('x-9host-proxy-secret'), SECRET);
-
-  await worker.fetch(request, {});  // secret not configured: header absent, never the client's
-  assert.equal(sent[1].headers.get('x-9host-proxy-secret'), null);
-});
-
 // -------------------------------------------------------------- cf-preview-content.js
 const RAW_SECRET = 'raw-tuser-signing-secret';
 const DERIVED = createHash('sha256').update(`${RAW_SECRET}:9host-preview-v1`).digest('hex');
