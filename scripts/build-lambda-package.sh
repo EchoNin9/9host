@@ -18,6 +18,7 @@ python3 -m pip install -r "$ROOT/api/requirements.txt" --target "$OUT" \
 
 cp "$ROOT"/api/*.py "$OUT"/
 cp -R "$ROOT/api/templates" "$OUT/templates"
-find "$OUT/templates" -name __pycache__ -type d -prune -exec rm -rf {} +
+cp -R "$ROOT/api/blocks" "$OUT/blocks"
+find "$OUT/templates" "$OUT/blocks" -name __pycache__ -type d -prune -exec rm -rf {} +
 
 echo "Built $OUT ($(du -sh "$OUT" | cut -f1))"

@@ -100,6 +100,76 @@ def nav_links(pages: list, has_posts: bool, has_events: bool, has_media: bool = 
     return "\n      ".join(links) if links else ""
 
 
+def legacy_content_html(body: str, tenant_slug: str, site_id: str, media_base: str) -> str:
+    """Legacy page body: media URLs rewritten, sanitized, in .content (the legacy RichText block)."""
+    body_rewritten = (
+        rewrite_body_media_urls(body, tenant_slug, site_id, media_base)
+        if tenant_slug and site_id
+        else (body or "")
+    )
+    return f'<div class="content">{sanitize_html(body_rewritten)}</div>'
+
+
+def blocks_css() -> str:
+    """Shared default CSS for block markup (ADR-0003 §2); appended only for block-editor sites."""
+    return """
+/* Blocks (ADR-0003) */
+.b-hero { padding: 3rem 1.5rem; margin-bottom: 2rem; text-align: center; }
+.b-hero--left { text-align: left; }
+.b-hero__image { display: block; max-width: 100%; height: auto; margin: 0 auto 1.5rem; border-radius: 8px; }
+.b-hero--left .b-hero__image { margin-left: 0; }
+.b-hero__heading { font-size: 2.25rem; font-weight: 700; margin: 0 0 0.75rem; }
+.b-hero__subheading { font-size: 1.15rem; color: var(--template-muted, #6b7280); margin: 0 0 1.5rem; }
+.b-button {
+  display: inline-block;
+  padding: 0.65rem 1.4rem;
+  border-radius: 6px;
+  background: var(--brand-primary, var(--template-primary, #2563eb));
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+}
+.b-button:hover { opacity: 0.9; }
+.b-richtext { margin-bottom: 1.5rem; }
+.b-image { margin: 0 auto 1.5rem; }
+.b-image img { display: block; max-width: 100%; height: auto; border-radius: 6px; }
+.b-image--medium { max-width: 640px; }
+.b-image--small { max-width: 320px; }
+.b-image figcaption { font-size: 0.875rem; color: var(--template-muted, #6b7280); margin-top: 0.5rem; }
+.b-gallery { display: grid; gap: 1rem; margin-bottom: 1.5rem; }
+.b-gallery--2 { grid-template-columns: repeat(2, 1fr); }
+.b-gallery--3 { grid-template-columns: repeat(3, 1fr); }
+.b-gallery--4 { grid-template-columns: repeat(4, 1fr); }
+.b-gallery figure { margin: 0; }
+.b-gallery__img { display: block; width: 100%; height: auto; border-radius: 6px; }
+.b-columns { display: grid; gap: 1.5rem; margin-bottom: 1.5rem; }
+.b-columns--2 { grid-template-columns: repeat(2, 1fr); }
+.b-columns--3 { grid-template-columns: repeat(3, 1fr); }
+.b-cta { padding: 2rem 1.5rem; margin-bottom: 1.5rem; border-radius: 8px; text-align: center;
+  background: rgba(0,0,0,0.04); }
+.b-cta--secondary { background: transparent; border: 1px solid rgba(0,0,0,0.12); }
+.b-cta__heading { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.5rem; }
+.b-cta__text { margin: 0 0 1.25rem; }
+.b-divider { border: 0; border-top: 1px solid rgba(0,0,0,0.12); margin: 2rem 0; }
+.b-spacer--sm { height: 1rem; }
+.b-spacer--md { height: 2.5rem; }
+.b-spacer--lg { height: 5rem; }
+.b-postlist, .b-eventlist, .b-linklist { margin-bottom: 1.5rem; }
+.b-postlist__heading, .b-eventlist__heading, .b-linklist__heading { font-size: 1.4rem; font-weight: 600; margin: 0 0 0.75rem; }
+.b-postlist__list, .b-eventlist__list, .b-linklist ul { list-style: none; margin: 0; padding: 0; }
+.b-postlist__list li, .b-eventlist__list li, .b-linklist li { padding: 0.5rem 0; border-bottom: 1px solid rgba(0,0,0,0.08); }
+.b-postlist__excerpt { margin: 0.25rem 0 0; color: var(--template-muted, #6b7280); }
+.b-eventlist__date, .b-eventlist__venue { color: var(--template-muted, #6b7280); }
+.b-postlist a, .b-linklist a { color: var(--brand-primary, var(--template-primary, #2563eb)); }
+.b-embed { position: relative; padding-top: 56.25%; margin-bottom: 1.5rem; }
+.b-embed__frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 6px; }
+@media (max-width: 768px) {
+  .b-columns--2, .b-columns--3, .b-gallery--3, .b-gallery--4 { grid-template-columns: 1fr; }
+  .b-hero__heading { font-size: 1.75rem; }
+}
+"""
+
+
 def rich_text_content_css() -> str:
     """Shared CSS for rich text (TipTap) HTML output in .content blocks (Task 3.5)."""
     return """
@@ -299,19 +369,34 @@ class TemplateRenderer(ABC):
         base_path: str = "",
         meta_description: str = "",
         meta_image: str = "",
+        main_html: str | None = None,
     ) -> str:
-        """Render a single page (body is rich text → sanitized)."""
-        body_rewritten = (
-            rewrite_body_media_urls(body, tenant_slug, site_id, media_base)
-            if tenant_slug and site_id
-            else (body or "")
-        )
-        main = (
-            f'    <h2 class="page-title">{escape_html(title or path)}</h2>\n'
-            f'    <div class="content">{sanitize_html(body_rewritten)}</div>'
-        )
+        """Render a single page. main_html (from blocks.render_doc) replaces the legacy
+        rich-text body (sanitized) under the page title."""
+        if main_html is None:
+            main_html = legacy_content_html(body, tenant_slug, site_id, media_base)
+        main = f'    <h2 class="page-title">{escape_html(title or path)}</h2>\n    {main_html}'
         return self._chrome(title or path, site_name, branding, media_base, nav, base_path, main,
                             meta_description, meta_image)
+
+    def render_home(
+        self,
+        site_name: str,
+        main_html: str,
+        branding: dict,
+        media_base: str,
+        nav: str,
+        base_path: str = "",
+        meta_description: str = "",
+        meta_image: str = "",
+    ) -> str:
+        """Render index.html from the reserved `_home` block doc (replaces render_index's hero + nav list)."""
+        return self._chrome(site_name, site_name, branding, media_base, nav, base_path, f"    {main_html}",
+                            meta_description, meta_image)
+
+    def render_site_css(self, blocks: bool = False) -> str:
+        """Template CSS, plus the shared block styles for sites on the block editor."""
+        return self.render_css() + (blocks_css() if blocks else "")
 
     def render_blog_index(
         self,

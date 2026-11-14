@@ -1,0 +1,125 @@
+{
+ "mode": "draft",
+ "context": {
+  "tenant_slug": "acme",
+  "site_id": "s1",
+  "media_base": "/media/",
+  "media": [
+   {
+    "id": "m1",
+    "s3_key": "acme/s1/photo.jpg",
+    "caption": "Photo <1>"
+   },
+   {
+    "id": "m2",
+    "s3_key": "acme/s1/b.png",
+    "caption": ""
+   }
+  ],
+  "pages": [
+   {
+    "path": "about",
+    "title": "About"
+   },
+   {
+    "path": "contact",
+    "title": "Contact"
+   }
+  ],
+  "posts": [
+   {
+    "slug": "older",
+    "title": "Older",
+    "published_at": "2026-01-01T00:00:00Z"
+   },
+   {
+    "slug": "hello",
+    "title": "Hello <w>",
+    "excerpt": "Ex & cerpt",
+    "published_at": "2026-10-01T00:00:00Z"
+   }
+  ],
+  "events": [
+   {
+    "title": "Gig",
+    "event_date": "2026-12-01",
+    "venue": "Hall"
+   },
+   {
+    "title": "Early <bird>",
+    "event_date": "2026-11-20"
+   }
+  ]
+ },
+ "doc": {
+  "schema": 1,
+  "root": {
+   "props": {
+    "title": "link_list"
+   }
+  },
+  "content": [
+   {
+    "type": "LinkList",
+    "props": {
+     "id": "b1",
+     "heading": "Links",
+     "items": [
+      {
+       "label": "Home",
+       "link": {
+        "kind": "home"
+       }
+      },
+      {
+       "label": "About",
+       "link": {
+        "kind": "page",
+        "path": "about"
+       }
+      },
+      {
+       "label": "Missing page",
+       "link": {
+        "kind": "page",
+        "path": "nope"
+       }
+      },
+      {
+       "label": "Blog",
+       "link": {
+        "kind": "blog"
+       }
+      },
+      {
+       "label": "Events",
+       "link": {
+        "kind": "events"
+       }
+      },
+      {
+       "label": "Gallery",
+       "link": {
+        "kind": "gallery"
+       }
+      },
+      {
+       "label": "Hello post",
+       "link": {
+        "kind": "post",
+        "path": "hello"
+       }
+      },
+      {
+       "label": "Mail",
+       "link": {
+        "kind": "external",
+        "url": "mailto:hi@example.com"
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

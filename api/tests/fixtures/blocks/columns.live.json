@@ -1,0 +1,110 @@
+{
+ "mode": "live",
+ "context": {
+  "tenant_slug": "acme",
+  "site_id": "s1",
+  "media_base": "/media/",
+  "media": [
+   {
+    "id": "m1",
+    "s3_key": "acme/s1/photo.jpg",
+    "caption": "Photo <1>"
+   },
+   {
+    "id": "m2",
+    "s3_key": "acme/s1/b.png",
+    "caption": ""
+   }
+  ],
+  "pages": [
+   {
+    "path": "about",
+    "title": "About"
+   },
+   {
+    "path": "contact",
+    "title": "Contact"
+   }
+  ],
+  "posts": [
+   {
+    "slug": "older",
+    "title": "Older",
+    "published_at": "2026-01-01T00:00:00Z"
+   },
+   {
+    "slug": "hello",
+    "title": "Hello <w>",
+    "excerpt": "Ex & cerpt",
+    "published_at": "2026-10-01T00:00:00Z"
+   }
+  ],
+  "events": [
+   {
+    "title": "Gig",
+    "event_date": "2026-12-01",
+    "venue": "Hall"
+   },
+   {
+    "title": "Early <bird>",
+    "event_date": "2026-11-20"
+   }
+  ]
+ },
+ "doc": {
+  "schema": 1,
+  "root": {
+   "props": {
+    "title": "columns"
+   }
+  },
+  "content": [
+   {
+    "type": "Columns",
+    "props": {
+     "id": "b1",
+     "count": 2,
+     "col_0": [
+      {
+       "type": "RichText",
+       "props": {
+        "id": "b2",
+        "html": "<p>Left <a href=\"/contact/\">c</a></p>"
+       }
+      }
+     ],
+     "col_1": [
+      {
+       "type": "Columns",
+       "props": {
+        "id": "b3",
+        "count": 3,
+        "col_0": [
+         {
+          "type": "Divider",
+          "props": {
+           "id": "b4"
+          }
+         }
+        ],
+        "col_1": [
+         {
+          "type": "Image",
+          "props": {
+           "id": "b5",
+           "image": {
+            "media_id": "m2"
+           },
+           "alt": "x"
+          }
+         }
+        ],
+        "col_2": []
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}
