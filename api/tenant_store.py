@@ -94,7 +94,9 @@ class TenantStore(Protocol):
     def list_cognito_members(self, tenant_slug: str) -> list[dict]: ...
     def list_tusers(self, tenant_slug: str) -> list[dict]: ...
     def list_roles(self, tenant_slug: str) -> list[dict]: ...
-    # get/put/delete_{member,tuser,role}, get/put_permissions, list/get_domain, get_template,
+    # Platform templates (T-32a): get_template, list_templates, put/update_template_head,
+    # put/get/list_template_version(s), delete_template, list_sites_on_template.
+    # get/put/delete_{member,tuser,role}, get/put_permissions, list/get_domain,
     # put_tenant, plus the explicit global lookups: domain_owner (byDomain GSI),
     # list_all_tenants / list_all_domains (byEntity GSI, superadmin), backfill_by_entity and
     # delete_tenant_cascade.
@@ -141,6 +143,30 @@ def _strip(item: dict) -> dict:
     return {k: v for k, v in item.items() if k not in _KEY_ATTRS}
 
 
+def sk_template_version(slug: str, n: int) -> str:
+    return f"{sk_template(slug)}#V#{int(n):04d}"
+
+
+def _int_or_none(v):
+    return int(v) if v is not None else None
+
+
+def _template_out(item: dict, slug: str) -> dict:
+    out = {**_strip(item), "slug": item.get("slug") or slug}
+    for k in ("latest_version", "published_version"):
+        if k in out:
+            out[k] = _int_or_none(out[k])
+    return out
+
+
+def _version_out(item: dict) -> dict:
+    out = _strip(item)
+    for k in ("version", "schema"):
+        if k in out:
+            out[k] = _int_or_none(out[k])
+    return out
+
+
 def _is_legacy_site_row(item: dict) -> bool:
     """Legacy site metadata: sk=SITE#{id} with no second '#' (content rows have one)."""
     sk = item.get("sk", "")
@@ -177,6 +203,10 @@ class _StoreBase:
         raise NotImplementedError
 
     def _delete(self, pk: str, sk: str) -> dict | None:
+        raise NotImplementedError
+
+    def _put_if_absent(self, item: dict) -> bool:
+        """Conditional create. False (nothing written) if the row already exists."""
         raise NotImplementedError
 
     def _query_prefix(self, pk: str, sk_prefix: str) -> list[dict]:
@@ -422,11 +452,88 @@ class _StoreBase:
     def get_domain(self, tenant_slug: str, domain: str) -> dict | None:
         return self._get(pk_tenant(tenant_slug), sk_domain(domain))
 
-    # Templates: tenant fork (TENANT#{slug}/TEMPLATE#) first when tenant_slug is given, then platform.
+    # Templates (ADR-0003 §5, T-32a). Platform partition TENANT#_platform:
+    #   head    SK=TEMPLATE#{slug}            name, description, tier_required, base_renderer,
+    #                                         latest_version, published_version, deprecated
+    #   version SK=TEMPLATE#{slug}#V#{0000n}  immutable: schema, tokens, allowed_blocks,
+    #                                         page_presets, header, footer, created_at
+    # A TEMPLATE# prefix query returns heads *and* versions; heads are the rows whose SK has
+    # exactly one '#' (slugs never contain '#').
     def get_template(self, template_id: str, tenant_slug: str | None = None) -> dict | None:
+        """Template head. tenant_slug: legacy tenant fork row (TENANT#{slug}/TEMPLATE#) first,
+        kept read-only for pre-T-32a data (forks were dropped, rows were not deleted)."""
         item = self._get(pk_tenant(tenant_slug), sk_template(template_id)) if tenant_slug else None
         item = item or self._get(pk_tenant(PLATFORM_TENANT), sk_template(template_id))
-        return _strip(item) if item else None
+        return _template_out(item, template_id) if item else None
+
+    def list_templates(self) -> list[dict]:
+        """Platform template heads (no version rows), ordered by slug."""
+        rows = self._query_prefix(pk_tenant(PLATFORM_TENANT), "TEMPLATE#")
+        return [_template_out(r, r["sk"][len("TEMPLATE#"):]) for r in rows if r["sk"].count("#") == 1]
+
+    def put_template_head(self, slug: str, head: dict, create_only: bool = False) -> dict:
+        """Write a platform template head. create_only: conditional create (KeyError if it exists)."""
+        body = {k: v for k, v in _strip(head).items() if k != "versions"}
+        item = {**body, "slug": slug, "pk": pk_tenant(PLATFORM_TENANT), "sk": sk_template(slug)}
+        if create_only:
+            if not self._put_if_absent(item):
+                raise KeyError(slug)
+        else:
+            self._put(item)
+        return _template_out(item, slug)
+
+    def update_template_head(self, slug: str, updates: dict) -> dict | None:
+        """Field-level SET on an existing head (no read-modify-write). None if the head is missing."""
+        updates = {k: v for k, v in updates.items() if k not in _KEY_ATTRS and k != "slug"}
+        if updates:
+            self._set_attrs_if_exists(pk_tenant(PLATFORM_TENANT), sk_template(slug), updates)
+        return self.get_template(slug)
+
+    def put_template_version(self, slug: str, version: dict, n: int | None = None) -> int:
+        """Write an immutable version (conditional put: an existing version is never overwritten).
+        n=None appends V{latest_version+1} and advances the head's latest_version; an explicit n
+        (seed migration) leaves the head to the caller. Raises KeyError if the head is missing or
+        the version already exists (concurrent create / re-seed)."""
+        head = self.get_template(slug)
+        if head is None:
+            raise KeyError(slug)
+        append = n is None
+        if append:
+            n = int(head.get("latest_version") or 0) + 1
+        item = {**_strip(version), "slug": slug, "version": n,
+                "pk": pk_tenant(PLATFORM_TENANT), "sk": sk_template_version(slug, n)}
+        if not self._put_if_absent(item):
+            raise KeyError(f"{slug} v{n}")
+        if append:
+            self.update_template_head(slug, {"latest_version": n})
+        return n
+
+    def get_template_version(self, slug: str, n: int) -> dict | None:
+        item = self._get(pk_tenant(PLATFORM_TENANT), sk_template_version(slug, int(n)))
+        return _version_out(item) if item else None
+
+    def list_template_versions(self, slug: str) -> list[dict]:
+        """Every version of `slug`, ascending."""
+        rows = self._query_prefix(pk_tenant(PLATFORM_TENANT), f"{sk_template(slug)}#V#")
+        return [_version_out(r) for r in rows]
+
+    def delete_template(self, slug: str) -> None:
+        """Delete a head and all its versions (caller ensures no site pins it)."""
+        pk = pk_tenant(PLATFORM_TENANT)
+        for row in self._query_prefix(pk, f"{sk_template(slug)}#V#"):
+            self._delete(pk, row["sk"])
+        self._delete(pk, sk_template(slug))
+
+    def list_sites_on_template(self, slug: str) -> list[dict]:
+        """Every site (all tenants) whose template_id is `slug`, each with "tenant_slug".
+        ponytail: no template GSI, so this is one byEntity query plus one SITE_META# query per
+        tenant (O(tenants)). Fine for the superadmin bulk upgrade / delete guard at today's tenant
+        count; add a byTemplate GSI if it gets slow."""
+        out = []
+        for tenant in self.list_all_tenants():
+            out += [{**s, "tenant_slug": tenant["slug"]} for s in self.list_sites(tenant["slug"])
+                    if (s.get("template_id") or "") == slug]
+        return out
 
 
 class DynamoDBTenantStore(_StoreBase):
@@ -442,6 +549,16 @@ class DynamoDBTenantStore(_StoreBase):
 
     def _put(self, item: dict) -> None:
         self.table.put_item(Item=item)
+
+    def _put_if_absent(self, item: dict) -> bool:
+        assert item["pk"].startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        try:
+            self.table.put_item(Item=item, ConditionExpression="attribute_not_exists(pk)")
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                return False
+            raise
+        return True
 
     def _delete(self, pk: str, sk: str) -> dict | None:
         return self.table.delete_item(Key={"pk": pk, "sk": sk}, ReturnValues="ALL_OLD").get("Attributes")
@@ -605,6 +722,13 @@ class InMemoryTenantStore(_StoreBase):
 
     def _delete(self, pk: str, sk: str) -> dict | None:
         return self.items.pop((pk, sk), None)
+
+    def _put_if_absent(self, item: dict) -> bool:
+        assert item["pk"].startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"
+        if (item["pk"], item["sk"]) in self.items:
+            return False
+        self._put(item)
+        return True
 
     def _query_prefix(self, pk: str, sk_prefix: str) -> list[dict]:
         assert pk.startswith("TENANT#"), "tenant isolation: partition key must start with TENANT#"

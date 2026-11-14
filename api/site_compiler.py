@@ -11,6 +11,9 @@ identical bundles.
          preview token), and a small script propagates ?token= to /preview links.
 Rich-text bodies are sanitized by the template renderers (Bug #8 stored XSS).
 
+snapshot.template may carry ``base_renderer`` and ``tokens`` (from the site's pinned template
+version, loaded by publish_handler); tokens become --template-* CSS for block-editor sites only.
+
 Block docs (ADR-0003): only when site.editor == "blocks" are page `doc`s rendered through
 blocks.render_doc (and a reserved `_home` doc becomes index.html). Otherwise `doc` is ignored and
 every page compiles as a one-block legacy RichText doc, byte-identical to the pre-blocks output.
@@ -75,8 +78,10 @@ def content_type_for(path: str) -> str:
 
 
 def _renderer_for(template: dict):
-    # Forked templates inherit their base layout via forked_from.
-    slug = ((template or {}).get("forked_from") or (template or {}).get("slug") or "").strip().lower()
+    # base_renderer (T-32a) names the Python renderer explicitly. forked_from stays as a fallback
+    # for pre-T-32a tenant fork rows (forks were dropped, their data was not deleted).
+    t = template or {}
+    slug = (t.get("base_renderer") or t.get("forked_from") or t.get("slug") or "").strip().lower()
     renderer = get_renderer(slug) or get_renderer(DEFAULT_TEMPLATE)
     if renderer is None:
         raise ValueError(f"No renderer for template: {slug}")
@@ -141,13 +146,16 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
     media = list(snapshot.media)
 
     use_blocks = site.get("editor") == "blocks"
+    # Template tokens (pinned version, resolved by the caller) apply to block-editor sites only:
+    # legacy sites stay byte-identical.
+    tokens = (snapshot.template or {}).get("tokens") if use_blocks else None
     home = None
     if use_blocks:
         home = next((p for p in pages if p["path"] == "_home"), None)
         pages = [p for p in pages if p["path"] != "_home"]
     rctx = RenderContext.build(
         base_path=base_path, media_base=media_base, tenant_slug=tenant, site_id=site_id,
-        media=media, pages=pages, posts=posts, events=events,
+        media=media, pages=pages, posts=posts, events=events, tokens=tokens,
     )
 
     nav = nav_links(pages, bool(posts), bool(events), bool(media), base_path=base_path)
@@ -191,7 +199,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
     pages_html["404.html"] = renderer.render_404(site_name, branding, media_base, nav, base_path=base_path)
 
     text_files: dict[str, str] = {}
-    css = renderer.render_site_css(blocks=use_blocks)
+    css = renderer.render_site_css(blocks=use_blocks, tokens=tokens)
     if live:
         text_files["style.css"] = css
         text_files.update(pages_html)

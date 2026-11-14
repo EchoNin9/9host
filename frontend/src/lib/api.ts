@@ -505,6 +505,9 @@ export interface SiteBranding {
 }
 
 export interface Site {
+  /** T-32a: pinned template version; update available when the template publishes a newer one */
+  template_version?: number | null
+  template_update_available?: boolean
   id: string
   name: string
   slug: string
@@ -784,10 +787,9 @@ export interface Template {
   components: Record<string, unknown>
   created_at?: string
   updated_at?: string
-  /** Task 1.124: true if tenant-owned forked template */
-  is_custom?: boolean
-  /** Task 1.124: original platform template slug when forked */
-  forked_from?: string
+  /** T-32a: Python renderer supplying chrome + CSS (data-only templates reuse one) */
+  base_renderer?: string
+  published_version?: number | null
 }
 
 export interface TemplatesResponse {
@@ -796,21 +798,6 @@ export interface TemplatesResponse {
 
 export async function fetchTemplates(api: TenantApi, accessToken: string | null): Promise<Template[]> {
   return (await call<TemplatesResponse>(api, "/api/templates", accessToken))?.templates ?? []
-}
-
-/** Fork a platform template (Task 1.123). Pro+ only. */
-export async function forkTemplate(
-  api: TenantApi,
-  accessToken: string | null,
-  body: { template_slug: string; name?: string; slug?: string }
-): Promise<{ slug: string; name: string } | null> {
-  const data = await call<{ template: { slug: string; name: string } }>(
-    api,
-    "/api/tenant/templates/fork",
-    accessToken,
-    { method: "POST", body }
-  )
-  return data?.template ?? null
 }
 
 export interface AdminTemplate {

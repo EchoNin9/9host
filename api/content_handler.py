@@ -21,20 +21,13 @@ from html_sanitizer import sanitize_html
 from middleware import validate_content_status, validate_slug_format
 from publish_handler import _collect_content
 from request_context import RequestContext, respond
+from reserved_slugs import HOME_PAGE_PATH, RESERVED_PAGE_PATHS
 from tenant_store import DynamoDBTenantStore
 
 S3_MEDIA_BUCKET = "9host-media"
 CONTENT_ROLES = ("admin", "manager")
 
-# Reserved paths/slugs — deny-list for pages and posts (Task 1.95)
-RESERVED_PAGE_PATHS = frozenset({
-    "admin", "api", "login", "signup", "auth", "signin", "signout", "logout", "register",
-    "settings", "billing", "dashboard", "users", "sites", "domains", "modules", "analytics",
-    "_next", "static", "assets",
-})
 RESERVED_POST_SLUGS = RESERVED_PAGE_PATHS
-
-HOME_PAGE_PATH = "_home"  # reserved block-doc home page (ADR-0003 §1); only creatable with a doc
 
 _STAMPS = ("status", "published_at", "created_at", "updated_at")
 # url segment -> (content type, singular key, label, response fields, updatable fields)

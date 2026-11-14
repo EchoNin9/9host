@@ -227,6 +227,12 @@ def _compile_inputs(store, tenant_slug: str, site: dict) -> tuple[dict, dict, st
     template = store.get_template(template_id, tenant_slug)
     if not template:
         raise HttpError(404, f"Template not found: {template_id}")
+    if site.get("editor") == "blocks":
+        # Tokens from the site's pinned version (T-32a); compile_site stays pure. Unpinned
+        # (pre-T-32a) sites render with V0001, the seeded migration of the old template.
+        version = store.get_template_version(template_id, int(site.get("template_version") or 1))
+        if version:
+            template = {**template, "tokens": dict(version.get("tokens") or {})}
     features = _resolve_features(store.get_tenant(tenant_slug) or {})
     return template, features, os.environ.get("CLOUDFRONT_MEDIA_URL", "/media/")
 

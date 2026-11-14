@@ -25,7 +25,7 @@ def test_css_needs_no_auth_or_tenant():
     assert resp["statusCode"] == 200
 
 
-def test_unknown_slug_and_bad_paths_404():
+def test_unknown_slug_and_bad_paths_404(dynamodb_table):  # unknown slug looks up a data-only head
     assert _get("/api/templates/nope/css")["statusCode"] == 404
     assert _get("/api/templates/business-generic")["statusCode"] == 404
     assert _get("/api/templates/business-generic/js")["statusCode"] == 404

@@ -134,12 +134,11 @@ export function SiteTemplateGallery() {
                   current ? "border-primary ring-2 ring-primary/25" : ""
                 }`}
               >
-                <TemplatePreview slug={t.forked_from || t.slug} siteName={site.name} />
+                <TemplatePreview slug={t.base_renderer || t.slug} siteName={site.name} />
                 <div className="flex flex-1 flex-col gap-2 p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-medium">{t.name}</h2>
                     {t.tier_required !== "FREE" && <TierBadge tier={t.tier_required} />}
-                    {t.is_custom && <Badge mono>Custom</Badge>}
                     {current && (
                       <Badge tone="success">
                         <Check /> Current

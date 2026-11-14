@@ -50,6 +50,37 @@ def rewrite_body_media_urls(body: str, tenant_slug: str, site_id: str, media_bas
 
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3,8}$")
 _FONT_RE = re.compile(r"^[A-Za-z0-9 ,'\-]{1,100}$")
+_LENGTH_RE = re.compile(r"^\d{1,2}(\.\d{1,2})?(px|rem)$")
+
+# Template tokens (ADR-0003 §5): key -> (pattern, CSS custom property). Validated on save
+# (template_schema.validate_tokens) and again here before reaching <style>.
+TEMPLATE_TOKENS: dict[str, tuple[re.Pattern, str]] = {
+    "primary": (_COLOR_RE, "--template-primary"),
+    "secondary": (_COLOR_RE, "--template-secondary"),
+    "bg": (_COLOR_RE, "--template-bg"),
+    "text": (_COLOR_RE, "--template-text"),
+    "heading_font": (_FONT_RE, "--template-heading-font"),
+    "body_font": (_FONT_RE, "--template-body-font"),
+    "radius": (_LENGTH_RE, "--template-radius"),
+    "spacing": (_LENGTH_RE, "--template-spacing"),
+}
+
+
+def template_tokens_css(tokens: dict | None) -> str:
+    """Template tokens as --template-* overrides (appended after the renderer's own :root).
+    Site branding still wins: template CSS reads var(--brand-*, var(--template-*))."""
+    if not isinstance(tokens, dict):
+        return ""
+    props = [f"  {prop}: {v};" for key, (pattern, prop) in TEMPLATE_TOKENS.items()
+             if isinstance(v := tokens.get(key), str) and pattern.match(v)]
+    if not props:
+        return ""
+    css = "\n/* Template tokens (ADR-0003 §5) */\n:root {\n" + "\n".join(props) + "\n}\n"
+    if any(p.startswith("  --template-body-font") for p in props):
+        css += "body { font-family: var(--brand-font, var(--template-body-font)); }\n"
+    if any(p.startswith("  --template-heading-font") for p in props):
+        css += "h1, h2, h3, h4 { font-family: var(--brand-font, var(--template-heading-font)); }\n"
+    return css
 
 
 def branding_styles(branding: dict) -> str:
@@ -394,9 +425,11 @@ class TemplateRenderer(ABC):
         return self._chrome(site_name, site_name, branding, media_base, nav, base_path, f"    {main_html}",
                             meta_description, meta_image)
 
-    def render_site_css(self, blocks: bool = False) -> str:
-        """Template CSS, plus the shared block styles for sites on the block editor."""
-        return self.render_css() + (blocks_css() if blocks else "")
+    def render_site_css(self, blocks: bool = False, tokens: dict | None = None) -> str:
+        """Template CSS, plus the shared block styles and template tokens for block-editor sites."""
+        if not blocks:
+            return self.render_css()
+        return self.render_css() + blocks_css() + template_tokens_css(tokens)
 
     def render_blog_index(
         self,
