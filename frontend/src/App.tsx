@@ -46,6 +46,8 @@ import { SiteTemplateGallery } from "@/pages/site-template-gallery"
 
 // Block editor (ADR-0003): Puck lives in its own lazy chunk and is only routed behind the flag.
 const PageEditor = lazy(() => import("@/pages/page-editor"))
+// Template editor (T-32b): lazy; it lazy-loads Puck itself only when the block editor flag is on.
+const AdminTemplateEditor = lazy(() => import("@/pages/admin-template-editor"))
 
 /**
  * Tenant scope for /:tenantSlug/*. Resource views get their API client from TenantScope;
@@ -280,6 +282,14 @@ function AppRoutes() {
         </Route>
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="templates" element={<AdminTemplatesPage />} />
+        <Route
+          path="templates/:slug/edit"
+          element={
+            <Suspense fallback={<LoadingState rows={3} label="Loading template editor…" />}>
+              <AdminTemplateEditor />
+            </Suspense>
+          }
+        />
         <Route path="edge" element={<AdminEdgeHealthPage />} />
       </Route>
       <Route path="/login/site" element={<SiteLogin />} />

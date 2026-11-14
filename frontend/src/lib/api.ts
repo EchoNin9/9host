@@ -6,7 +6,7 @@
  * Platform/admin functions use the unscoped `apiClient`.
  */
 
-import type { BlockDoc } from "@/editor/block-env"
+import type { BlockDoc, BlockLink } from "@/editor/block-env"
 import {
   apiClient,
   readSiteToken,
@@ -805,43 +805,88 @@ export interface AdminTemplate {
   name: string
   description: string
   tier_required: string
-  components: Record<string, unknown>
+  base_renderer?: string | null
+  latest_version: number
+  published_version?: number | null
+  deprecated: boolean
+  components?: Record<string, unknown>
   created_at?: string
   updated_at?: string
+  /** GET /api/admin/templates/{slug} only. */
+  versions?: { version: number; created_at?: string; published: boolean }[]
+}
+
+export interface TemplateHeader {
+  show_logo?: boolean
+  nav_style?: string
+}
+export interface TemplateFooter {
+  text?: string
+  links?: { label: string; link: BlockLink | null }[]
+}
+
+/** Versioned template data (immutable once created). */
+export interface TemplateVersionData {
+  tokens: Record<string, string>
+  allowed_blocks: Record<string, true | string>
+  page_presets: Record<string, BlockDoc>
+  header: TemplateHeader
+  footer: TemplateFooter
+}
+export interface TemplateVersion extends TemplateVersionData {
+  version: number
+  schema?: number
+  created_at?: string
 }
 
 export interface AdminTemplatesResponse {
   templates: AdminTemplate[]
 }
 
-export async function fetchAdminTemplates(accessToken: string | null): Promise<AdminTemplate[]> {
-  return (await call<AdminTemplatesResponse>(apiClient, "/api/admin/templates", accessToken))?.templates ?? []
-}
+const adminTemplatePath = (slug: string, rest = "") => `/api/admin/templates/${enc(slug)}${rest}`
 
-export type CreateAdminTemplateResult =
-  | { success: true; template: AdminTemplate }
-  | { success: false; error: string }
+export const fetchAdminTemplates = () => apiClient.request<AdminTemplatesResponse>("/api/admin/templates")
 
-export async function createAdminTemplate(
-  accessToken: string | null,
-  body: { slug: string; name: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
-): Promise<CreateAdminTemplateResult> {
-  const r = await apiClient.request<AdminTemplate>("/api/admin/templates", {
-    method: "POST",
-    body,
-    token: accessToken,
-  })
-  return r.ok ? { success: true, template: r.data } : { success: false, error: r.error }
-}
+export const fetchAdminTemplate = (slug: string) => apiClient.request<AdminTemplate>(adminTemplatePath(slug))
+
+export const createAdminTemplate = (body: {
+  slug: string
+  name: string
+  description?: string
+  tier_required?: string
+  base_renderer?: string
+}) => apiClient.request<AdminTemplate>("/api/admin/templates", { method: "POST", body })
 
 export const updateAdminTemplate = (
-  accessToken: string | null,
   slug: string,
-  body: { name?: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
-) => call<AdminTemplate>(apiClient, `/api/admin/templates/${enc(slug)}`, accessToken, { method: "PUT", body })
+  body: { name?: string; description?: string; tier_required?: string; base_renderer?: string; deprecated?: boolean }
+) => apiClient.request<AdminTemplate>(adminTemplatePath(slug), { method: "PUT", body })
 
-export const deleteAdminTemplate = (accessToken: string | null, slug: string) =>
-  succeeded(apiClient, `/api/admin/templates/${enc(slug)}`, accessToken, { method: "DELETE" })
+/** 409 {error, sites} while any site uses the template. */
+export const deleteAdminTemplate = (slug: string) =>
+  apiClient.request<void>(adminTemplatePath(slug), { method: "DELETE" })
+
+export const fetchTemplateVersion = (slug: string, version: number) =>
+  apiClient.request<TemplateVersion>(adminTemplatePath(slug, `/versions/${version}`))
+
+/** New immutable version V{latest+1}; omitted fields are copied from the latest. 400 {error, path}. */
+export const createTemplateVersion = (slug: string, body: Partial<TemplateVersionData>) =>
+  apiClient.request<TemplateVersion>(adminTemplatePath(slug, "/versions"), { method: "POST", body })
+
+export const publishTemplateVersion = (slug: string, version: number) =>
+  apiClient.request<AdminTemplate>(adminTemplatePath(slug, "/publish"), { method: "POST", body: { version } })
+
+export const previewTemplate = (slug: string, body: { version?: number; preset?: string }) =>
+  apiClient.request<{ html: string; version: number | null; preset: string }>(adminTemplatePath(slug, "/preview"), {
+    method: "POST",
+    body,
+  })
+
+export const upgradeTemplateSites = (slug: string, version: number) =>
+  apiClient.request<{ version: number; updated: number; sites: { tenant_slug: string; site_id: string }[] }>(
+    adminTemplatePath(slug, "/upgrade-sites"),
+    { method: "POST", body: { version } }
+  )
 
 // -----------------------------------------------------------------------------
 // Content API (pages, posts, events, media) — Task 1.95

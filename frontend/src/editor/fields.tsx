@@ -34,8 +34,9 @@ export function LinkPicker({
   onChange: (v: BlockLink | null) => void
   id?: string
 }) {
-  const { pages, posts } = useContext(EditorDataContext)
+  const { pages, posts, linkKinds } = useContext(EditorDataContext)
   const kind = value?.kind ?? ""
+  const kinds = linkKinds ? KINDS.filter((k) => !k.value || k.value === kind || linkKinds.includes(k.value)) : KINDS
   return (
     <div className="grid gap-2">
       <NativeSelect
@@ -47,7 +48,7 @@ export function LinkPicker({
           onChange(k ? { kind: k, ...(k === "external" ? { url: "https://" } : {}) } : null)
         }}
       >
-        {KINDS.map((k) => (
+        {kinds.map((k) => (
           <option key={k.value} value={k.value}>
             {k.label}
           </option>
@@ -135,9 +136,12 @@ function Thumb({ url, label, selected, onClick }: { url?: string; label: string;
 }
 
 function NoMedia() {
+  const { siteId } = useContext(EditorDataContext)
   return (
     <p className="text-xs text-muted-foreground">
-      No images yet. Upload them in the site’s Media tab, then come back.
+      {siteId
+        ? "No images yet. Upload them in the site’s Media tab, then come back."
+        : "Images are chosen per site, so templates leave this empty."}
     </p>
   )
 }
