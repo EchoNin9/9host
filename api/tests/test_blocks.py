@@ -343,6 +343,7 @@ def test_blocks_site_live(slug):
     files = html_files(bundle)
     assert "_home/index.html" not in files
     assert "/_home/" not in files["index.html"] and "/_home/" not in bundle.files["sitemap.xml"].decode()
+    assert all("_home" not in html for html in files.values())  # never a nav entry or page
     index = files["index.html"]
     assert '<section class="b-hero b-hero--center">' in index and 'href="/about/"' in index
     assert 'class="hero"' not in index and "page-nav" not in index  # render_index replaced

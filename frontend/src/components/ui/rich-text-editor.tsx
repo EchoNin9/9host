@@ -3,6 +3,8 @@
  *
  * Toolbar: bold, italic, underline, headings, link, image, lists, blockquote, code.
  * When siteId is provided: "Insert image" opens MediaPicker (4.2), drag-and-drop uploads (4.3).
+ * When linkTargets is provided: "Link" opens an inline panel with a "Link to page" picker that
+ * inserts root-relative hrefs (ADR-0003 §3); otherwise it is the plain URL prompt.
  * Outputs HTML string via onChange callback.
  */
 import { useEditor, EditorContent } from "@tiptap/react"
@@ -29,6 +31,9 @@ import {
   RemoveFormatting,
   Upload,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
 import { MediaPicker, uploadFileAndGetUrl } from "@/components/content-editors/media-picker"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantScope } from "@/context/tenant-scope-context"
@@ -39,14 +44,26 @@ interface RichTextEditorProps {
   placeholder?: string
   /** When provided, enables media picker + drag-and-drop upload */
   siteId?: string
+  /** Site pages for the link dialog's "Link to page" picker (root-relative hrefs, home = "/"). */
+  linkTargets?: LinkTarget[]
 }
 
-export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTextEditorProps) {
+export interface LinkTarget {
+  label: string
+  href: string
+}
+
+/** Root-relative site link (not protocol-relative): opens in the same tab. */
+const isInternalHref = (href: string) => href.startsWith("/") && !href.startsWith("//")
+
+export function RichTextEditor({ value, onChange, placeholder, siteId, linkTargets }: RichTextEditorProps) {
   const { tenantSlug } = useTenant()
   const { api } = useTenantScope()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [dropActive, setDropActive] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [linkDraft, setLinkDraft] = useState<string | null>(null)
+  const hasTargets = !!linkTargets?.length
 
   const editor = useEditor({
     extensions: [
@@ -109,6 +126,10 @@ export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTex
   const setLink = useCallback(() => {
     if (!editor) return
     const prev = editor.getAttributes("link").href
+    if (hasTargets) {
+      setLinkDraft(prev || "")
+      return
+    }
     const url = window.prompt("URL", prev || "https://")
     if (url === null) return
     if (url === "") {
@@ -116,7 +137,24 @@ export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTex
     } else {
       editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
     }
-  }, [editor])
+  }, [editor, hasTargets])
+
+  const applyLink = useCallback(
+    (href: string, label?: string) => {
+      if (!editor) return
+      setLinkDraft(null)
+      const attrs = isInternalHref(href) ? { href, target: null } : { href }
+      if (href && editor.state.selection.empty && !editor.isActive("link")) {
+        // Nothing selected: insert the link with the page name (or the URL) as its text.
+        editor.chain().focus().insertContent({ type: "text", text: label || href, marks: [{ type: "link", attrs }] }).run()
+        return
+      }
+      const chain = editor.chain().focus().extendMarkRange("link")
+      if (!href) chain.unsetLink().run()
+      else chain.setLink(attrs).run()
+    },
+    [editor]
+  )
 
   const addImage = useCallback(() => {
     if (!editor) return
@@ -308,6 +346,56 @@ export function RichTextEditor({ value, onChange, placeholder, siteId }: RichTex
           <Redo className="size-4" />
         </ToolbarButton>
       </div>
+
+      {linkDraft !== null && (
+        <div
+          role="group"
+          aria-label="Link"
+          className="flex flex-wrap items-center gap-2 border-b border-input bg-muted/30 p-2"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              applyLink(linkDraft.trim())
+            } else if (e.key === "Escape") setLinkDraft(null)
+          }}
+        >
+          <NativeSelect
+            aria-label="Link to page"
+            className="w-48"
+            value={linkTargets?.some((t) => t.href === linkDraft) ? linkDraft : ""}
+            onChange={(e) => {
+              const t = linkTargets?.find((x) => x.href === e.target.value)
+              if (t) applyLink(t.href, t.label)
+            }}
+          >
+            <option value="">Link to page…</option>
+            {linkTargets?.map((t) => (
+              <option key={t.href} value={t.href}>
+                {t.label} ({t.href})
+              </option>
+            ))}
+          </NativeSelect>
+          <Input
+            aria-label="URL"
+            className="h-9 min-w-40 flex-1"
+            placeholder="https://"
+            value={linkDraft}
+            onChange={(e) => setLinkDraft(e.target.value)}
+            autoFocus
+          />
+          <Button type="button" size="sm" onClick={() => applyLink(linkDraft.trim())}>
+            Apply
+          </Button>
+          {editor.isActive("link") && (
+            <Button type="button" size="sm" variant="ghost" onClick={() => applyLink("")}>
+              Remove
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="ghost" onClick={() => setLinkDraft(null)}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       <EditorContent editor={editor} className="rte-editor" />
 

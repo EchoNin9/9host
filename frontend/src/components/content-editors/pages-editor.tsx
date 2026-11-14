@@ -5,10 +5,11 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { EmptyState, LoadingState, Notice } from "@/components/page"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Pencil, Trash2, FileText, LayoutTemplate } from "lucide-react"
+import { Plus, Pencil, Trash2, FileText, Home, LayoutTemplate } from "lucide-react"
 import { Link } from "react-router-dom"
 import { SwitchToBlocksButton } from "@/components/switch-editor-button"
 import { isBlockEditorEnabled } from "@/lib/feature-flags"
+import { HOME_PAGE_PATH, siteLinkTargets } from "@/lib/link-targets"
 import {
   Card,
   CardContent,
@@ -79,7 +80,8 @@ export function PagesEditor({
     try {
       const token = await getToken()
       const list = await fetchContentPages(api, token, siteId)
-      setPages(list)
+      // `_home` (block home page doc) is edited from the pinned Home row, never as a regular page.
+      setPages(list.filter((p) => p.path !== HOME_PAGE_PATH))
     } catch {
       setPages([])
     } finally {
@@ -138,6 +140,23 @@ export function PagesEditor({
           </div>
         </CardHeader>
         <CardContent>
+          {visual && (
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-dashed bg-card px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <Home className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="font-medium">Home page</p>
+                  <p className="text-xs text-muted-foreground">/ · the first page visitors see</p>
+                </div>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link to={visualHref(HOME_PAGE_PATH)}>
+                  <LayoutTemplate className="size-4" />
+                  Edit visually
+                </Link>
+              </Button>
+            </div>
+          )}
           {loading ? (
             <LoadingState rows={2} />
           ) : pages.length === 0 ? (
@@ -197,6 +216,7 @@ export function PagesEditor({
         onOpenChange={(open) => !open && handleClose()}
         siteId={siteId}
         page={editing}
+        linkTargets={siteLinkTargets(pages)}
         onSaved={() => {
           void load()
           handleClose()
@@ -237,7 +257,9 @@ function PageFormSheet({
   setSaving,
   error,
   setError,
+  linkTargets,
 }: {
+  linkTargets: ReturnType<typeof siteLinkTargets>
   open: boolean
   onOpenChange: (open: boolean) => void
   siteId: string
@@ -365,6 +387,7 @@ function PageFormSheet({
               onChange={setBody}
               placeholder="Page content…"
               siteId={siteId}
+              linkTargets={linkTargets}
             />
           </div>
           <div>

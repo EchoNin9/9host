@@ -198,8 +198,8 @@ export function MediaListPicker({
 }
 
 export function RichTextField({ value, onChange }: { value: string | undefined; onChange: (v: string) => void }) {
-  const { siteId } = useContext(EditorDataContext)
-  return <RichTextEditor value={value ?? ""} onChange={onChange} siteId={siteId} />
+  const { siteId, linkTargets } = useContext(EditorDataContext)
+  return <RichTextEditor value={value ?? ""} onChange={onChange} siteId={siteId} linkTargets={linkTargets} />
 }
 
 const HINTS: Record<string, string> = {

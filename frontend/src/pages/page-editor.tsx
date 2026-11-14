@@ -3,12 +3,14 @@
  * Lazy-loaded (Puck stays out of the entry chunk) and routed only when
  * VITE_ENABLE_BLOCK_EDITOR === "true"; usable only when site.editor === "blocks".
  * The canvas iframe loads the site template's real CSS; Save sends the block doc.
+ * Preview (T-31e, ADR-0003 §6) saves if dirty, then draft-publish + draft-token, opening a new tab.
+ * The reserved `_home` path edits the home page doc (404 -> starter doc, created on save).
  */
 import { Puck, type Data } from "@puckeditor/core"
 import "@puckeditor/core/puck.css"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ArrowLeft, FileQuestion, Save } from "lucide-react"
+import { ArrowLeft, Eye, FileQuestion, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { EmptyState, LoadingState, Notice } from "@/components/page"
 import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
@@ -22,12 +24,15 @@ import {
   fetchContentPage,
   fetchContentPages,
   fetchContentPosts,
+  fetchDraftPublish,
+  fetchDraftToken,
   fetchMediaPresignedUrl,
   getToken,
   saveContentPageDoc,
 } from "@/lib/api"
 import { BlockEnvContext, buildEnv, type BlockDoc, type BlockEnv } from "@/editor/block-env"
 import { EditorDataContext, type EditorData } from "@/editor/editor-data"
+import { HOME_PAGE_PATH, siteLinkTargets } from "@/lib/link-targets"
 import { describeDocPath, makeBlockConfig, toDoc, toPuckData } from "@/editor/puck-config"
 
 interface Loaded {
@@ -58,10 +63,13 @@ interface Actions {
   save: () => void
   saving: boolean
   label: string
+  preview: () => void
+  previewing: boolean
+  canPreview: boolean
 }
 const ActionsContext = createContext<Actions | null>(null)
 
-/** Puck header actions: back, page status, Save. */
+/** Puck header actions: back, page status, Preview, Save. */
 function HeaderActions() {
   const a = useContext(ActionsContext)
   if (!a) return null
@@ -82,7 +90,17 @@ function HeaderActions() {
         <option value="DRAFT">Draft</option>
         <option value="PUBLISHED">Published</option>
       </select>
-      <Button size="sm" onClick={a.save} disabled={a.saving}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={a.preview}
+        disabled={a.previewing || a.saving || !a.canPreview}
+        title={a.canPreview ? "Save, then open a draft preview in a new tab" : "Give the site a slug to preview drafts"}
+      >
+        <Eye className="size-4" />
+        {a.previewing ? "Preparing…" : "Preview"}
+      </Button>
+      <Button size="sm" onClick={a.save} disabled={a.saving || a.previewing}>
         <Save className="size-4" />
         {a.label}
       </Button>
@@ -90,7 +108,19 @@ function HeaderActions() {
   )
 }
 
-function useEditorLoad(siteId: string, pagePath: string, enabled: boolean) {
+/** Starter doc for a home page that has no doc yet (owner answer 2: reserved `_home`). */
+function homeStarterDoc(siteName: string, hasPosts: boolean): BlockDoc {
+  return {
+    schema: 1,
+    root: { props: { title: "Home" } },
+    content: [
+      { type: "Hero", props: { heading: siteName } },
+      ...(hasPosts ? [{ type: "PostList", props: { heading: "Latest posts", count: 5 } }] : []),
+    ],
+  }
+}
+
+function useEditorLoad(siteId: string, pagePath: string, enabled: boolean, siteName: string) {
   const { api, tenantSlug } = useTenantScope()
   const [state, setState] = useState<{ loaded?: Loaded; error?: string }>({})
 
@@ -99,7 +129,7 @@ function useEditorLoad(siteId: string, pagePath: string, enabled: boolean) {
     let cancelled = false
     void (async () => {
       const token = await getToken()
-      const [pageRes, pages, posts, events, media] = await Promise.all([
+      const [pageRes, allPages, posts, events, media] = await Promise.all([
         fetchContentPage(api, siteId, pagePath),
         fetchContentPages(api, token, siteId),
         fetchContentPosts(api, token, siteId),
@@ -113,14 +143,17 @@ function useEditorLoad(siteId: string, pagePath: string, enabled: boolean) {
       const mediaRows = await Promise.all(
         media.map(async (m) => ({ ...m, displayUrl: (await fetchMediaPresignedUrl(api, token, siteId, m.id)) ?? undefined }))
       )
+      // `_home` is the home page, not a linkable page.
+      const pages = allPages.filter((p) => p.path !== HOME_PAGE_PATH)
       const page = pageRes.ok ? pageRes.data.page : null
-      const doc: BlockDoc = page?.doc ?? {
+      const doc: BlockDoc = page?.doc ?? (!page && pagePath === HOME_PAGE_PATH ? homeStarterDoc(siteName, posts.length > 0) : {
         schema: 1,
         root: { props: { title: page?.title ?? "" } },
         // A page saved by the rich-text editor: its body as one raw-HTML text block (ADR-0003 §4).
         content: page?.body ? [{ type: "RichText", props: { html: page.body, legacy: true } }] : [],
-      }
-      const data: EditorData = { siteId, pages, posts, media: mediaRows }
+      })
+      const linkTargets = siteLinkTargets(pages, { blog: posts.length > 0, events: events.length > 0, gallery: media.length > 0 })
+      const data: EditorData = { siteId, pages, posts, media: mediaRows, linkTargets }
       const env = buildEnv({ basePath: "", mediaBase: null, tenantSlug, siteId, media: mediaRows, pages, posts, events, editing: true })
       if (!cancelled)
         setState({ loaded: { doc, isNew: !page, status: page?.status?.toUpperCase() || "DRAFT", data, env } })
@@ -128,12 +161,13 @@ function useEditorLoad(siteId: string, pagePath: string, enabled: boolean) {
     return () => {
       cancelled = true
     }
-  }, [api, tenantSlug, siteId, pagePath, enabled])
+  }, [api, tenantSlug, siteId, pagePath, enabled, siteName])
   return state
 }
 
-function Editor({ siteId, pagePath, templateSlug, loaded, backTo }: {
+function Editor({ siteId, pagePath, templateSlug, loaded, backTo, canPreview }: {
   siteId: string
+  canPreview: boolean
   pagePath: string
   templateSlug: string
   loaded: Loaded
@@ -147,7 +181,13 @@ function Editor({ siteId, pagePath, templateSlug, loaded, backTo }: {
   const [status, setStatus] = useState(loaded.status)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<{ tone: "success" | "danger"; title: string; where?: string } | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [message, setMessage] = useState<{
+    tone: "success" | "danger" | "info"
+    title: string
+    where?: string
+    href?: string
+  } | null>(null)
 
   useEffect(() => {
     if (!dirty) return
@@ -156,7 +196,8 @@ function Editor({ siteId, pagePath, templateSlug, loaded, backTo }: {
     return () => window.removeEventListener("beforeunload", h)
   }, [dirty])
 
-  const save = useCallback(async () => {
+  /** Saves the doc; true when saved. `quiet` skips the success notice (Preview shows its own). */
+  const save = useCallback(async (quiet = false) => {
     const doc = toDoc(dataRef.current)
     setSaving(true)
     setMessage(null)
@@ -165,11 +206,44 @@ function Editor({ siteId, pagePath, templateSlug, loaded, backTo }: {
     if (r.ok) {
       setIsNew(false)
       setDirty(false)
-      setMessage({ tone: "success", title: "Saved. Preview the draft or publish from the content editor." })
-    } else {
-      setMessage({ tone: "danger", title: r.error, where: r.path ? describeDocPath(doc, r.path) : undefined })
+      if (!quiet) setMessage({ tone: "success", title: "Saved. Preview the draft or publish from the content editor." })
+      return true
     }
+    setMessage({ tone: "danger", title: r.error, where: r.path ? describeDocPath(doc, r.path) : undefined })
+    return false
   }, [api, siteId, pagePath, status, isNew])
+
+  const preview = useCallback(async () => {
+    // Open the tab inside the click: window.open after an await is often popup-blocked.
+    const tab = window.open("", "_blank")
+    if (tab) tab.opener = null
+    const fail = (title: string) => {
+      tab?.close()
+      setMessage({ tone: "danger", title })
+    }
+    setPreviewing(true)
+    try {
+      if ((dirty || isNew) && !(await save(true))) {
+        tab?.close()
+        return
+      }
+      setMessage({ tone: "info", title: "Building the draft preview…" })
+      const token = await getToken()
+      if (!(await fetchDraftPublish(api, token, siteId))) return fail("Could not build the draft preview")
+      const url = (await fetchDraftToken(api, token, siteId))?.preview_url
+      if (!url) return fail("Could not get the preview link")
+      if (tab) {
+        tab.location.href = url
+        setMessage({ tone: "success", title: "Draft preview opened in a new tab.", href: url })
+      } else {
+        setMessage({ tone: "success", title: "Draft preview is ready.", href: url })
+      }
+    } catch {
+      fail("Preview failed")
+    } finally {
+      setPreviewing(false)
+    }
+  }, [api, siteId, dirty, isNew, save])
 
   const cssHref = templateCssUrl(templateSlug)
   // Stable overrides: a new iframe renderer would remount the whole canvas.
@@ -191,8 +265,11 @@ function Editor({ siteId, pagePath, templateSlug, loaded, backTo }: {
       setStatus(v)
       setDirty(true)
     },
-    save,
+    save: () => void save(),
     saving,
+    preview: () => void preview(),
+    previewing,
+    canPreview,
     label: saving ? "Saving…" : dirty || isNew ? "Save" : "Saved",
   }
 
@@ -213,6 +290,11 @@ function Editor({ siteId, pagePath, templateSlug, loaded, backTo }: {
                 }
               >
                 {message.where && <>Where: {message.where}</>}
+                {message.href && (
+                  <a href={message.href} target="_blank" rel="noopener noreferrer" className="underline">
+                    Open preview
+                  </a>
+                )}
               </Notice>
             )}
             <div className="min-h-0 flex-1">
@@ -243,7 +325,7 @@ export default function PageEditorPage() {
   const { sites, loading, refetch } = useSites()
   const site = sites.find((s) => s.id === siteId)
   const blocks = site?.editor === "blocks"
-  const { loaded, error } = useEditorLoad(siteId, pagePath, blocks)
+  const { loaded, error } = useEditorLoad(siteId, pagePath, blocks, site?.name ?? "")
   const backTo = `${basePath}/sites/${siteId}/edit`
 
   if (loading) return <TenantPage><LoadingState label="Loading site…" /></TenantPage>
@@ -286,6 +368,7 @@ export default function PageEditorPage() {
       templateSlug={site.template_id || "business-generic"}
       loaded={loaded}
       backTo={backTo}
+      canPreview={!!site.slug}
     />
   )
 }
