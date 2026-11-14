@@ -40,7 +40,8 @@ def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool
     store = DynamoDBTenantStore(table)
     status = "PUBLISHED" if published_only else None
     pages = [
-        {"path": i.get("path", ""), "title": i.get("title", ""), "body": i.get("body", "")}
+        {"path": i.get("path", ""), "title": i.get("title", ""), "body": i.get("body", ""),
+         **({"doc": i["doc"]} if i.get("doc") else {})}  # block doc (ADR-0003); used when site.editor == "blocks"
         for i in store.list_content(tenant_slug, site_id, "PAGE", status)
     ]
     posts = [
@@ -58,7 +59,7 @@ def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool
         for i in store.list_content(tenant_slug, site_id, "EVENT", status)
     ]
     media = [
-        {"s3_key": i.get("s3_key", ""), "caption": i.get("caption", "")}
+        {"id": i.get("id", ""), "s3_key": i.get("s3_key", ""), "caption": i.get("caption", "")}
         for i in store.list_content(tenant_slug, site_id, "MEDIA")
     ]
     return {"pages": pages, "posts": posts, "events": events, "media": media}

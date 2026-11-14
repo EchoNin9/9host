@@ -8,6 +8,7 @@ superadmin is "admin", Bug #5). All rows go through TenantStore. MEDIA create/de
 tenant storage via TenantStore.adjust_storage_bytes (floor at 0, Bug #4).
 """
 
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -15,7 +16,10 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
+from blocks import DocValidationError, RenderContext, normalize_own_links, render_doc, validate_doc
+from html_sanitizer import sanitize_html
 from middleware import validate_content_status, validate_slug_format
+from publish_handler import _collect_content
 from request_context import RequestContext, respond
 from tenant_store import DynamoDBTenantStore
 
@@ -29,6 +33,8 @@ RESERVED_PAGE_PATHS = frozenset({
     "_next", "static", "assets",
 })
 RESERVED_POST_SLUGS = RESERVED_PAGE_PATHS
+
+HOME_PAGE_PATH = "_home"  # reserved block-doc home page (ADR-0003 §1); only creatable with a doc
 
 _STAMPS = ("status", "published_at", "created_at", "updated_at")
 # url segment -> (content type, singular key, label, response fields, updatable fields)
@@ -74,6 +80,46 @@ def _apply_fields(item: dict, body: dict, fields: tuple[str, ...]) -> None:
             item[field] = val if isinstance(val, str) else str(val)
 
 
+def _page_out(item: dict) -> dict:
+    """Page response: the standard fields plus the parsed block ``doc`` when present."""
+    out = _out(item, ENTITIES["pages"][3])
+    if item.get("doc"):
+        try:
+            out["doc"] = json.loads(item["doc"])
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def _own_hosts(store, tenant_slug: str, site_id: str) -> set[str]:
+    """The site's own hostnames: {site_slug}.{each DOMAINS entry} + its custom domains."""
+    site = store.get_site(tenant_slug, site_id) or {}
+    slug = (site.get("slug") or "").strip().lower()
+    domains = [d.strip().lower() for d in (os.environ.get("DOMAINS") or "echo9.net").split(",") if d.strip()]
+    hosts = {f"{slug}.{d}" for d in domains} if slug else set()
+    hosts.update(r["sk"][len("DOMAIN#"):].lower() for r in store.list_domains(tenant_slug)
+                 if r.get("site_id") == site_id and r.get("sk", "").startswith("DOMAIN#"))
+    return hosts
+
+
+def _apply_doc(store, tenant_slug: str, site_id: str, item: dict, raw_doc, explicit_title: bool) -> dict | None:
+    """Validate/sanitize/normalize a page ``doc``, store it compactly and dual-write ``body``
+    (ADR-0003 §3-4). Returns an error response or None."""
+    try:
+        doc = validate_doc(raw_doc)
+    except DocValidationError as e:
+        return respond(400, {"error": e.message, "path": e.path})
+    page_paths = {p.get("path") for p in store.list_content(tenant_slug, site_id, "PAGE")} | {item["path"]}
+    doc = normalize_own_links(doc, _own_hosts(store, tenant_slug, site_id), page_paths)
+    item["doc"] = json.dumps(doc, separators=(",", ":"), ensure_ascii=False, sort_keys=True)
+    content = _collect_content(store.table, tenant_slug, site_id, published_only=True)
+    rctx = RenderContext.build(tenant_slug=tenant_slug, site_id=site_id, **content)
+    item["body"] = render_doc(doc, rctx)
+    if not explicit_title and doc["root"]["props"]["title"]:
+        item["title"] = doc["root"]["props"]["title"]
+    return None
+
+
 def _validate_slug(value: str, field: str, reserved: frozenset) -> str | None:
     err = validate_slug_format(value, field)
     if err:
@@ -90,18 +136,24 @@ def _new_item(store, tenant_slug: str, site_id: str, entity: str, body: dict, s3
 
     if entity == "pages":
         path = (body.get("path") or "").strip().lower()
-        err = _validate_slug(path, "path", RESERVED_PAGE_PATHS)
+        has_doc = body.get("doc") is not None
+        err = None if (path == HOME_PAGE_PATH and has_doc) else _validate_slug(path, "path", RESERVED_PAGE_PATHS)
         if err:
             return None, respond(400, {"error": err})
         if store.get_content(tenant_slug, site_id, "PAGE", path):
             return None, respond(409, {"error": "Page path already exists."})
         item.update(path=path, title=body.get("title", ""), body=body.get("body", ""))
+        if has_doc:
+            err = _apply_doc(store, tenant_slug, site_id, item, body["doc"], "title" in body)
+            if err:
+                return None, err
     elif entity == "posts":
         slug = (body.get("slug") or "").strip().lower() or str(uuid.uuid4())[:8]
         err = _validate_slug(slug, "slug", RESERVED_POST_SLUGS)
         if err:
             return None, respond(400, {"error": err})
-        item.update(id=str(uuid.uuid4()), slug=slug, title=body.get("title", ""), body=body.get("body", ""))
+        item.update(id=str(uuid.uuid4()), slug=slug, title=body.get("title", ""),
+                    body=sanitize_html(str(body.get("body") or "")))  # sanitize-on-save (ADR-0003 §3)
     elif entity == "events":
         item.update(
             id=str(uuid.uuid4()), title=body.get("title", ""), event_date=body.get("event_date", ""),
@@ -163,6 +215,7 @@ def content_handler(ctx: RequestContext) -> dict:
     if len(parts) > 3 and not is_url:
         return respond(405, {"error": "Method not allowed."})
 
+    out = _page_out if entity == "pages" else (lambda i: _out(i, fields))
     if method == "GET" and not item_id:
         return respond(200, {entity: [_out(i, fields) for i in store.list_content(tenant_slug, site_id, ctype)]})
     if method == "POST" and not item_id:
@@ -172,7 +225,7 @@ def content_handler(ctx: RequestContext) -> dict:
         item = store.put_content(tenant_slug, site_id, ctype, item)
         if entity == "media" and item.get("size_bytes"):
             store.adjust_storage_bytes(tenant_slug, item["size_bytes"])
-        return respond(201, {key: _out(item, fields)})
+        return respond(201, {key: out(item)})
     if not item_id or method not in ("GET", "PUT", "DELETE"):
         return respond(405, {"error": "Method not allowed."})
 
@@ -189,7 +242,7 @@ def content_handler(ctx: RequestContext) -> dict:
         )
         return respond(200, {"url": url})
     if method == "GET":
-        return respond(200, {key: _out(item, fields)})
+        return respond(200, {key: out(item)})
     if method == "DELETE":
         if entity == "media":
             _delete_media(store, s3, tenant_slug, site_id, item)
@@ -205,6 +258,12 @@ def content_handler(ctx: RequestContext) -> dict:
             return respond(400, {"error": err})
         item["slug"] = slug
     _apply_fields(item, body, updatable)
+    if entity == "posts" and "body" in body:
+        item["body"] = sanitize_html(item["body"])  # sanitize-on-save (ADR-0003 §3)
+    if entity == "pages" and body.get("doc") is not None:
+        err = _apply_doc(store, tenant_slug, site_id, item, body["doc"], "title" in body)
+        if err:
+            return err
     item["updated_at"] = _now()
     store.put_content(tenant_slug, site_id, ctype, item)
-    return respond(200, {key: _out(item, fields)})
+    return respond(200, {key: out(item)})

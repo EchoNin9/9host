@@ -26,6 +26,7 @@ from tier_config import tier_rank
 SITE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 BASE_PATH = "/api/tenant/sites"
 MANAGE_ROLES = ("admin", "manager")
+EDITORS = ("blocks", "richtext")  # site.editor (ADR-0003 §4); absent = "richtext"
 
 
 def _site_to_response(site: dict) -> dict:
@@ -39,6 +40,7 @@ def _site_to_response(site: dict) -> dict:
         "published_version": int(site["published_version"]) if site.get("published_version") is not None else None,
         "created_at": site.get("created_at", ""),
         "updated_at": site.get("updated_at", ""),
+        "editor": site.get("editor") or "richtext",
     }
     if isinstance(site.get("branding"), dict):
         out["branding"] = site["branding"]
@@ -130,6 +132,10 @@ def _update_site(store, tenant_slug: str, site_id: str, body: dict) -> dict:
             site["template_id"] = tid
         else:
             site.pop("template_id", None)
+    if body.get("editor") is not None:
+        if body["editor"] not in EDITORS:
+            return respond(400, {"error": "editor must be one of: blocks, richtext."})
+        site["editor"] = body["editor"]
     if "branding" in body and body["branding"] is not None:  # Task 2.94
         branding = body["branding"]
         clean = {
@@ -215,12 +221,12 @@ def sites_handler(ctx: RequestContext) -> dict:
         site = store.get_site(tenant_slug, site_id) if len(parts) == 1 else None
         return respond(200, {"site": _site_to_response(site)}) if site else respond(404, {"error": "Site not found."})
 
-    if method not in ("POST", "PUT", "DELETE"):
+    if method not in ("POST", "PUT", "PATCH", "DELETE"):
         return respond(405, {"error": "Method not allowed."})
     ctx.require_tenant_member(MANAGE_ROLES)
     if method == "POST" and not parts:
         return _create_site(store, tenant_slug, ctx.json_body())
-    if method == "PUT" and len(parts) == 1:
+    if method in ("PUT", "PATCH") and len(parts) == 1:
         return _update_site(store, tenant_slug, site_id, ctx.json_body())
     if method == "DELETE" and len(parts) == 1:
         return _delete_site(store, tenant_slug, site_id)

@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 from html_sanitizer import _is_dangerous_url
 from templates.base_layout import escape_html, media_url
@@ -89,6 +90,27 @@ def link_href(link: Mapping | None, base_path: str = "") -> str:
         url = link.get("url") or ""
         return url if isinstance(url, str) and _external_ok(url) else ""
     return ""
+
+
+def normalize_own_links(node, hosts, page_paths):
+    """Save-time (ADR-0003 §3): external link props pointing at the site's own host become
+    internal ``{kind: home}`` (``/``) or ``{kind: page, path}`` (an existing page). Returns a new
+    tree; anything else (other hosts, query/fragment, unknown paths) is left as is."""
+    if isinstance(node, list):
+        return [normalize_own_links(x, hosts, page_paths) for x in node]
+    if not isinstance(node, dict):
+        return node
+    if node.get("kind") == "external" and isinstance(node.get("url"), str):
+        parts = urlsplit(node["url"])
+        host = (parts.hostname or "").lower()
+        if parts.scheme in ("http", "https") and host in hosts and not parts.query and not parts.fragment:
+            path = parts.path.strip("/")
+            if not path:
+                return {**node, "kind": "home", "path": "", "url": ""}
+            if path in page_paths and _PATH_RE.match(path):
+                return {**node, "kind": "page", "path": path, "url": ""}
+        return node
+    return {k: normalize_own_links(v, hosts, page_paths) for k, v in node.items()}
 
 
 _HREF_RE = re.compile(r'(\shref=")/(?!/)')
