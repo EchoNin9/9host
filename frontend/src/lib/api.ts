@@ -6,6 +6,7 @@
  * Platform/admin functions use the unscoped `apiClient`.
  */
 
+import type { BlockDoc } from "@/editor/block-env"
 import {
   apiClient,
   readSiteToken,
@@ -509,6 +510,8 @@ export interface Site {
   slug: string
   status: string
   template_id?: string
+  /** Page editor for this site (ADR-0003 §4); absent = "richtext". */
+  editor?: "blocks" | "richtext"
   branding?: SiteBranding
   published_at?: string | null
   published_version?: number | null
@@ -895,6 +898,8 @@ export interface ContentPage {
   path: string
   title: string
   body: string
+  /** Block document (ADR-0003 §1); only on single-page GET/POST/PUT responses. */
+  doc?: BlockDoc
   status: string
   published_at?: string | null
   created_at: string
@@ -929,6 +934,29 @@ export async function updateContentPage(
   const path = contentPath(siteId, `pages/${enc(pagePath)}`)
   return (await call<{ page: ContentPage }>(api, path, accessToken, { method: "PUT", body }))?.page ?? null
 }
+
+/** GET one page (includes `doc`). */
+export const fetchContentPage = (api: TenantApi, siteId: string, pagePath: string) =>
+  api.request<{ page: ContentPage }>(contentPath(siteId, `pages/${enc(pagePath)}`))
+
+/** Save a block page: PUT an existing page or POST a new one. 400s carry the doc `path`. */
+export const saveContentPageDoc = (
+  api: TenantApi,
+  siteId: string,
+  pagePath: string,
+  body: { title?: string; status?: string; doc: BlockDoc },
+  isNew: boolean
+) =>
+  isNew
+    ? api.request<{ page: ContentPage }>(contentPath(siteId, "pages"), {
+        method: "POST",
+        body: { path: pagePath, ...body },
+      })
+    : api.request<{ page: ContentPage }>(contentPath(siteId, `pages/${enc(pagePath)}`), { method: "PUT", body })
+
+/** Switch a site between the block and rich-text page editors. */
+export const setSiteEditor = (api: TenantApi, siteId: string, editor: "blocks" | "richtext") =>
+  api.request<SiteResponse>(`/api/tenant/sites/${enc(siteId)}`, { method: "PATCH", body: { editor } })
 
 export const deleteContentPage = (api: TenantApi, accessToken: string | null, siteId: string, pagePath: string) =>
   succeeded(api, contentPath(siteId, `pages/${enc(pagePath)}`), accessToken, { method: "DELETE" })

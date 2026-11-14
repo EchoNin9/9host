@@ -5,7 +5,10 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import { EmptyState, LoadingState, Notice } from "@/components/page"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Pencil, Trash2, FileText } from "lucide-react"
+import { Plus, Pencil, Trash2, FileText, LayoutTemplate } from "lucide-react"
+import { Link } from "react-router-dom"
+import { SwitchToBlocksButton } from "@/components/switch-editor-button"
+import { isBlockEditorEnabled } from "@/lib/feature-flags"
 import {
   Card,
   CardContent,
@@ -41,12 +44,26 @@ import {
   updateContentPage,
   deleteContentPage,
   type ContentPage,
+  type Site,
 } from "@/lib/api"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantScope } from "@/context/tenant-scope-context"
 
-export function PagesEditor({ siteId }: { siteId: string }) {
-  const { tenantSlug } = useTenant()
+export function PagesEditor({
+  siteId,
+  site,
+  onSiteChanged,
+}: {
+  siteId: string
+  site?: Site
+  onSiteChanged?: () => void
+}) {
+  const { tenantSlug, tenantBasePath } = useTenant()
+  // Block editor (ADR-0003): "Edit visually" when the flag is on and the site uses blocks.
+  const blockFlag = isBlockEditorEnabled()
+  const visual = blockFlag && site?.editor === "blocks"
+  const visualHref = (path: string) =>
+    `${tenantBasePath || `/${tenantSlug}`}/sites/${siteId}/pages/${encodeURIComponent(path)}/edit`
   const { api } = useTenantScope()
   const [pages, setPages] = useState<ContentPage[]>([])
   const [loading, setLoading] = useState(true)
@@ -110,10 +127,15 @@ export function PagesEditor({ siteId }: { siteId: string }) {
             <CardTitle>Pages</CardTitle>
             <CardDescription>Static pages like About, Contact, Services, etc.</CardDescription>
           </div>
-          <Button size="sm" variant="outline" onClick={handleCreate}>
-            <Plus className="mr-2 size-4" />
-            Add page
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {blockFlag && site && !visual && (
+              <SwitchToBlocksButton siteId={siteId} onSwitched={() => onSiteChanged?.()} size="sm" />
+            )}
+            <Button size="sm" variant="outline" onClick={handleCreate}>
+              <Plus className="mr-2 size-4" />
+              Add page
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -135,14 +157,25 @@ export function PagesEditor({ siteId }: { siteId: string }) {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEdit(page)}
-                      aria-label="Edit"
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
+                    {visual && (
+                      <Button asChild variant="outline" size="sm">
+                        <Link to={visualHref(page.path)}>
+                          <LayoutTemplate className="size-4" />
+                          Edit visually
+                        </Link>
+                      </Button>
+                    )}
+                    {/* Block sites edit in the visual editor; the rich-text sheet would not update the doc. */}
+                    {!visual && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(page)}
+                        aria-label="Edit"
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

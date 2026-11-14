@@ -40,14 +40,17 @@ import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import { TenantScopeProvider } from "@/context/tenant-scope"
 import { createTenantWithError, getToken } from "@/lib/api"
-import { BLOCK_EDITOR_ENABLED } from "@/lib/feature-flags"
+import { isBlockEditorEnabled } from "@/lib/feature-flags"
+import { TenantTierProvider } from "@/contexts/tenant-tier-provider"
+import { SiteTemplateGallery } from "@/pages/site-template-gallery"
 
-// T-31a spike: Puck lives in its own lazy chunk and is only routed behind the flag.
-const EditorSpike = lazy(() => import("@/pages/editor-spike"))
+// Block editor (ADR-0003): Puck lives in its own lazy chunk and is only routed behind the flag.
+const PageEditor = lazy(() => import("@/pages/page-editor"))
 
 /**
- * Tenant dashboard shell (/:tenantSlug/*). Resource views get their API client from
- * TenantScope; impersonation applies only when a superadmin explicitly chose this tenant.
+ * Tenant scope for /:tenantSlug/*. Resource views get their API client from TenantScope;
+ * impersonation applies only when a superadmin explicitly chose this tenant. Most views
+ * render inside TenantAdminLayout; the block editor is full-page.
  */
 function TenantRouteProvider() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>()
@@ -58,7 +61,7 @@ function TenantRouteProvider() {
       tenantSlug={tenantSlug}
       isSuperadminImpersonating={impersonateTenant === tenantSlug}
     >
-      <TenantAdminLayout />
+      <Outlet />
     </TenantScopeProvider>
   )
 }
@@ -284,24 +287,29 @@ function AppRoutes() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/auth/confirm" element={<AuthConfirm />} />
       <Route path="/:tenantSlug" element={<TenantRouteProvider />}>
-        <Route index element={<TenantDashboard />} />
-        <Route path="analytics" element={<TenantAnalytics />} />
-        <Route path="sites" element={<TenantSites />} />
-        <Route path="sites/:siteId/edit" element={<SiteContentEditor />} />
-        {BLOCK_EDITOR_ENABLED && (
+        <Route element={<TenantAdminLayout />}>
+          <Route index element={<TenantDashboard />} />
+          <Route path="analytics" element={<TenantAnalytics />} />
+          <Route path="sites" element={<TenantSites />} />
+          <Route path="sites/:siteId/edit" element={<SiteContentEditor />} />
+          <Route path="sites/:siteId/template" element={<SiteTemplateGallery />} />
+          <Route path="domains" element={<TenantDomains />} />
+          <Route path="users" element={<TenantUsers />} />
+          <Route path="modules" element={<TenantModules />} />
+          <Route path="settings" element={<TenantSettings />} />
+        </Route>
+        {isBlockEditorEnabled() && (
           <Route
-            path="sites/:siteId/editor-spike"
+            path="sites/:siteId/pages/:pagePath/edit"
             element={
-              <Suspense fallback={<LoadingState rows={3} label="Loading editor…" />}>
-                <EditorSpike />
-              </Suspense>
+              <TenantTierProvider>
+                <Suspense fallback={<LoadingState rows={3} label="Loading editor…" />}>
+                  <PageEditor />
+                </Suspense>
+              </TenantTierProvider>
             }
           />
         )}
-        <Route path="domains" element={<TenantDomains />} />
-        <Route path="users" element={<TenantUsers />} />
-        <Route path="modules" element={<TenantModules />} />
-        <Route path="settings" element={<TenantSettings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

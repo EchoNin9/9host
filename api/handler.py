@@ -52,6 +52,7 @@ from tenant_handler import get_tenant_handler, patch_tenant_handler, put_tenant_
 from tenant_store import DynamoDBTenantStore
 from tenant_templates_handler import tenant_templates_handler
 from tenant_users_handler import tenant_users_handler
+from templates import get_renderer
 from templates_handler import get_templates_handler
 from tenants_handler import create_tenant_handler as self_serve_create_tenant_handler, get_tenants_handler
 from upload_handler import upload_url_handler
@@ -152,6 +153,23 @@ def _route_admin_templates(event, context, path, method):
     return run_with_context(event, lambda ctx: handler(ctx, slug_part.lower()))
 
 
+def _route_template_css(event, context, path, method):
+    """GET /api/templates/{slug}/css — public template + block CSS for the editor canvas (ADR-0003 §2)."""
+    parts = [p for p in path[len("/api/templates/"):].split("/") if p]
+    if len(parts) != 2 or parts[1] != "css":
+        return respond(404, NOT_FOUND)
+    if method != "GET":
+        return respond(405, {"error": "Method not allowed."})
+    renderer = get_renderer(parts[0])
+    if renderer is None:
+        return respond(404, {"error": "Template not found."})
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "text/css; charset=utf-8", "Cache-Control": "public, max-age=300"},
+        "body": renderer.render_site_css(blocks=True),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Route registry
 # ---------------------------------------------------------------------------
@@ -190,6 +208,7 @@ _PREFIX_ROUTES = [
     ("/api/tenant/templates", lambda e, c, p, m: run_with_context(e, tenant_templates_handler)),
     ("/api/admin/tenants/", _route_admin_tenants),
     ("/api/admin/templates/", _route_admin_templates),
+    ("/api/templates/", _route_template_css),
 ]
 
 # Exact-path routes that answer 405 (not 404) for other methods

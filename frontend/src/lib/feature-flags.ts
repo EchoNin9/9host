@@ -17,8 +17,10 @@ export function isBillingEnabled(): boolean {
   return import.meta.env.VITE_ENABLE_BILLING === "true";
 }
 
-/** Block (Puck) editor kill switch (ADR-0003, T-31a spike). Defaults to false. */
-export const BLOCK_EDITOR_ENABLED = import.meta.env.VITE_ENABLE_BLOCK_EDITOR === "true";
+/** Block (Puck) editor kill switch (ADR-0003). Defaults to false; read at render so tests can stub it. */
+export function isBlockEditorEnabled(): boolean {
+  return import.meta.env.VITE_ENABLE_BLOCK_EDITOR === "true";
+}
 
 export type FeatureTier = "free" | "pro" | "business" | "vip";
 
