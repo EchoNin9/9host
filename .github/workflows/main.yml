@@ -93,6 +93,8 @@ jobs:
           VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
           VITE_COGNITO_REGION: ${{ vars.VITE_COGNITO_REGION || 'us-east-1' }}
           VITE_API_URL: ${{ steps.api-url.outputs.url }}
+          # T-31: block editor (Puck) on app.echo9.net (owner-approved 2026-11-15)
+          VITE_ENABLE_BLOCK_EDITOR: "true"
 
       - name: OpenTofu plan
         working-directory: infra
