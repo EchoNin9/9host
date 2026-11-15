@@ -377,3 +377,16 @@ Read first: `AGENTS.md`, `CLAUDE.md`, `GLOSSARY.md`, this file §1, §2 and §9 
 ### Rollback
 - Data: restore from the step-5 backup only if `doc` writes are wrong. Normally there is nothing to undo, because `doc` is ignored on richtext sites.
 - Site: set `editor = "richtext"`, republish, and invalidate. The output is byte-identical to before.
+
+### §10 status (2026-11-15, fifth Commander run)
+
+Done; owner approved steps 5 and 7. Every push green in develop CI and all 8 smoke sites 200 after each. No `.tf` changes, no new AWS resources. Baseline now: pytest 498, vitest 102, edge 21.
+
+| Step | Outcome | Ref |
+|---|---|---|
+| 2 | `scripts/backfill_page_docs.py` (dry run default, `--apply`, conditional write, skips `_home`) + 5 moto tests; `scripts/compare_blocks_output.py` (read-only: stored vs forced-blocks compile, diffed against `published/current/`). Not in CI. | `58c045f` |
+| 3–5 | Dry run: 5 pages, 4 pending (jinks4 2, jinks-ca 1, oliverjinks-com 1; its `_home` already had a doc). Backup `arn:aws:dynamodb:us-east-1:452644920012:table/9host-main/backup/01794765902342-2bb07b28` (AVAILABLE), then `--apply`: 4 written, re-run 0 pending. | — |
+| 6–7 | `jinks4` → v19, `jinks-ca` → v3 with `editor=blocks`; live diff = `style.css` (block CSS appended) only, plus on `jinks4` a pre-existing link attribute-order change in `about`/`mission` (`T-18`/`T-31b` sanitizer; owner accepted). `oliverjinks-com` was already on blocks (owner, v7 2026-11-15 00:41Z); its forced-blocks compile equals live, so no republish. Invalidations of `E1P9K5ZO6DTDWR` `/*` done. | — |
+| 8 | New sites get `editor="blocks"`. Fix found during rollout: a rich-text page save (prod `app`, flag off) kept the stale `doc`, which wins on blocks sites; a body-only PUT now re-wraps `legacy_doc(body)`. | `96ed354` |
+
+Notes: scripts need `AWS_DEFAULT_REGION=us-east-1` (`AWS_REGION` alone raises `NoRegionError` with this botocore). New follow-up: `T-39` (drop dual-write/legacy branch; bulk-set `editor` on old sites). Rollback per site: `editor=richtext`, republish, invalidate.
