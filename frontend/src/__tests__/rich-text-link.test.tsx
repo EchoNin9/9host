@@ -7,6 +7,13 @@ vi.mock("@/context/tenant-scope-context", () => ({ useTenantScope: () => ({ api:
 
 import { RichTextEditor } from "@/components/ui/rich-text-editor"
 
+// jsdom has no layout; ProseMirror's scrollIntoView calls these after a transaction (flaky in CI).
+const emptyRects = () => Object.assign([], { item: () => null }) as unknown as DOMRectList
+for (const proto of [Range.prototype, Element.prototype, Text.prototype] as unknown as Record<string, unknown>[]) {
+  proto.getClientRects ??= emptyRects
+  proto.getBoundingClientRect ??= () => new DOMRect()
+}
+
 afterEach(() => vi.unstubAllGlobals())
 
 describe("rich-text Link to page", () => {
