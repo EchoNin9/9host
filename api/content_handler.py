@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import boto3
 from botocore.exceptions import ClientError
 
-from blocks import DocValidationError, RenderContext, normalize_own_links, render_doc, validate_doc
+from blocks import DocValidationError, RenderContext, legacy_doc, normalize_own_links, render_doc, validate_doc
 from html_sanitizer import sanitize_html
 from middleware import validate_content_status, validate_slug_format
 from publish_handler import _collect_content
@@ -257,6 +257,11 @@ def content_handler(ctx: RequestContext) -> dict:
         err = _apply_doc(store, tenant_slug, site_id, item, body["doc"], "title" in body)
         if err:
             return err
+    elif entity == "pages" and "body" in body and "doc" in item:
+        # Rich-text save on a page with a doc: re-wrap the new body, or a blocks site would
+        # keep publishing the stale doc (T-31f).
+        item["doc"] = json.dumps(legacy_doc(item.get("body") or ""), separators=(",", ":"),
+                                 ensure_ascii=False, sort_keys=True)
     item["updated_at"] = _now()
     store.put_content(tenant_slug, site_id, ctype, item)
     return respond(200, {key: out(item)})

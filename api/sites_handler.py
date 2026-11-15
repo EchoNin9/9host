@@ -126,7 +126,8 @@ def _create_site(store, tenant_slug: str, body: dict) -> dict:
             return err
 
     now = datetime.now(timezone.utc).isoformat()
-    site = {"name": name, "slug": slug, "status": status, "created_at": now, "updated_at": now}
+    # New sites start on the block editor (T-31f); absent editor on older sites stays richtext.
+    site = {"name": name, "slug": slug, "status": status, "editor": "blocks", "created_at": now, "updated_at": now}
     if template_id:
         site["template_id"] = template_id
         if template.get("published_version"):

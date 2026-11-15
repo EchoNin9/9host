@@ -346,6 +346,7 @@ def test_apply_to_blocks_site_seeds_missing_preset_pages_only(api):
 def test_apply_to_richtext_site_does_not_seed(api):
     make_template(api)
     site_id = call("POST", "/api/tenant/sites", owner(api), body={"name": "B", "slug": "b"})[1]["site"]["id"]
+    call("PUT", f"/api/tenant/sites/{site_id}", owner(api), body={"editor": "richtext"})  # new sites default to blocks
     code, body = call("PUT", f"/api/tenant/sites/{site_id}", owner(api), body={"template_id": "studio"})
     assert code == 200 and "seeded_pages" not in body
     assert DynamoDBTenantStore(api.table).list_content("acme", site_id, "PAGE") == []

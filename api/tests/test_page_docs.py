@@ -156,7 +156,8 @@ def test_site_editor_flag_validation_and_snapshot(api):
     site_id = create_site(api)
     tok = owner(api)
     site_url = f"/api/tenant/sites/{site_id}"
-    assert call("GET", site_url, tok)[1]["site"]["editor"] == "richtext"  # default
+    assert call("GET", site_url, tok)[1]["site"]["editor"] == "blocks"  # new-site default (T-31f)
+    assert call("PUT", site_url, tok, body={"editor": "richtext"})[1]["site"]["editor"] == "richtext"
     code, body = call("PUT", site_url, tok, body={"editor": "wysiwyg"})
     assert code == 400 and "editor" in body["error"]
     assert call("PUT", site_url, tok, body={"editor": 1})[0] == 400
@@ -185,3 +186,20 @@ def test_doc_writes_keep_content_permissions(api):
     assert call("POST", _pages(site_id), member, body={"path": "_home", "doc": _doc()})[0] == 403
     assert call("PUT", f"/api/tenant/sites/{site_id}", member, body={"editor": "blocks"})[0] == 403
     assert call("POST", _pages(site_id), body={"path": "about", "doc": _doc()})[0] == 401
+
+
+def test_richtext_save_rewraps_existing_doc(api):
+    """T-31f: a body-only PUT on a page with a doc must not leave a stale doc for blocks publishes."""
+    from blocks import legacy_doc
+    site_id = create_site(api)
+    tok = owner(api)
+    assert call("POST", _pages(site_id), tok, body={"path": "about", "doc": _doc(_rt("<p>old</p>"))})[0] == 201
+    assert call("PUT", f"{_pages(site_id)}/about", tok, body={"body": "<p>new</p>"})[0] == 200
+    stored = _stored(api, site_id, "about")
+    assert stored["body"] == "<p>new</p>"
+    assert json.loads(stored["doc"]) == legacy_doc("<p>new</p>")
+    assert call("PUT", f"{_pages(site_id)}/about", tok, body={"title": "T"})[0] == 200  # no body: doc kept
+    assert json.loads(_stored(api, site_id, "about")["doc"]) == legacy_doc("<p>new</p>")
+    assert call("POST", _pages(site_id), tok, body={"path": "plain", "body": "<p>x</p>"})[0] == 201
+    assert call("PUT", f"{_pages(site_id)}/plain", tok, body={"body": "<p>y</p>"})[0] == 200
+    assert "doc" not in _stored(api, site_id, "plain")  # no doc to keep in sync
