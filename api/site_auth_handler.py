@@ -31,6 +31,24 @@ def _get_jwt_secret() -> str | None:
     return secrets_cache.get_secret_string(os.environ.get("JWT_SECRET_ARN"))
 
 
+# SEC-16: fixed cost-12 hash checked on miss paths (never matches; equalises timing).
+_DUMMY_HASH = "$2b$12$e2OTS2cyow31VnKEVCzGbuGu8ghlpIN9cVBEzXSLXH/0BQZ9/JX8W"
+# SEC-06: lock a TUSER for LOCK_SECONDS after MAX_FAILURES consecutive bad passwords.
+MAX_FAILURES = 5
+LOCK_SECONDS = 15 * 60
+
+
+def _record_failure(table, key: dict, now_ts: int) -> None:
+    """Atomically count a failed login; lock (and reset the count) once MAX_FAILURES is reached."""
+    n = int(table.update_item(
+        Key=key, UpdateExpression="ADD failed_logins :one", ExpressionAttributeValues={":one": 1},
+        ConditionExpression="attribute_exists(pk)", ReturnValues="UPDATED_NEW",
+    )["Attributes"]["failed_logins"])
+    if n >= MAX_FAILURES:
+        table.update_item(Key=key, UpdateExpression="SET locked_until = :t REMOVE failed_logins",
+                          ExpressionAttributeValues={":t": now_ts + LOCK_SECONDS})
+
+
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$")
 
 
@@ -76,27 +94,27 @@ def site_login_handler(event: dict, context: dict) -> dict:
     dynamodb = boto3.resource("dynamodb")
     table = dynamodb.Table(table_name)
 
-    # Validate tenant exists
-    tenant_key = get_tenant_item(site)
-    tenant = table.get_item(Key=tenant_key).get("Item")
-    if not tenant:
-        return _json_response(401, {"error": "Invalid site or credentials."})
-
-    # Look up TUSER
+    # SEC-16: every miss path pays one bcrypt check, so response time doesn't reveal valid usernames.
+    tenant = table.get_item(Key=get_tenant_item(site)).get("Item")
     tuser_key = {"pk": pk_tenant(site), "sk": sk_tuser(username)}
-    item = table.get_item(Key=tuser_key).get("Item")
-    if not item:
-        return _json_response(401, {"error": "Invalid site or credentials."})
+    item = table.get_item(Key=tuser_key).get("Item") if tenant else None
+    password_hash = (item or {}).get("password_hash") or _DUMMY_HASH
 
-    password_hash = item.get("password_hash", "")
-    if not password_hash:
-        return _json_response(401, {"error": "Invalid site or credentials."})
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    if item and int(item.get("locked_until") or 0) > now_ts:
+        return _json_response(429, {"error": "Too many failed attempts. Try again later."})
 
     try:
-        if not bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8")):
-            return _json_response(401, {"error": "Invalid site or credentials."})
+        ok = bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except Exception:
+        ok = False
+    if not item or not item.get("password_hash"):
         return _json_response(401, {"error": "Invalid site or credentials."})
+    if not ok:
+        _record_failure(table, tuser_key, now_ts)
+        return _json_response(401, {"error": "Invalid site or credentials."})
+    if item.get("failed_logins") or item.get("locked_until"):
+        table.update_item(Key=tuser_key, UpdateExpression="REMOVE failed_logins, locked_until")
 
     role = item.get("role", "member")
 

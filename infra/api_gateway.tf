@@ -38,6 +38,13 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+
+  # SEC-06: cap request rate (was only the account-wide default). App-level lockout lives in
+  # site_auth_handler; this bounds brute-force and cost amplification across all routes.
+  default_route_settings {
+    throttling_burst_limit = 200
+    throttling_rate_limit  = 100
+  }
 }
 
 resource "aws_lambda_permission" "api_gateway" {

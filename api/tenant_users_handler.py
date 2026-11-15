@@ -49,8 +49,8 @@ def create_tuser(store, tenant_slug: str, body: dict) -> tuple[int, dict]:
     role = (body.get("role") or "member").lower()
     if not username:
         return 400, {"error": "username is required."}
-    if len(password) < 8:
-        return 400, {"error": "password is required and must be at least 8 characters."}
+    if len(password) < 8 or len(password.encode("utf-8")) > 72:  # bcrypt limit (SEC-31)
+        return 400, {"error": "password is required and must be 8-72 characters."}
     if not USERNAME_PATTERN.match(username):
         return 400, {"error": "username must be alphanumeric, dots, underscores, hyphens."}
     if not _valid_role(store, tenant_slug, role):
@@ -108,9 +108,11 @@ def tenant_users_handler(ctx: RequestContext) -> dict:
     if "display_name" in body:
         tuser["display_name"] = str(body["display_name"]).strip()
     if body.get("password"):
-        if len(body["password"]) < 8:
-            return respond(400, {"error": "password must be at least 8 characters."})
+        if len(body["password"]) < 8 or len(str(body["password"]).encode("utf-8")) > 72:  # SEC-31
+            return respond(400, {"error": "password must be 8-72 characters."})
         tuser["password_hash"] = _hash(body["password"])
         tuser["token_version"] = uuid.uuid4().hex  # SEC-04: revoke existing sessions
+        tuser.pop("failed_logins", None)  # SEC-06: a reset also unlocks
+        tuser.pop("locked_until", None)
     tuser["updated_at"] = datetime.now(timezone.utc).isoformat()
     return respond(200, {"user": _tuser_out(store.put_tuser(tenant_slug, tuser))})

@@ -820,3 +820,47 @@ def test_sec08_free_tier_publishes_no_gallery_page(api):
     snap = ph._build_snapshot(api.table, "acme", site_id, store.get_site("acme", site_id), {"slug": "basic"},
                               "/media/", feats, published_only=True, generated_at="2026-11-15T00:00:00Z")
     assert "gallery/index.html" in compile_site(snap, mode="live").files
+
+
+# ---------------------------------------------------------------------------
+# SEC-06 / SEC-16 / SEC-31: site-login lockout, miss-path timing, bcrypt length cap
+# ---------------------------------------------------------------------------
+
+
+def test_sec06_site_login_locks_after_repeated_failures_and_reset_unlocks(api):
+    assert call("POST", "/api/tenant/tusers", owner(api),
+                body={"username": "victim", "password": "aaaaaaaa", "role": "member"})[0] == 201
+    codes = [_site_login("victim", f"wrong{i:04d}")[0] for i in range(5)]
+    assert codes == [401] * 5
+    assert _site_login("victim", "aaaaaaaa")[0] == 429  # locked even with the right password
+    assert call("PUT", "/api/tenant/tusers/victim", owner(api), body={"password": "bbbbbbbb"})[0] == 200
+    assert _site_login("victim", "bbbbbbbb")[0] == 200
+
+
+def test_sec06_success_resets_failure_count(api):
+    assert call("POST", "/api/tenant/tusers", owner(api),
+                body={"username": "u1", "password": "aaaaaaaa", "role": "member"})[0] == 201
+    for _ in range(4):
+        assert _site_login("u1", "nope-nope")[0] == 401
+    assert _site_login("u1", "aaaaaaaa")[0] == 200
+    for _ in range(4):
+        assert _site_login("u1", "nope-nope")[0] == 401
+    assert _site_login("u1", "aaaaaaaa")[0] == 200
+
+
+def test_sec16_unknown_user_still_runs_bcrypt(api, monkeypatch):
+    import bcrypt as _bcrypt
+    import site_auth_handler
+
+    seen = []
+    real = _bcrypt.checkpw
+    monkeypatch.setattr(site_auth_handler.bcrypt, "checkpw", lambda p, h: seen.append(h) or real(p, h))
+    assert _site_login("ghost", "whatever1")[0] == 401
+    assert _site_login("ghost", "whatever1", site="no-such-tenant")[0] == 401
+    assert seen == [site_auth_handler._DUMMY_HASH.encode()] * 2
+
+
+def test_sec31_password_over_72_bytes_rejected(api):
+    code, _ = call("POST", "/api/tenant/tusers", owner(api),
+                   body={"username": "long", "password": "x" * 73, "role": "member"})
+    assert code == 400
