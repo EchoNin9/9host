@@ -312,3 +312,20 @@ Stop and ask the owner before:
 Subagents: Opus for code tickets, Sonnet for review/CI triage. **Subagents must not use the Chrome tools**; only the Commander does visual checks, in its own new tab, and never clicks tenant rows in the superadmin console (2026-11-12 incident: a subagent left the owner's stage session impersonating `jinks`).
 
 Finish: update §9 status + `AGENTS.md` with outcomes and SHAs; report stage URLs for owner review.
+
+### §9 status (2026-11-14, fourth Commander run)
+
+`T-31b` → `T-32b` done; stopped before `T-31f` as required. Every push was green in develop CI; after each, all 8 smoke sites returned 200. No `.tf` changes, no new AWS resources, no live site switched to blocks or republished. Baseline now: pytest 492, vitest 102, edge 21.
+
+| Ticket | Outcome | Commit |
+|---|---|---|
+| `T-31b` | Pure `api/blocks/` (12 blocks incl. Embed youtube/vimeo/google_maps), `render_doc`, legacy wrap; docs compile only when `site.editor == "blocks"`; legacy bundles byte-identical (sha256 hash test). Lambda bundle copies `api/blocks`. | `9dedac2` |
+| `T-31c` | Page `doc` validated + sanitized on save, own-host links normalized, dual-write `body`; `_home` only with a doc; post body sanitized on save; site `editor` flag on PUT/PATCH; publish snapshot carries page `doc` + media `id`. | `d04fb49` |
+| `T-31d` | Full-page Puck editor `/:tenantSlug/sites/:siteId/pages/:pagePath/edit` (flag + blocks site), full-page template gallery `/:tenantSlug/sites/:siteId/template` (side-sheet picker removed — **not flag-gated**, ships to app on main merge), public `GET /api/templates/{slug}/css`; React/Python golden parity. | `9662205` |
+| `T-31e` | Editor Preview (popup-safe), pinned Home page row (`_home`), "Link to page" in the TipTap link dialog. | `0c6d55d` |
+| `T-32a` | Template head + immutable `#V#{n}` versions via `TenantStore`; superadmin create/update/deprecate/delete(409 while pinned)/versions/publish/preview/upgrade-sites; site `template_version` pin + `template-update`; tokens CSS only on blocks sites; forks removed (rows kept). Backup before seed: `arn:aws:dynamodb:us-east-1:452644920012:table/9host-main/backup/01794699789463-25f6dd1c`. CI seed wrote exactly 5 head attribute fills + 5 `V0001` items under `TENANT#_platform`. | `ae07655` |
+| `T-32b` | `admin-templates.tsx` table (no Sheet/raw JSON); full-page `/admin/templates/:slug/edit` (details, tokens, presets in shared Puck, allowed blocks, header/footer, versions, sandboxed preview). Works without the flag for metadata/tokens/versions. Visually checked on stage (list + edit page, read-only). | `6d70bb3` |
+
+Not verified by the Commander (needs owner): the tenant page editor on stage — the owner's superadmin session sees no `jinks` sites without impersonation, and the Commander may not start impersonation. Use a test tenant/site; switching a site to blocks changes its next **live** publish.
+
+Waiting on the owner: `T-31f` backfill (take a fresh DynamoDB backup first), republishing live sites with the block compiler, `develop` → `main` merge (the template gallery and template admin change prod UI). New follow-ups: `T-38`.
