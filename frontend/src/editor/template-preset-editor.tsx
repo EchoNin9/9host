@@ -8,7 +8,7 @@ import { Puck, type Config, type Data } from "@puckeditor/core"
 import "@puckeditor/core/puck.css"
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { BlockDoc } from "@/editor/block-env"
-import { makeBlockConfig, toDoc, toPuckData } from "@/editor/puck-config"
+import { makeBlockConfig, PUCK_UI, PUCK_VIEWPORTS, toDoc, toPuckData } from "@/editor/puck-config"
 
 const TokensCssContext = createContext("")
 
@@ -81,6 +81,8 @@ export default function TemplatePresetEditor({
         onChange={(d) => onChange(toDoc(d))}
         overrides={overrides}
         iframe={{ enabled: true }}
+        viewports={PUCK_VIEWPORTS}
+        ui={PUCK_UI}
         headerTitle={title}
         headerPath={path}
         height="100%"

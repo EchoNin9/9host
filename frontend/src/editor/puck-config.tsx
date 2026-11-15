@@ -3,7 +3,7 @@
  * Rendering is shared with the golden-tested React blocks (editor/blocks.tsx); fields
  * use our pickers (editor/fields.tsx) and the TipTap RichTextEditor.
  */
-import type { Config, Data, Field } from "@puckeditor/core"
+import type { Config, Data, Field, UiState, Viewport } from "@puckeditor/core"
 import type { BlockDoc, BlockItem } from "@/editor/block-env"
 import { BLOCK_DEFAULTS, SLOTS } from "@/editor/blocks"
 import { BlockCanvas, CtaPicker, LinkPicker, MediaListPicker, MediaPicker, RichTextField } from "@/editor/fields"
@@ -92,6 +92,18 @@ const LABELS: Record<string, string> = {
   PostList: "Latest posts",
   EventList: "Upcoming events",
   LinkList: "Links",
+}
+
+// Puck lists zoom levels only up to the fit-to-pane zoom, so a fixed 1280px viewport in a narrow
+// pane tops out near 58%. Open in Full-width (fits the pane at 100%); fixed widths stay selectable.
+export const PUCK_VIEWPORTS: Viewport[] = [
+  { width: "100%", height: "auto", icon: "FullWidth", label: "Full-width" },
+  { width: 360, height: "auto", icon: "Smartphone", label: "Small" },
+  { width: 768, height: "auto", icon: "Tablet", label: "Medium" },
+  { width: 1280, height: "auto", icon: "Monitor", label: "Large" },
+]
+export const PUCK_UI: Partial<UiState> = {
+  viewports: { current: { width: "100%", height: "auto" }, controlsVisible: true, options: PUCK_VIEWPORTS },
 }
 
 export const blockLabel = (type: string) => LABELS[type] ?? type

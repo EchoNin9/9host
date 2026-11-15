@@ -33,7 +33,7 @@ import {
 import { BlockEnvContext, buildEnv, type BlockDoc, type BlockEnv } from "@/editor/block-env"
 import { EditorDataContext, type EditorData } from "@/editor/editor-data"
 import { HOME_PAGE_PATH, siteLinkTargets } from "@/lib/link-targets"
-import { describeDocPath, makeBlockConfig, toDoc, toPuckData } from "@/editor/puck-config"
+import { describeDocPath, makeBlockConfig, PUCK_UI, PUCK_VIEWPORTS, toDoc, toPuckData } from "@/editor/puck-config"
 
 interface Loaded {
   doc: BlockDoc
@@ -307,6 +307,8 @@ function Editor({ siteId, pagePath, templateSlug, loaded, backTo, canPreview }: 
                 }}
                 overrides={overrides}
                 iframe={{ enabled: true }}
+                viewports={PUCK_VIEWPORTS}
+                ui={PUCK_UI}
                 headerTitle={(loaded.doc.root?.props?.title as string) || pagePath}
                 headerPath={pagePath === "_home" ? "/" : `/${pagePath}/`}
                 height="100%"
