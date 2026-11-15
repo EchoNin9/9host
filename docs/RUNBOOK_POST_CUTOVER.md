@@ -329,3 +329,51 @@ Finish: update §9 status + `AGENTS.md` with outcomes and SHAs; report stage URL
 Not verified by the Commander (needs owner): the tenant page editor on stage — the owner's superadmin session sees no `jinks` sites without impersonation, and the Commander may not start impersonation. Use a test tenant/site; switching a site to blocks changes its next **live** publish.
 
 Waiting on the owner: `T-31f` backfill (take a fresh DynamoDB backup first), republishing live sites with the block compiler, `develop` → `main` merge (the template gallery and template admin change prod UI). New follow-ups: `T-38`.
+
+## 10. Next run — `T-31f` backfill + blocks rollout (fresh Commander)
+
+Read first: `AGENTS.md`, `CLAUDE.md`, `GLOSSARY.md`, this file §1, §2 and §9 (incl. §9 status), and `docs/adr/0003-wysiwyg-templates.md` §4 (migration) and Owner Answer 9 (all sites at once; the per-site flag stays only as a rollback switch). Same guardrails (§2) and workflow as §9: one commit and push per step to `develop`, CI green, then the 8-site smoke check (`jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `jinks.ca`, `app.echo9.net`, `echo9.net`, `www.echo9.net`, `preview.echo9.net`). Never push to `main`. Opus for code, Sonnet for checks/CI triage; subagents never commit, push, use Chrome or touch AWS.
+
+**Why this is risky:** `9host-api` is one Lambda shared by stage and prod, and `9host-main` is one shared table. Every backend push and every data write is a production change. CI runs every `scripts/*` step in `dev.yml` against the prod table on each push.
+
+### Facts established in the §9 run (2026-11-14)
+- A site compiles block docs only when `site.editor == "blocks"`. Default/absent is `"richtext"`, and today **no site is on blocks**.
+- **Expected output when a legacy site flips to `blocks` (verified locally with legacy-wrapped docs):**
+  - live mode: only `style.css` changes (`blocks_css()` is appended); every HTML file is byte-identical;
+  - draft mode: every HTML file changes, because draft inlines the CSS into each page. That is expected, not a regression.
+  - Anything else in the live diff is a bug: stop.
+- A `_home` page doc replaces `index.html` only on blocks sites, and only when it exists. No site has one yet.
+- Templates: all 5 are at `V0001` with empty tokens, so the `--template-*` CSS is empty. `republish_all_sites.py` does not load pinned tokens (`T-38`).
+- In this environment the session's permission check blocked an ad-hoc boto3 read of `9host-main`. `aws dynamodb create-backup` / `describe-backup` were allowed. Do DynamoDB reads and writes through repo scripts. If a step is blocked, ask the owner to run it with `! <command>` instead of working around it.
+- `jinks` sites are not visible on stage in the owner's superadmin session without impersonation, and agents must never start impersonation. Visual checks of the tenant page editor are the owner's.
+- Last backup: `arn:aws:dynamodb:us-east-1:452644920012:table/9host-main/backup/01794699789463-25f6dd1c` (pre-T-32a). Take a new one; don't reuse it.
+
+### Steps
+1. **Baseline:** run the §1 checks. Expect pytest 492, vitest 102, edge 21, build green.
+2. **Write the backfill script (Opus): `scripts/backfill_page_docs.py`.**
+   - Idempotent. Flags: `--table`, `--dry-run` (the default; a real run needs `--apply`), optional `--tenant` and `--site`.
+   - For every `PAGE` item without `doc`, set `doc = json(legacy_doc(body))` using the same compact JSON form as `content_handler` saves. Use a conditional update (`attribute_not_exists(doc)`) and never touch `body`.
+   - Skip `_home`. Print one line per item and a summary of counts.
+   - Pytest against moto: dry run writes nothing; apply writes the docs; a second apply writes nothing; pages that already have a `doc` are untouched; other tenants are untouched.
+   - **Do NOT add it to `.github/workflows/*.yml` in this run.** A CI step would bulk-write prod on every push without a stop point. Wiring it into CI is a separate, owner-approved change.
+   - Commit and push. CI green and the smoke check are enough here; no data has been written yet.
+3. **Dry run against prod (read-only):** `AWS_PROFILE=echo9 .venv/bin/python scripts/backfill_page_docs.py --table 9host-main` (dry run). If the permission check blocks it, ask the owner to run it with `!`. Report the per-tenant/site counts.
+4. **STOP — owner approval required.** Report the dry-run counts and wait for an explicit go.
+5. **After the go:**
+   - Take a fresh on-demand backup (`aws dynamodb create-backup --table-name 9host-main --backup-name 9host-main-pre-T31f-<date>`), wait for `AVAILABLE`, and state the ARN.
+   - Run with `--apply`. Re-run the dry run: it must report 0 pending.
+6. **Per-site rollout check (do not republish live sites yet):** for each of `jinks4` (`80e9d9b4-…`), `jinks-ca` (`8e19335e-…`), `oliverjinks-com` (`4ee567a5-…`):
+   - Download `published/current/` from S3 `9host-sites` (`jinks/<site_id>/published/current/`) into the scratchpad. This is the "before".
+   - Compile locally (live mode, pure `compile_site` on a snapshot built by the same code path as `publish_handler._collect_content`) with `site.editor` forced to `"blocks"`. Diff it against "before".
+   - **Pass:** only `style.css` differs, and only by the appended block CSS. If anything else differs: stop and report.
+7. **STOP — owner approval required** before flipping `editor` to `"blocks"` on live sites and republishing. Report the diffs and the exact commands. After a go, for each site: PATCH or update `editor = "blocks"` through the app's own path, republish via `publish_handler`, check `https://<host>/` is 200, re-diff live vs the step-6 "before" (only `style.css`), and invalidate `E1P9K5ZO6DTDWR` `/*`. Do one site at a time, starting with `jinks4`.
+8. **Flip the default (code):** new sites get `editor = "blocks"` at create time. Existing absent values are left alone; the owner decides whether to bulk-set them later. Keep the `richtext` path and the dual-write `body`. Rollback is to set `editor = "richtext"` and republish.
+9. Update §10 status and `AGENTS.md` (`T-31` done or remaining) with SHAs and the backup ARN. Report to the owner.
+
+### Out of scope this run
+- Dropping the dual-write and the legacy branch (ADR §4: "later"; it needs an observation period first). Open a ticket for it.
+- `T-34` tier gating, `T-38` follow-ups, `develop` → `main` merges, edge or `.tf` changes.
+
+### Rollback
+- Data: restore from the step-5 backup only if `doc` writes are wrong. Normally there is nothing to undo, because `doc` is ignored on richtext sites.
+- Site: set `editor = "richtext"`, republish, and invalidate. The output is byte-identical to before.
