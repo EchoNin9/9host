@@ -21,6 +21,7 @@ from dynamodb_helpers import (
     gsi1sk_tenant_profile,
     gsi3pk_entity_user,
     gsi3sk_user,
+    is_site_slug_entry,
     pk_tenant,
     query_by_site_slug,
     query_tenants_for_user,
@@ -185,7 +186,7 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
 
     # Reserve tenant slugs from site slugs: reject if slug is taken by a site
     slug_resp = table.query(**query_by_site_slug(slug))
-    if slug_resp.get("Items"):
+    if any(is_site_slug_entry(i) for i in slug_resp.get("Items", [])):
         return _json_response(409, {"error": f"Slug '{slug}' is already in use by a site."})
 
     now = datetime.now(timezone.utc).isoformat()

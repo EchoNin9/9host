@@ -45,6 +45,7 @@ from dynamodb_helpers import (
     gsi3sk_user,
     gsi4pk_slug,
     gsi4sk_site,
+    is_site_slug_entry,
     pk_tenant,
     query_by_site_slug,
     sk_domain,
@@ -686,7 +687,7 @@ class DynamoDBTenantStore(_StoreBase):
             return None
         for item in self._query(**query_by_site_slug(slug)):
             pk, gsk = item.get("pk", ""), item.get("gsi4sk", "")
-            if pk.startswith("TENANT#") and gsk.startswith("SITE#"):
+            if pk.startswith("TENANT#") and is_site_slug_entry(item):
                 return {"tenant_slug": pk[len("TENANT#"):], "site_id": gsk[len("SITE#"):]}
         return None
 

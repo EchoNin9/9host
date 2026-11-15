@@ -100,6 +100,13 @@ def query_by_site_slug(site_slug: str) -> dict[str, Any]:
     }
 
 
+def is_site_slug_entry(item: dict) -> bool:
+    """bySiteSlug hit that is a site (``gsi4sk == SITE#{id}``), not a child row such as a blog
+    post that an old backfill indexed by mistake (SEC-14)."""
+    gsk = item.get("gsi4sk", "")
+    return gsk.startswith("SITE#") and "#" not in gsk[len("SITE#"):]
+
+
 def slug_is_taken(table, slug: str, exclude_site_id: str | None = None) -> bool:
     """
     Check if slug is taken by a tenant or site (Task 1.77).
@@ -116,8 +123,9 @@ def slug_is_taken(table, slug: str, exclude_site_id: str | None = None) -> bool:
     params = query_by_site_slug(slug_lower)
     resp = table.query(**params)
     for item in resp.get("Items", []):
-        sk = item.get("sk", "")
-        site_id = sk.replace("SITE#", "") if sk.startswith("SITE#") else ""
+        if not is_site_slug_entry(item):
+            continue
+        site_id = item["gsi4sk"][len("SITE#"):]
         if exclude_site_id and site_id == exclude_site_id:
             continue
         return True

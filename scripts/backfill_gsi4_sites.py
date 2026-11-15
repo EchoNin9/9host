@@ -54,7 +54,9 @@ def backfill(table_name: str, dry_run: bool) -> int:
         slug = item.get("slug", "")
         if not sk.startswith("SITE#") or not slug:
             continue
-        site_id = sk.replace("SITE#", "")
+        site_id = sk[len("SITE#"):]
+        if "#" in site_id:  # SEC-14: child rows (posts, pages, ...) are not sites
+            continue
         to_update.append((item, slug, site_id))
 
     if not to_update:
@@ -87,12 +89,43 @@ def backfill(table_name: str, dry_run: bool) -> int:
     return updated
 
 
+def cleanup_child_rows(table_name: str, apply: bool) -> int:
+    """SEC-14: remove gsi4 keys that older runs put on child rows (``SITE#{id}#POST#...``).
+    Dry run unless ``apply``. Returns the number of rows found."""
+    table = boto3.resource("dynamodb").Table(table_name)
+    kwargs = {
+        "FilterExpression": "begins_with(sk, :s) AND attribute_exists(gsi4pk)",
+        "ExpressionAttributeValues": {":s": "SITE#"},
+    }
+    found = 0
+    while True:
+        resp = table.scan(**kwargs)
+        for item in resp.get("Items", []):
+            if "#" not in item["sk"][len("SITE#"):]:
+                continue
+            found += 1
+            print(f"  {'Cleaning' if apply else 'Would clean'}: {item['pk']} {item['sk']} ({item['gsi4pk']})")
+            if apply:
+                table.update_item(Key={"pk": item["pk"], "sk": item["sk"]}, UpdateExpression="REMOVE gsi4pk, gsi4sk")
+        if "LastEvaluatedKey" not in resp:
+            break
+        kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+    print(f"{found} child row(s) {'cleaned' if apply else 'would be cleaned (dry run; pass --apply)'}.")
+    return found
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Backfill gsi4 keys on SITE items")
     parser.add_argument("--table", default=os.environ.get("DYNAMODB_TABLE", "9host-main"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--cleanup-child-rows", action="store_true",
+                        help="SEC-14: strip gsi4 keys from post/child rows instead of backfilling (dry run unless --apply)")
+    parser.add_argument("--apply", action="store_true", help="with --cleanup-child-rows: actually write")
     args = parser.parse_args()
 
+    if args.cleanup_child_rows:
+        cleanup_child_rows(args.table, args.apply)
+        return 0
     backfill(args.table, args.dry_run)
     return 0
 
