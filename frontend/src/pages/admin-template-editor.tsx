@@ -5,9 +5,9 @@
  * preview. Right: allowed blocks, header/footer, versions (publish, upgrade sites, view older).
  * Versioned data is saved as a new immutable version; users never see raw JSON.
  */
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ArrowLeft, Eye, Pencil, Plus, Save, X } from "lucide-react"
+import { ArrowLeft, Eye, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Pencil, Plus, Save, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -293,6 +293,37 @@ type Confirm = { kind: "publish" | "upgrade"; version: number }
 /** Platform pages have no tenant: the rich-text field and pickers degrade (no uploads, no media). */
 const PLATFORM_SCOPE = { tenantSlug: "", isSuperadminImpersonating: false, basePath: "", api: apiClient.forTenant("_platform") }
 
+/** Side-panel open state, remembered per browser (storage may be unavailable). */
+function usePanel(key: string): [boolean, () => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(key) !== "0"
+    } catch {
+      return true
+    }
+  })
+  const toggle = () =>
+    setOpen((o) => {
+      try {
+        localStorage.setItem(key, o ? "0" : "1")
+      } catch {
+        /* ignore */
+      }
+      return !o
+    })
+  return [open, toggle]
+}
+
+function PanelToggle({ side, open, onClick }: { side: "left" | "right"; open: boolean; onClick: () => void }) {
+  const Icon = side === "left" ? (open ? PanelLeftClose : PanelLeftOpen) : open ? PanelRightClose : PanelRightOpen
+  const label = `${open ? "Hide" : "Show"} ${side === "left" ? "details and theme" : "versions and blocks"} panel`
+  return (
+    <Button size="icon" variant="ghost" className="hidden size-8 xl:inline-flex" onClick={onClick} aria-label={label} aria-expanded={open} title={label}>
+      <Icon className="size-4" />
+    </Button>
+  )
+}
+
 export default function AdminTemplateEditorPage() {
   const { slug = "" } = useParams<{ slug: string }>()
   const blockEditor = isBlockEditorEnabled()
@@ -312,6 +343,8 @@ export default function AdminTemplateEditorPage() {
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [newPath, setNewPath] = useState<string | null>(null)
   const [editorKey, setEditorKey] = useState(0)
+  const [leftOpen, toggleLeft] = usePanel("9host.templateEditor.left")
+  const [rightOpen, toggleRight] = usePanel("9host.templateEditor.right")
 
   useEffect(() => {
     let cancelled = false
@@ -520,9 +553,12 @@ export default function AdminTemplateEditorPage() {
               </Notice>
             )}
 
-            <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)_18rem]">
-              {/* Left: details + theme */}
-              <div className="space-y-4">
+            <div
+              className="grid gap-4 xl:grid-cols-[var(--cols)]"
+              style={{ "--cols": [leftOpen && "18rem", "minmax(0,1fr)", rightOpen && "18rem"].filter(Boolean).join(" ") } as CSSProperties}
+            >
+              {/* Left: details + theme (collapsible at xl) */}
+              <div className={leftOpen ? "space-y-4" : "space-y-4 xl:hidden"}>
                 <DetailsForm head={head} base={base} setBase={setBase} onSaved={setHead} />
                 <Section title="Theme">
                   <fieldset disabled={readOnly} className="space-y-3">
@@ -537,6 +573,7 @@ export default function AdminTemplateEditorPage() {
               {/* Center: presets */}
               <Card className="min-w-0 gap-0 overflow-hidden py-0">
                 <div className="flex flex-wrap items-center gap-1 border-b px-3 py-2" role="tablist" aria-label="Preset pages">
+                  <PanelToggle side="left" open={leftOpen} onClick={toggleLeft} />
                   {presetPaths.map((p) => (
                     <Button
                       key={p}
@@ -610,6 +647,7 @@ export default function AdminTemplateEditorPage() {
                       <Eye className="size-4" />
                       Preview
                     </Button>
+                    <PanelToggle side="right" open={rightOpen} onClick={toggleRight} />
                   </div>
                 </div>
                 {newPath && addPathError && <p className="px-3 pt-2 text-xs text-destructive">{addPathError}</p>}
@@ -647,8 +685,8 @@ export default function AdminTemplateEditorPage() {
                 </div>
               </Card>
 
-              {/* Right: blocks, chrome, versions */}
-              <div className="space-y-4">
+              {/* Right: blocks, chrome, versions (collapsible at xl) */}
+              <div className={rightOpen ? "space-y-4" : "space-y-4 xl:hidden"}>
                 <Section title="Versions">
                   {versions.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No versions yet. Save to create v1.</p>
