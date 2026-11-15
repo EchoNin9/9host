@@ -461,18 +461,18 @@ def test_handler_exception_returns_sanitized_500(api, monkeypatch, capsys):
 
 
 # ---------------------------------------------------------------------------
-# T-12: tenant templates enforce admin/manager for TUSER tokens too
+# T-32a: tenant template forks were dropped (ADR-0003 owner answer 6)
 # ---------------------------------------------------------------------------
 
 
-def test_tuser_template_delete_requires_admin_or_manager(api):
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/api/tenant/templates"), ("POST", "/api/tenant/templates/fork"),
+    ("PUT", "/api/tenant/templates/mine"), ("DELETE", "/api/tenant/templates/mine"),
+])
+def test_tenant_fork_endpoints_gone(api, method, path):
     api.table.put_item(Item={"pk": "TENANT#acme", "sk": "TEMPLATE#mine", "name": "Mine"})
-    path = "/api/tenant/templates/mine"
-    assert call("DELETE", path, tuser(role="member"))[0] == 403
-    assert call("DELETE", path, tuser(role="editor"))[0] == 403
-    assert call("PUT", path, tuser(role="member"), body={"name": "X"})[0] == 403
-    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TEMPLATE#mine"}).get("Item")
-    assert call("DELETE", path, tuser(role="manager"))[0] == 204
+    assert call(method, path, owner(api), body={"template_slug": "basic"} if method != "GET" else None)[0] == 404
+    assert api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TEMPLATE#mine"}).get("Item")  # data kept
 
 
 # ---------------------------------------------------------------------------
@@ -538,9 +538,6 @@ MANAGER_ONLY_ROUTES = [
     ("POST", "/api/tenant/billing/portal", {"return_url": "https://x/r"}),
     ("PATCH", "/api/tenant", {"module_overrides": {"branding": True}}),
     ("PUT", "/api/tenant", {"owner_sub": "owner-1"}),
-    ("POST", "/api/tenant/templates/fork", {"template_slug": "basic"}),
-    ("PUT", "/api/tenant/templates/mine", {"name": "X"}),
-    ("DELETE", "/api/tenant/templates/mine", None),
 ]
 
 
@@ -611,6 +608,11 @@ SUPERADMIN_ROUTES = [
     ("GET", "/api/admin/templates/basic", None),
     ("PUT", "/api/admin/templates/basic", {"name": "X"}),
     ("DELETE", "/api/admin/templates/basic", None),
+    ("GET", "/api/admin/templates/basic/versions/1", None),
+    ("POST", "/api/admin/templates/basic/versions", {"tokens": {"primary": "#ff0000"}}),
+    ("POST", "/api/admin/templates/basic/publish", {"version": 1}),
+    ("POST", "/api/admin/templates/basic/preview", {}),
+    ("POST", "/api/admin/templates/basic/upgrade-sites", {"version": 1}),
 ]
 
 
@@ -643,7 +645,7 @@ def test_member_read_routes(api):
     api.table.put_item(Item={"pk": "TENANT#_platform", "sk": "TEMPLATE#basic", "name": "Basic"})
     stranger = cognito(api.key, "stranger")
     for path, query in [("/api/validate-slug", {"slug": "free-slug"}), ("/api/templates", None),
-                        ("/api/tenant/templates", None), ("/api/tenant", None)]:
+                        ("/api/tenant", None)]:
         assert call("GET", path, query=query)[0] == 401
         assert call("GET", path, stranger, query=query)[0] == 403
         assert call("GET", path, tuser(role="member"), query=query)[0] == 200

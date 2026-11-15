@@ -6,6 +6,7 @@
  * Platform/admin functions use the unscoped `apiClient`.
  */
 
+import type { BlockDoc, BlockLink } from "@/editor/block-env"
 import {
   apiClient,
   readSiteToken,
@@ -504,11 +505,16 @@ export interface SiteBranding {
 }
 
 export interface Site {
+  /** T-32a: pinned template version; update available when the template publishes a newer one */
+  template_version?: number | null
+  template_update_available?: boolean
   id: string
   name: string
   slug: string
   status: string
   template_id?: string
+  /** Page editor for this site (ADR-0003 §4); absent = "richtext". */
+  editor?: "blocks" | "richtext"
   branding?: SiteBranding
   published_at?: string | null
   published_version?: number | null
@@ -781,10 +787,9 @@ export interface Template {
   components: Record<string, unknown>
   created_at?: string
   updated_at?: string
-  /** Task 1.124: true if tenant-owned forked template */
-  is_custom?: boolean
-  /** Task 1.124: original platform template slug when forked */
-  forked_from?: string
+  /** T-32a: Python renderer supplying chrome + CSS (data-only templates reuse one) */
+  base_renderer?: string
+  published_version?: number | null
 }
 
 export interface TemplatesResponse {
@@ -795,63 +800,93 @@ export async function fetchTemplates(api: TenantApi, accessToken: string | null)
   return (await call<TemplatesResponse>(api, "/api/templates", accessToken))?.templates ?? []
 }
 
-/** Fork a platform template (Task 1.123). Pro+ only. */
-export async function forkTemplate(
-  api: TenantApi,
-  accessToken: string | null,
-  body: { template_slug: string; name?: string; slug?: string }
-): Promise<{ slug: string; name: string } | null> {
-  const data = await call<{ template: { slug: string; name: string } }>(
-    api,
-    "/api/tenant/templates/fork",
-    accessToken,
-    { method: "POST", body }
-  )
-  return data?.template ?? null
-}
-
 export interface AdminTemplate {
   slug: string
   name: string
   description: string
   tier_required: string
-  components: Record<string, unknown>
+  base_renderer?: string | null
+  latest_version: number
+  published_version?: number | null
+  deprecated: boolean
+  components?: Record<string, unknown>
   created_at?: string
   updated_at?: string
+  /** GET /api/admin/templates/{slug} only. */
+  versions?: { version: number; created_at?: string; published: boolean }[]
+}
+
+export interface TemplateHeader {
+  show_logo?: boolean
+  nav_style?: string
+}
+export interface TemplateFooter {
+  text?: string
+  links?: { label: string; link: BlockLink | null }[]
+}
+
+/** Versioned template data (immutable once created). */
+export interface TemplateVersionData {
+  tokens: Record<string, string>
+  allowed_blocks: Record<string, true | string>
+  page_presets: Record<string, BlockDoc>
+  header: TemplateHeader
+  footer: TemplateFooter
+}
+export interface TemplateVersion extends TemplateVersionData {
+  version: number
+  schema?: number
+  created_at?: string
 }
 
 export interface AdminTemplatesResponse {
   templates: AdminTemplate[]
 }
 
-export async function fetchAdminTemplates(accessToken: string | null): Promise<AdminTemplate[]> {
-  return (await call<AdminTemplatesResponse>(apiClient, "/api/admin/templates", accessToken))?.templates ?? []
-}
+const adminTemplatePath = (slug: string, rest = "") => `/api/admin/templates/${enc(slug)}${rest}`
 
-export type CreateAdminTemplateResult =
-  | { success: true; template: AdminTemplate }
-  | { success: false; error: string }
+export const fetchAdminTemplates = () => apiClient.request<AdminTemplatesResponse>("/api/admin/templates")
 
-export async function createAdminTemplate(
-  accessToken: string | null,
-  body: { slug: string; name: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
-): Promise<CreateAdminTemplateResult> {
-  const r = await apiClient.request<AdminTemplate>("/api/admin/templates", {
-    method: "POST",
-    body,
-    token: accessToken,
-  })
-  return r.ok ? { success: true, template: r.data } : { success: false, error: r.error }
-}
+export const fetchAdminTemplate = (slug: string) => apiClient.request<AdminTemplate>(adminTemplatePath(slug))
+
+export const createAdminTemplate = (body: {
+  slug: string
+  name: string
+  description?: string
+  tier_required?: string
+  base_renderer?: string
+}) => apiClient.request<AdminTemplate>("/api/admin/templates", { method: "POST", body })
 
 export const updateAdminTemplate = (
-  accessToken: string | null,
   slug: string,
-  body: { name?: string; description?: string; tier_required?: string; components?: Record<string, unknown> }
-) => call<AdminTemplate>(apiClient, `/api/admin/templates/${enc(slug)}`, accessToken, { method: "PUT", body })
+  body: { name?: string; description?: string; tier_required?: string; base_renderer?: string; deprecated?: boolean }
+) => apiClient.request<AdminTemplate>(adminTemplatePath(slug), { method: "PUT", body })
 
-export const deleteAdminTemplate = (accessToken: string | null, slug: string) =>
-  succeeded(apiClient, `/api/admin/templates/${enc(slug)}`, accessToken, { method: "DELETE" })
+/** 409 {error, sites} while any site uses the template. */
+export const deleteAdminTemplate = (slug: string) =>
+  apiClient.request<void>(adminTemplatePath(slug), { method: "DELETE" })
+
+export const fetchTemplateVersion = (slug: string, version: number) =>
+  apiClient.request<TemplateVersion>(adminTemplatePath(slug, `/versions/${version}`))
+
+/** New immutable version V{latest+1}; omitted fields are copied from the latest. 400 {error, path}. */
+export const createTemplateVersion = (slug: string, body: Partial<TemplateVersionData>) =>
+  apiClient.request<TemplateVersion>(adminTemplatePath(slug, "/versions"), { method: "POST", body })
+
+export const publishTemplateVersion = (slug: string, version: number) =>
+  apiClient.request<AdminTemplate>(adminTemplatePath(slug, "/publish"), { method: "POST", body: { version } })
+
+export const previewTemplate = (slug: string, body: { version?: number; preset?: string }) =>
+  apiClient.request<{ html: string; version: number | null; preset: string }>(adminTemplatePath(slug, "/preview"), {
+    method: "POST",
+    body,
+  })
+
+export const upgradeTemplateSites = (slug: string, version: number) =>
+  apiClient.request<{ version: number; updated: number; sites: { tenant_slug: string; site_id: string }[] }>(
+    adminTemplatePath(slug, "/upgrade-sites"),
+    { method: "POST", body: { version } }
+  )
 
 // -----------------------------------------------------------------------------
 // Content API (pages, posts, events, media) — Task 1.95
@@ -895,6 +930,8 @@ export interface ContentPage {
   path: string
   title: string
   body: string
+  /** Block document (ADR-0003 §1); only on single-page GET/POST/PUT responses. */
+  doc?: BlockDoc
   status: string
   published_at?: string | null
   created_at: string
@@ -929,6 +966,29 @@ export async function updateContentPage(
   const path = contentPath(siteId, `pages/${enc(pagePath)}`)
   return (await call<{ page: ContentPage }>(api, path, accessToken, { method: "PUT", body }))?.page ?? null
 }
+
+/** GET one page (includes `doc`). */
+export const fetchContentPage = (api: TenantApi, siteId: string, pagePath: string) =>
+  api.request<{ page: ContentPage }>(contentPath(siteId, `pages/${enc(pagePath)}`))
+
+/** Save a block page: PUT an existing page or POST a new one. 400s carry the doc `path`. */
+export const saveContentPageDoc = (
+  api: TenantApi,
+  siteId: string,
+  pagePath: string,
+  body: { title?: string; status?: string; doc: BlockDoc },
+  isNew: boolean
+) =>
+  isNew
+    ? api.request<{ page: ContentPage }>(contentPath(siteId, "pages"), {
+        method: "POST",
+        body: { path: pagePath, ...body },
+      })
+    : api.request<{ page: ContentPage }>(contentPath(siteId, `pages/${enc(pagePath)}`), { method: "PUT", body })
+
+/** Switch a site between the block and rich-text page editors. */
+export const setSiteEditor = (api: TenantApi, siteId: string, editor: "blocks" | "richtext") =>
+  api.request<SiteResponse>(`/api/tenant/sites/${enc(siteId)}`, { method: "PATCH", body: { editor } })
 
 export const deleteContentPage = (api: TenantApi, accessToken: string | null, siteId: string, pagePath: string) =>
   succeeded(api, contentPath(siteId, `pages/${enc(pagePath)}`), accessToken, { method: "DELETE" })

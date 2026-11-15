@@ -85,7 +85,7 @@ export interface RequestOptions {
 
 export type ApiResult<T> =
   | { ok: true; status: number; data: T }
-  | { ok: false; status: number; error: string; code?: string }
+  | { ok: false; status: number; error: string; code?: string; path?: string }
 
 export interface Transport {
   request<T>(path: string, opts?: RequestOptions): Promise<ApiResult<T>>
@@ -103,6 +103,11 @@ export interface ApiClient extends Transport {
 function apiBase(): string {
   const url = import.meta.env.VITE_API_URL as string | undefined
   return url ? url.replace(/\/$/, "") : ""
+}
+
+/** Public template CSS (template + block styles) for the editor canvas and template previews. */
+export function templateCssUrl(slug: string): string {
+  return `${apiBase()}/api/templates/${encodeURIComponent(slug)}/css`
 }
 
 async function send<T>(
@@ -140,12 +145,13 @@ async function send<T>(
     data = undefined
   }
   if (res.ok) return { ok: true, status: res.status, data: data as T }
-  const err = (data ?? {}) as { error?: string; code?: string }
+  const err = (data ?? {}) as { error?: string; code?: string; path?: string }
   return {
     ok: false,
     status: res.status,
     error: err.error || `Request failed (${res.status})`,
     code: err.code,
+    path: typeof err.path === "string" ? err.path : undefined,
   }
 }
 

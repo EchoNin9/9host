@@ -1,5 +1,5 @@
 import { Link, Navigate, Outlet, Route, BrowserRouter, Routes, useParams, useSearchParams } from "react-router-dom"
-import { useCallback, useEffect, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowRight, Plus, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,10 +40,19 @@ import { useAdminTenants } from "@/hooks/use-admin-tenants"
 import { useImpersonation } from "@/hooks/use-impersonation"
 import { TenantScopeProvider } from "@/context/tenant-scope"
 import { createTenantWithError, getToken } from "@/lib/api"
+import { isBlockEditorEnabled } from "@/lib/feature-flags"
+import { TenantTierProvider } from "@/contexts/tenant-tier-provider"
+import { SiteTemplateGallery } from "@/pages/site-template-gallery"
+
+// Block editor (ADR-0003): Puck lives in its own lazy chunk and is only routed behind the flag.
+const PageEditor = lazy(() => import("@/pages/page-editor"))
+// Template editor (T-32b): lazy; it lazy-loads Puck itself only when the block editor flag is on.
+const AdminTemplateEditor = lazy(() => import("@/pages/admin-template-editor"))
 
 /**
- * Tenant dashboard shell (/:tenantSlug/*). Resource views get their API client from
- * TenantScope; impersonation applies only when a superadmin explicitly chose this tenant.
+ * Tenant scope for /:tenantSlug/*. Resource views get their API client from TenantScope;
+ * impersonation applies only when a superadmin explicitly chose this tenant. Most views
+ * render inside TenantAdminLayout; the block editor is full-page.
  */
 function TenantRouteProvider() {
   const { tenantSlug } = useParams<{ tenantSlug: string }>()
@@ -54,7 +63,7 @@ function TenantRouteProvider() {
       tenantSlug={tenantSlug}
       isSuperadminImpersonating={impersonateTenant === tenantSlug}
     >
-      <TenantAdminLayout />
+      <Outlet />
     </TenantScopeProvider>
   )
 }
@@ -273,6 +282,14 @@ function AppRoutes() {
         </Route>
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="templates" element={<AdminTemplatesPage />} />
+        <Route
+          path="templates/:slug/edit"
+          element={
+            <Suspense fallback={<LoadingState rows={3} label="Loading template editor…" />}>
+              <AdminTemplateEditor />
+            </Suspense>
+          }
+        />
         <Route path="edge" element={<AdminEdgeHealthPage />} />
       </Route>
       <Route path="/login/site" element={<SiteLogin />} />
@@ -280,14 +297,29 @@ function AppRoutes() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/auth/confirm" element={<AuthConfirm />} />
       <Route path="/:tenantSlug" element={<TenantRouteProvider />}>
-        <Route index element={<TenantDashboard />} />
-        <Route path="analytics" element={<TenantAnalytics />} />
-        <Route path="sites" element={<TenantSites />} />
-        <Route path="sites/:siteId/edit" element={<SiteContentEditor />} />
-        <Route path="domains" element={<TenantDomains />} />
-        <Route path="users" element={<TenantUsers />} />
-        <Route path="modules" element={<TenantModules />} />
-        <Route path="settings" element={<TenantSettings />} />
+        <Route element={<TenantAdminLayout />}>
+          <Route index element={<TenantDashboard />} />
+          <Route path="analytics" element={<TenantAnalytics />} />
+          <Route path="sites" element={<TenantSites />} />
+          <Route path="sites/:siteId/edit" element={<SiteContentEditor />} />
+          <Route path="sites/:siteId/template" element={<SiteTemplateGallery />} />
+          <Route path="domains" element={<TenantDomains />} />
+          <Route path="users" element={<TenantUsers />} />
+          <Route path="modules" element={<TenantModules />} />
+          <Route path="settings" element={<TenantSettings />} />
+        </Route>
+        {isBlockEditorEnabled() && (
+          <Route
+            path="sites/:siteId/pages/:pagePath/edit"
+            element={
+              <TenantTierProvider>
+                <Suspense fallback={<LoadingState rows={3} label="Loading editor…" />}>
+                  <PageEditor />
+                </Suspense>
+              </TenantTierProvider>
+            }
+          />
+        )}
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

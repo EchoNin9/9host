@@ -30,3 +30,14 @@ def is_reserved_slug(slug: str | None) -> bool:
 def reserved_slug_error(slug: str) -> dict:
     """Response body for a rejected reserved slug."""
     return {"error": f"Slug '{slug}' is reserved for the platform.", "slug": slug, "code": "slug_reserved"}
+
+
+# Reserved page paths / post slugs — deny-list for tenant content (Task 1.95). Shared with the
+# template preset validator (template_schema.py), which must stay free of handler imports.
+RESERVED_PAGE_PATHS: frozenset[str] = frozenset({
+    "admin", "api", "login", "signup", "auth", "signin", "signout", "logout", "register",
+    "settings", "billing", "dashboard", "users", "sites", "domains", "modules", "analytics",
+    "_next", "static", "assets",
+})
+
+HOME_PAGE_PATH = "_home"  # reserved block-doc home page (ADR-0003 §1); only creatable with a doc

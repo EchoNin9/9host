@@ -39,7 +39,7 @@ For a fresh Commander agent. Read this file, `AGENTS.md`, `CLAUDE.md` and `GLOSS
    - **`infra/cloudns`:** state is local and manages only the zone (`T-24`). The `echo9.net` edge records (`app`, `sites-origin`, `tools`, `preview`) are managed by `infra/cloudns/scripts/edge_records.py` (dry run by default; `--apply` to write; the dry run must show the intended change only). Pre-T-24 state backup: `infra/cloudns/terraform.tfstate.pre-T24.backup`.
 4. **ClouDNS edits:** allowed only on zone `echo9.net`, and only for the records named in a task. **Never read or edit `jinks.ca`** (owner's personal zone and a real-customer test). Never touch MX/NS/TXT mail records anywhere.
 5. **AWS:** `--profile echo9`, `us-east-1`, account `452644920012`. Only modify or delete resources named `9host*` or listed here.
-   - Do not touch `E164B9WJ8ALT9F` (landing/other domains), `E1S4CU3NV8WOAL` (URL shortener), or any non-9host distribution or certificate.
+   - Do not touch `E164B9WJ8ALT9F` (disabled 2026-11-12; deletion is `T-36`, owner sign-off), `E1S4CU3NV8WOAL` (URL shortener), or any non-9host distribution or certificate.
    - The local AWS CLI is old and lacks `cloudfront-keyvaluestore`; use boto3 from `.venv` for KVS.
 6. **Secrets:**
    - Cloudflare for SaaS credentials are in AWS secret `9host-cloudflare`; ClouDNS in `9host-cloudns`.
@@ -289,3 +289,104 @@ Incident: during the T-31a check a subagent reused the Commander's Chrome tab on
 New tickets: `T-33` landing preview/prod split, `T-34` template tier gating, `T-35` T-30 follow-ups (see `AGENTS.md`).
 
 Next run: `T-31b` (block core, Python registry + golden fixtures) after the TipTap-version decision; `T-33` needs a reviewed `.tf` plan.
+
+### Owner follow-ups done (2026-11-12, same run)
+- `develop` → `main`: PR #20, merge `9dc5dc4` (owner-approved); main CI green; app.echo9.net serves the T-30 SPA; all 8 sites 200.
+- `T-31a`: owner chose latest deps — TipTap 3.33.1 (all `@tiptap/*`), Puck 0.24.0 exact on the spike branch (`a47bbec`); single TipTap copy; vitest 44, build green; Puck lazy chunk 157.7 KB gz.
+- `T-21` proxy secret **rolled out** (Commander, owner-approved): Worker deployed (version `2a231778`), `PROXY_SECRET` set, `__proxy_secret__` KVS key written. Custom domains 200; forged `X-Forwarded-Host` to `sites-origin.echo9.net` → 404 within 20 s. Rollback: delete the KVS key (snippet in §7 status).
+- `E164B9WJ8ALT9F`: **disabled**; removed `echonin9.com`, `www.echonin9.com` (Cloudflare redirects them to GitHub) and `echo9.tech`, `www.echo9.tech` (no DNS). `echo9.ca` / `www.echo9.ca` remain attached (both already failed HTTPS on the 2022-expired cert). Owner plan: echo9.ca/echo9.tech become the business site in a separate project (`T-37`); delete distribution, cert and old origins after observation (`T-36`). Re-enable = set `Enabled=true` and restore aliases.
+
+## 9. Next run — WYSIWYG editor (fresh Commander, autonomous)
+
+Spec: `docs/adr/0003-wysiwyg-templates.md` (Accepted; read "Owner Answers" and the UX rule at the end). Same guardrails (§2) and workflow as §8: one ticket per commit + push to `develop`, CI green and the 8-site smoke check after every push, never push to `main`. Owner preferences: dependencies latest/near-latest (Puck exact-pinned, currently 0.24.0; TipTap 3.33.1); no side-slide sheets for template editing/picking; no raw JSON shown to users.
+
+State: the `T-31a` spike is on `develop` (`5ef5f07`, `2b712e6`, `2e7a486`): Puck route `/:tenantSlug/sites/:siteId/editor-spike`, registered only when `VITE_ENABLE_BLOCK_EDITOR=true`, which `dev.yml` sets for stage and `main.yml` does not. Keep that flag as the gate for all editor work until the owner says otherwise.
+
+Order (ADR implementation table): `T-31b` block core (Python registry + golden fixtures) → `T-31c` save path (sanitize on save) → `T-31d` editor UI + full-page template picker (replaces the spike route) → `T-31e` preview + `_home` → `T-32a` template data/versioning (pin + deprecate, drop tenant forks) → `T-32b` full-page template admin (remove the Sheet) → `T-31f` backfill. `T-34` tier gating is out of scope.
+
+Stop and ask the owner before:
+- `T-31f` backfill or any bulk write to `9host-main`: take an on-demand DynamoDB backup first and state its ARN;
+- republishing live tenant sites (`jinks4`, `jinks-ca`, `oliverjinks-com`) with the block compiler: compiled output must be byte-identical for legacy pages (ADR migration rule); diff `published/current/` before/after on stage;
+- any `.tf` change (plan + show first) or new AWS resource.
+
+Subagents: Opus for code tickets, Sonnet for review/CI triage. **Subagents must not use the Chrome tools**; only the Commander does visual checks, in its own new tab, and never clicks tenant rows in the superadmin console (2026-11-12 incident: a subagent left the owner's stage session impersonating `jinks`).
+
+Finish: update §9 status + `AGENTS.md` with outcomes and SHAs; report stage URLs for owner review.
+
+### §9 status (2026-11-14, fourth Commander run)
+
+`T-31b` → `T-32b` done; stopped before `T-31f` as required. Every push was green in develop CI; after each, all 8 smoke sites returned 200. No `.tf` changes, no new AWS resources, no live site switched to blocks or republished. Baseline now: pytest 492, vitest 102, edge 21.
+
+| Ticket | Outcome | Commit |
+|---|---|---|
+| `T-31b` | Pure `api/blocks/` (12 blocks incl. Embed youtube/vimeo/google_maps), `render_doc`, legacy wrap; docs compile only when `site.editor == "blocks"`; legacy bundles byte-identical (sha256 hash test). Lambda bundle copies `api/blocks`. | `9dedac2` |
+| `T-31c` | Page `doc` validated + sanitized on save, own-host links normalized, dual-write `body`; `_home` only with a doc; post body sanitized on save; site `editor` flag on PUT/PATCH; publish snapshot carries page `doc` + media `id`. | `d04fb49` |
+| `T-31d` | Full-page Puck editor `/:tenantSlug/sites/:siteId/pages/:pagePath/edit` (flag + blocks site), full-page template gallery `/:tenantSlug/sites/:siteId/template` (side-sheet picker removed — **not flag-gated**, ships to app on main merge), public `GET /api/templates/{slug}/css`; React/Python golden parity. | `9662205` |
+| `T-31e` | Editor Preview (popup-safe), pinned Home page row (`_home`), "Link to page" in the TipTap link dialog. | `0c6d55d` |
+| `T-32a` | Template head + immutable `#V#{n}` versions via `TenantStore`; superadmin create/update/deprecate/delete(409 while pinned)/versions/publish/preview/upgrade-sites; site `template_version` pin + `template-update`; tokens CSS only on blocks sites; forks removed (rows kept). Backup before seed: `arn:aws:dynamodb:us-east-1:452644920012:table/9host-main/backup/01794699789463-25f6dd1c`. CI seed wrote exactly 5 head attribute fills + 5 `V0001` items under `TENANT#_platform`. | `ae07655` |
+| `T-32b` | `admin-templates.tsx` table (no Sheet/raw JSON); full-page `/admin/templates/:slug/edit` (details, tokens, presets in shared Puck, allowed blocks, header/footer, versions, sandboxed preview). Works without the flag for metadata/tokens/versions. Visually checked on stage (list + edit page, read-only). | `6d70bb3` |
+
+Not verified by the Commander (needs owner): the tenant page editor on stage — the owner's superadmin session sees no `jinks` sites without impersonation, and the Commander may not start impersonation. Use a test tenant/site; switching a site to blocks changes its next **live** publish.
+
+Waiting on the owner: `T-31f` backfill (take a fresh DynamoDB backup first), republishing live sites with the block compiler, `develop` → `main` merge (the template gallery and template admin change prod UI). New follow-ups: `T-38`.
+
+## 10. Next run — `T-31f` backfill + blocks rollout (fresh Commander)
+
+Read first: `AGENTS.md`, `CLAUDE.md`, `GLOSSARY.md`, this file §1, §2 and §9 (incl. §9 status), and `docs/adr/0003-wysiwyg-templates.md` §4 (migration) and Owner Answer 9 (all sites at once; the per-site flag stays only as a rollback switch). Same guardrails (§2) and workflow as §9: one commit and push per step to `develop`, CI green, then the 8-site smoke check (`jinks4.echo9.net`, `oliverjinks.com`, `www.oliverjinks.com`, `jinks.ca`, `app.echo9.net`, `echo9.net`, `www.echo9.net`, `preview.echo9.net`). Never push to `main`. Opus for code, Sonnet for checks/CI triage; subagents never commit, push, use Chrome or touch AWS.
+
+**Why this is risky:** `9host-api` is one Lambda shared by stage and prod, and `9host-main` is one shared table. Every backend push and every data write is a production change. CI runs every `scripts/*` step in `dev.yml` against the prod table on each push.
+
+### Facts established in the §9 run (2026-11-14)
+- A site compiles block docs only when `site.editor == "blocks"`. Default/absent is `"richtext"`, and today **no site is on blocks**.
+- **Expected output when a legacy site flips to `blocks` (verified locally with legacy-wrapped docs):**
+  - live mode: only `style.css` changes (`blocks_css()` is appended); every HTML file is byte-identical;
+  - draft mode: every HTML file changes, because draft inlines the CSS into each page. That is expected, not a regression.
+  - Anything else in the live diff is a bug: stop.
+- A `_home` page doc replaces `index.html` only on blocks sites, and only when it exists. No site has one yet.
+- Templates: all 5 are at `V0001` with empty tokens, so the `--template-*` CSS is empty. `republish_all_sites.py` does not load pinned tokens (`T-38`).
+- In this environment the session's permission check blocked an ad-hoc boto3 read of `9host-main`. `aws dynamodb create-backup` / `describe-backup` were allowed. Do DynamoDB reads and writes through repo scripts. If a step is blocked, ask the owner to run it with `! <command>` instead of working around it.
+- `jinks` sites are not visible on stage in the owner's superadmin session without impersonation, and agents must never start impersonation. Visual checks of the tenant page editor are the owner's.
+- Last backup: `arn:aws:dynamodb:us-east-1:452644920012:table/9host-main/backup/01794699789463-25f6dd1c` (pre-T-32a). Take a new one; don't reuse it.
+
+### Steps
+1. **Baseline:** run the §1 checks. Expect pytest 492, vitest 102, edge 21, build green.
+2. **Write the backfill script (Opus): `scripts/backfill_page_docs.py`.**
+   - Idempotent. Flags: `--table`, `--dry-run` (the default; a real run needs `--apply`), optional `--tenant` and `--site`.
+   - For every `PAGE` item without `doc`, set `doc = json(legacy_doc(body))` using the same compact JSON form as `content_handler` saves. Use a conditional update (`attribute_not_exists(doc)`) and never touch `body`.
+   - Skip `_home`. Print one line per item and a summary of counts.
+   - Pytest against moto: dry run writes nothing; apply writes the docs; a second apply writes nothing; pages that already have a `doc` are untouched; other tenants are untouched.
+   - **Do NOT add it to `.github/workflows/*.yml` in this run.** A CI step would bulk-write prod on every push without a stop point. Wiring it into CI is a separate, owner-approved change.
+   - Commit and push. CI green and the smoke check are enough here; no data has been written yet.
+3. **Dry run against prod (read-only):** `AWS_PROFILE=echo9 .venv/bin/python scripts/backfill_page_docs.py --table 9host-main` (dry run). If the permission check blocks it, ask the owner to run it with `!`. Report the per-tenant/site counts.
+4. **STOP — owner approval required.** Report the dry-run counts and wait for an explicit go.
+5. **After the go:**
+   - Take a fresh on-demand backup (`aws dynamodb create-backup --table-name 9host-main --backup-name 9host-main-pre-T31f-<date>`), wait for `AVAILABLE`, and state the ARN.
+   - Run with `--apply`. Re-run the dry run: it must report 0 pending.
+6. **Per-site rollout check (do not republish live sites yet):** for each of `jinks4` (`80e9d9b4-…`), `jinks-ca` (`8e19335e-…`), `oliverjinks-com` (`4ee567a5-…`):
+   - Download `published/current/` from S3 `9host-sites` (`jinks/<site_id>/published/current/`) into the scratchpad. This is the "before".
+   - Compile locally (live mode, pure `compile_site` on a snapshot built by the same code path as `publish_handler._collect_content`) with `site.editor` forced to `"blocks"`. Diff it against "before".
+   - **Pass:** only `style.css` differs, and only by the appended block CSS. If anything else differs: stop and report.
+7. **STOP — owner approval required** before flipping `editor` to `"blocks"` on live sites and republishing. Report the diffs and the exact commands. After a go, for each site: PATCH or update `editor = "blocks"` through the app's own path, republish via `publish_handler`, check `https://<host>/` is 200, re-diff live vs the step-6 "before" (only `style.css`), and invalidate `E1P9K5ZO6DTDWR` `/*`. Do one site at a time, starting with `jinks4`.
+8. **Flip the default (code):** new sites get `editor = "blocks"` at create time. Existing absent values are left alone; the owner decides whether to bulk-set them later. Keep the `richtext` path and the dual-write `body`. Rollback is to set `editor = "richtext"` and republish.
+9. Update §10 status and `AGENTS.md` (`T-31` done or remaining) with SHAs and the backup ARN. Report to the owner.
+
+### Out of scope this run
+- Dropping the dual-write and the legacy branch (ADR §4: "later"; it needs an observation period first). Open a ticket for it.
+- `T-34` tier gating, `T-38` follow-ups, `develop` → `main` merges, edge or `.tf` changes.
+
+### Rollback
+- Data: restore from the step-5 backup only if `doc` writes are wrong. Normally there is nothing to undo, because `doc` is ignored on richtext sites.
+- Site: set `editor = "richtext"`, republish, and invalidate. The output is byte-identical to before.
+
+### §10 status (2026-11-15, fifth Commander run)
+
+Done; owner approved steps 5 and 7. Every push green in develop CI and all 8 smoke sites 200 after each. No `.tf` changes, no new AWS resources. Baseline now: pytest 498, vitest 102, edge 21.
+
+| Step | Outcome | Ref |
+|---|---|---|
+| 2 | `scripts/backfill_page_docs.py` (dry run default, `--apply`, conditional write, skips `_home`) + 5 moto tests; `scripts/compare_blocks_output.py` (read-only: stored vs forced-blocks compile, diffed against `published/current/`). Not in CI. | `58c045f` |
+| 3–5 | Dry run: 5 pages, 4 pending (jinks4 2, jinks-ca 1, oliverjinks-com 1; its `_home` already had a doc). Backup `arn:aws:dynamodb:us-east-1:452644920012:table/9host-main/backup/01794765902342-2bb07b28` (AVAILABLE), then `--apply`: 4 written, re-run 0 pending. | — |
+| 6–7 | `jinks4` → v19, `jinks-ca` → v3 with `editor=blocks`; live diff = `style.css` (block CSS appended) only, plus on `jinks4` a pre-existing link attribute-order change in `about`/`mission` (`T-18`/`T-31b` sanitizer; owner accepted). `oliverjinks-com` was already on blocks (owner, v7 2026-11-15 00:41Z); its forced-blocks compile equals live, so no republish. Invalidations of `E1P9K5ZO6DTDWR` `/*` done. | — |
+| 8 | New sites get `editor="blocks"`. Fix found during rollout: a rich-text page save (prod `app`, flag off) kept the stale `doc`, which wins on blocks sites; a body-only PUT now re-wraps `legacy_doc(body)`. | `96ed354` |
+
+Notes: scripts need `AWS_DEFAULT_REGION=us-east-1` (`AWS_REGION` alone raises `NoRegionError` with this botocore). New follow-up: `T-39` (drop dual-write/legacy branch; bulk-set `editor` on old sites). Rollback per site: `editor=richtext`, republish, invalidate.

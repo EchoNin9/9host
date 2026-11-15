@@ -35,13 +35,13 @@ import { EmptyState, FormField, LoadingState, Notice } from "@/components/page"
 import { SiteStatusBadge } from "@/components/status-badges"
 import { siteLiveUrl } from "@/lib/site-format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FeatureGate } from "@/components/feature-gate"
 import { PagesEditor } from "@/components/content-editors/pages-editor"
 import { PostsEditor } from "@/components/content-editors/posts-editor"
 import { EventsEditor } from "@/components/content-editors/events-editor"
 import { MediaEditor } from "@/components/content-editors/media-editor"
 import { BrandingEditor } from "@/components/content-editors/branding-editor"
-import { TemplateSelector } from "@/components/content-editors/template-selector"
 import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 
 /**
@@ -281,12 +281,12 @@ function SiteContentEditor() {
           tone="warning"
           title="Choose a template before publishing"
           action={
-            <Button variant="outline" size="sm" onClick={() => setTab("templates")}>
-              Choose template
+            <Button asChild variant="outline" size="sm">
+              <Link to={`${base}/sites/${site.id}/template`}>Choose template</Link>
             </Button>
           }
         >
-          The template decides your site’s layout. Pick one in the Template tab.
+          The template decides your site’s look. Pick one from the template gallery.
         </Notice>
       )}
 
@@ -310,7 +310,7 @@ function SiteContentEditor() {
         </TabsList>
 
         <TabsContent value="pages" className="mt-0 min-w-0 flex-1">
-          <PagesEditor siteId={siteId!} />
+          <PagesEditor siteId={siteId!} site={site} onSiteChanged={refetch} />
         </TabsContent>
         <TabsContent value="posts" className="mt-0 min-w-0 flex-1">
           <FeatureGate feature="updates_blog" fallback={<ModuleLocked feature="updates_blog" />}>
@@ -333,7 +333,23 @@ function SiteContentEditor() {
           </FeatureGate>
         </TabsContent>
         <TabsContent value="templates" className="mt-0 min-w-0 flex-1">
-          <TemplateSelector site={site!} onSaved={refetch} />
+          <Card>
+            <CardHeader>
+              <CardTitle>Template</CardTitle>
+              <CardDescription>
+                Current: <strong>{site.template_id || "none"}</strong>. Browse the gallery to preview and switch
+                templates; publish again to apply.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link to={`${base}/sites/${site.id}/template`}>
+                  <LayoutTemplate className="size-4" />
+                  Browse templates
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

@@ -10,6 +10,13 @@ identical bundles.
 - draft: links are prefixed with /preview, CSS is inlined (draft assets need the
          preview token), and a small script propagates ?token= to /preview links.
 Rich-text bodies are sanitized by the template renderers (Bug #8 stored XSS).
+
+snapshot.template may carry ``base_renderer`` and ``tokens`` (from the site's pinned template
+version, loaded by publish_handler); tokens become --template-* CSS for block-editor sites only.
+
+Block docs (ADR-0003): only when site.editor == "blocks" are page `doc`s rendered through
+blocks.render_doc (and a reserved `_home` doc becomes index.html). Otherwise `doc` is ignored and
+every page compiles as a one-block legacy RichText doc, byte-identical to the pre-blocks output.
 """
 
 from __future__ import annotations
@@ -18,6 +25,7 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Literal
 
+from blocks import DocValidationError, RenderContext, legacy_doc, load_doc, render_doc
 from templates import get_renderer
 from templates.base_layout import escape_html, media_url, nav_links
 
@@ -70,8 +78,10 @@ def content_type_for(path: str) -> str:
 
 
 def _renderer_for(template: dict):
-    # Forked templates inherit their base layout via forked_from.
-    slug = ((template or {}).get("forked_from") or (template or {}).get("slug") or "").strip().lower()
+    # base_renderer (T-32a) names the Python renderer explicitly. forked_from stays as a fallback
+    # for pre-T-32a tenant fork rows (forks were dropped, their data was not deleted).
+    t = template or {}
+    slug = (t.get("base_renderer") or t.get("forked_from") or t.get("slug") or "").strip().lower()
     renderer = get_renderer(slug) or get_renderer(DEFAULT_TEMPLATE)
     if renderer is None:
         raise ValueError(f"No renderer for template: {slug}")
@@ -93,6 +103,22 @@ def _sitemap(base_url: str, pages: list, posts: list, has_events: bool, has_medi
     lines += [f"  <url><loc>{escape_html(u)}</loc></url>" for u in urls]
     lines.append("</urlset>")
     return "\n".join(lines)
+
+
+def _page_doc(page: dict) -> dict | None:
+    """The page's parsed block doc, or None (no doc / unparseable / over the size cap)."""
+    if not page.get("doc"):
+        return None
+    try:
+        return load_doc(page["doc"])
+    except DocValidationError:
+        return None
+
+
+def _meta_description(doc: dict | None) -> str:
+    props = ((doc or {}).get("root") or {}).get("props")
+    value = props.get("meta_description") if isinstance(props, dict) else ""
+    return value if isinstance(value, str) else ""
 
 
 def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live") -> CompiledSiteBundle:
@@ -119,18 +145,40 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
     events = list(snapshot.events)
     media = list(snapshot.media)
 
+    use_blocks = site.get("editor") == "blocks"
+    # Template tokens (pinned version, resolved by the caller) apply to block-editor sites only:
+    # legacy sites stay byte-identical.
+    tokens = (snapshot.template or {}).get("tokens") if use_blocks else None
+    home = None
+    if use_blocks:
+        home = next((p for p in pages if p["path"] == "_home"), None)
+        pages = [p for p in pages if p["path"] != "_home"]
+    rctx = RenderContext.build(
+        base_path=base_path, media_base=media_base, tenant_slug=tenant, site_id=site_id,
+        media=media, pages=pages, posts=posts, events=events, tokens=tokens,
+    )
+
     nav = nav_links(pages, bool(posts), bool(events), bool(media), base_path=base_path)
     pages_html: dict[str, str] = {}
 
     meta_image = media_url(branding.get("logo_s3_key", ""), media_base) if branding.get("logo_s3_key") else ""
-    pages_html["index.html"] = renderer.render_index(
-        site_name, pages, posts, events, branding, media_base, bool(media), base_path=base_path,
-        meta_description=site_name, meta_image=meta_image,
-    )
+    home_doc = _page_doc(home) if home else None
+    if home_doc:
+        pages_html["index.html"] = renderer.render_home(
+            site_name, render_doc(home_doc, rctx), branding, media_base, nav, base_path=base_path,
+            meta_description=_meta_description(home_doc) or site_name, meta_image=meta_image,
+        )
+    else:
+        pages_html["index.html"] = renderer.render_index(
+            site_name, pages, posts, events, branding, media_base, bool(media), base_path=base_path,
+            meta_description=site_name, meta_image=meta_image,
+        )
     for p in pages:
+        doc = _page_doc(p) if use_blocks else None
         pages_html[f"{p['path']}/index.html"] = renderer.render_page(
             p["path"], p.get("title", ""), p.get("body", ""), site_name, branding, media_base, nav,
-            tenant, site_id, base_path=base_path,
+            tenant, site_id, base_path=base_path, meta_description=_meta_description(doc),
+            main_html=render_doc(doc or legacy_doc(p.get("body", "")), rctx),
         )
     if posts:
         pages_html["blog/index.html"] = renderer.render_blog_index(
@@ -151,7 +199,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
     pages_html["404.html"] = renderer.render_404(site_name, branding, media_base, nav, base_path=base_path)
 
     text_files: dict[str, str] = {}
-    css = renderer.render_css()
+    css = renderer.render_site_css(blocks=use_blocks, tokens=tokens)
     if live:
         text_files["style.css"] = css
         text_files.update(pages_html)

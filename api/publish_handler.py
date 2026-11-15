@@ -40,7 +40,8 @@ def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool
     store = DynamoDBTenantStore(table)
     status = "PUBLISHED" if published_only else None
     pages = [
-        {"path": i.get("path", ""), "title": i.get("title", ""), "body": i.get("body", "")}
+        {"path": i.get("path", ""), "title": i.get("title", ""), "body": i.get("body", ""),
+         **({"doc": i["doc"]} if i.get("doc") else {})}  # block doc (ADR-0003); used when site.editor == "blocks"
         for i in store.list_content(tenant_slug, site_id, "PAGE", status)
     ]
     posts = [
@@ -58,7 +59,7 @@ def _collect_content(table, tenant_slug: str, site_id: str, published_only: bool
         for i in store.list_content(tenant_slug, site_id, "EVENT", status)
     ]
     media = [
-        {"s3_key": i.get("s3_key", ""), "caption": i.get("caption", "")}
+        {"id": i.get("id", ""), "s3_key": i.get("s3_key", ""), "caption": i.get("caption", "")}
         for i in store.list_content(tenant_slug, site_id, "MEDIA")
     ]
     return {"pages": pages, "posts": posts, "events": events, "media": media}
@@ -226,6 +227,12 @@ def _compile_inputs(store, tenant_slug: str, site: dict) -> tuple[dict, dict, st
     template = store.get_template(template_id, tenant_slug)
     if not template:
         raise HttpError(404, f"Template not found: {template_id}")
+    if site.get("editor") == "blocks":
+        # Tokens from the site's pinned version (T-32a); compile_site stays pure. Unpinned
+        # (pre-T-32a) sites render with V0001, the seeded migration of the old template.
+        version = store.get_template_version(template_id, int(site.get("template_version") or 1))
+        if version:
+            template = {**template, "tokens": dict(version.get("tokens") or {})}
     features = _resolve_features(store.get_tenant(tenant_slug) or {})
     return template, features, os.environ.get("CLOUDFRONT_MEDIA_URL", "/media/")
 

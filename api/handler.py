@@ -21,13 +21,7 @@ from admin_handler import (
     list_all_tenants_handler,
     patch_tenant_handler as admin_patch_tenant_handler,
 )
-from admin_templates_handler import (
-    create_template_handler,
-    delete_template_handler,
-    get_template_handler,
-    list_templates_handler,
-    update_template_handler,
-)
+from admin_templates_handler import admin_templates_handler
 from admin_users_handler import admin_stats_handler, admin_users_handler as admin_global_users_handler
 from analytics_handler import get_analytics_handler
 from billing_handler import billing_checkout_handler, billing_portal_handler
@@ -46,12 +40,12 @@ from request_context import (
 from roles_handler import roles_handler
 from rollback_handler import rollback_handler
 from site_auth_handler import site_login_handler
-from sites_handler import sites_handler
+from sites_handler import site_template_update_handler, sites_handler
 from stripe_webhook_handler import stripe_webhook_handler
 from tenant_handler import get_tenant_handler, patch_tenant_handler, put_tenant_handler
 from tenant_store import DynamoDBTenantStore
-from tenant_templates_handler import tenant_templates_handler
 from tenant_users_handler import tenant_users_handler
+from templates import get_renderer
 from templates_handler import get_templates_handler
 from tenants_handler import create_tenant_handler as self_serve_create_tenant_handler, get_tenants_handler
 from upload_handler import upload_url_handler
@@ -78,6 +72,7 @@ def _ctx(fn):
 _SITE_ACTIONS = {
     ("POST", "upload-url"): upload_url_handler,
     ("POST", "publish"): publish_handler,
+    ("POST", "template-update"): site_template_update_handler,
     ("POST", "rollback"): rollback_handler,
     ("GET", "draft-token"): draft_token_handler,
     ("POST", "draft-publish"): draft_publish_handler,
@@ -141,15 +136,24 @@ def _route_admin_tenants(event, context, path, method):
     return run_with_context(event, lambda ctx: handler(ctx, slug)) if handler else respond(404, NOT_FOUND)
 
 
-def _route_admin_templates(event, context, path, method):
-    """Sub-router for /api/admin/templates/{slug}."""
-    slug_part = path[len("/api/admin/templates/"):].strip("/")
-    if not slug_part or "/" in slug_part:
+def _route_template_css(event, context, path, method):
+    """GET /api/templates/{slug}/css — public template + block CSS for the editor canvas (ADR-0003 §2)."""
+    parts = [p for p in path[len("/api/templates/"):].split("/") if p]
+    if len(parts) != 2 or parts[1] != "css":
         return respond(404, NOT_FOUND)
-    handler = {"GET": get_template_handler, "PUT": update_template_handler, "DELETE": delete_template_handler}.get(method)
-    if not handler:
+    if method != "GET":
         return respond(405, {"error": "Method not allowed."})
-    return run_with_context(event, lambda ctx: handler(ctx, slug_part.lower()))
+    renderer = get_renderer(parts[0])
+    if renderer is None:  # data-only template (T-32a): its base_renderer supplies the CSS
+        head = DynamoDBTenantStore().get_template(parts[0].lower())
+        renderer = get_renderer((head or {}).get("base_renderer") or "")
+    if renderer is None:
+        return respond(404, {"error": "Template not found."})
+    return {
+        "statusCode": 200,
+        "headers": {"Content-Type": "text/css; charset=utf-8", "Cache-Control": "public, max-age=300"},
+        "body": renderer.render_site_css(blocks=True),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +179,6 @@ _EXACT_ROUTES = [
     ("GET", "/api/admin/edge-kvs", _ctx(edge_kvs_handler)),
     ("GET", "/api/admin/tenants", _ctx(list_all_tenants_handler)),
     ("POST", "/api/admin/tenants", _ctx(create_tenant_handler)),
-    ("GET", "/api/admin/templates", _ctx(list_templates_handler)),
-    ("POST", "/api/admin/templates", _ctx(create_template_handler)),
 ]
 _EXACT_LOOKUP = {(m, p): h for m, p, h in _EXACT_ROUTES}
 
@@ -187,9 +189,9 @@ _PREFIX_ROUTES = [
     ("/api/tenant/users", lambda e, c, p, m: run_with_context(e, users_handler)),
     ("/api/tenant/tusers", lambda e, c, p, m: run_with_context(e, tenant_users_handler)),
     ("/api/tenant/roles", lambda e, c, p, m: run_with_context(e, roles_handler)),
-    ("/api/tenant/templates", lambda e, c, p, m: run_with_context(e, tenant_templates_handler)),
     ("/api/admin/tenants/", _route_admin_tenants),
-    ("/api/admin/templates/", _route_admin_templates),
+    ("/api/admin/templates", lambda e, c, p, m: run_with_context(e, admin_templates_handler)),
+    ("/api/templates/", _route_template_css),
 ]
 
 # Exact-path routes that answer 405 (not 404) for other methods

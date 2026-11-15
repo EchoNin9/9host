@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { ArrowUpRight, Check, Eye, FileEdit, Globe, Loader2, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
+import { ArrowUpRight, Check, FileEdit, Globe, LayoutTemplate, Loader2, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -25,117 +25,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { FeatureGate } from "@/components/feature-gate"
-import { Link, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 import { useTenant } from "@/hooks/use-tenant"
 import { useTenantScope } from "@/context/tenant-scope-context"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useSites } from "@/hooks/use-sites"
-import { SitePreview } from "@/components/site-preview"
-import { TemplatePicker } from "@/components/template-picker"
-import { getToken, validateSlug, fetchTemplates, forkTemplate, type Site, type Template } from "@/lib/api"
+import { getToken, validateSlug, type Site } from "@/lib/api"
 import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 
 const SLUG_DEBOUNCE_MS = 400
 const VALID_SLUG_RE = /^[a-z0-9-]*$/
-
-function ForkTemplateSheet({
-  open,
-  onOpenChange,
-  platformTemplates,
-  onForked,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  platformTemplates: Template[]
-  onForked: () => void
-}) {
-  const { api } = useTenantScope()
-  const [templateSlug, setTemplateSlug] = useState("")
-  const [name, setName] = useState("")
-  const [slug, setSlug] = useState("")
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleFork = async () => {
-    if (!templateSlug) return
-    setError(null)
-    setSaving(true)
-    try {
-      const token = await getToken()
-      const result = await forkTemplate(api, token, {
-        template_slug: templateSlug,
-        name: name.trim() || undefined,
-        slug: slug.trim() || undefined,
-      })
-      if (result) {
-        onForked()
-        onOpenChange(false)
-        setTemplateSlug("")
-        setName("")
-        setSlug("")
-      } else {
-        setError("Fork failed. Pro+ tier required.")
-      }
-    } catch {
-      setError("Fork failed")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-describedby={undefined}>
-        <SheetHeader>
-          <SheetTitle>Fork template</SheetTitle>
-        </SheetHeader>
-        <div className="flex flex-col gap-5">
-          <FormField label="Template" htmlFor="fork-template">
-            <NativeSelect
-              id="fork-template"
-              value={templateSlug}
-              onChange={(e) => setTemplateSlug(e.target.value)}
-            >
-              <option value="">Select…</option>
-              {platformTemplates.map((t) => (
-                <option key={t.slug} value={t.slug}>
-                  {t.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormField>
-          <FormField label="Name (optional)" htmlFor="fork-name">
-            <Input
-              id="fork-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My custom theme"
-            />
-          </FormField>
-          <FormField label="Slug (optional)" htmlFor="fork-slug">
-            <Input
-              id="fork-slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-              placeholder="my-custom-theme"
-              className="font-mono"
-            />
-          </FormField>
-          {error && <Notice tone="danger">{error}</Notice>}
-          <SheetFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleFork} disabled={saving || !templateSlug}>
-              {saving ? "Forking…" : "Fork template"}
-            </Button>
-          </SheetFooter>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
 
 function SiteForm({
   site,
@@ -148,27 +47,13 @@ function SiteForm({
 }) {
   const [name, setName] = useState(site?.name ?? "")
   const [slug, setSlug] = useState(site?.slug ?? "")
-  const { tenantSlug } = useTenant()
+  const { tenantSlug, tenantBasePath } = useTenant()
   const { api } = useTenantScope()
   const [status, setStatus] = useState(site?.status ?? "draft")
-  const [templateId, setTemplateId] = useState(site?.template_id ?? "")
   const [saving, setSaving] = useState(false)
-  const [templates, setTemplates] = useState<Template[]>([])
   type SlugStatus = "idle" | "checking" | "available" | "taken" | "invalid"
   const [slugStatus, setSlugStatus] = useState<SlugStatus>("idle")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [forkOpen, setForkOpen] = useState(false)
-
-  const loadTemplates = useCallback(async () => {
-    if (!tenantSlug) return
-    try {
-      const token = await getToken()
-      const list = await fetchTemplates(api, token)
-      setTemplates(list)
-    } catch (e) {
-      console.error("Failed to load templates", e)
-    }
-  }, [tenantSlug])
 
   const checkSlug = useCallback(
     async (value: string) => {
@@ -199,10 +84,6 @@ function SiteForm({
   )
 
   useEffect(() => {
-    void loadTemplates()
-  }, [loadTemplates])
-
-  useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (!slug.trim()) {
       setSlugStatus("idle")
@@ -226,8 +107,6 @@ function SiteForm({
         status,
       }
       if (slug.trim()) body.slug = slug.trim().toLowerCase()
-      if (site) body.template_id = templateId || null
-      else if (templateId) body.template_id = templateId
       const result = await onSubmit(body)
       if (result) onClose()
     } finally {
@@ -283,27 +162,22 @@ function SiteForm({
       </div>
       <div className="space-y-2">
         <Label>Template</Label>
-        <TemplatePicker templates={templates} value={templateId} onChange={setTemplateId} />
-        <p className="text-xs text-muted-foreground">
-          Templates are filtered by your tier. You need one before you can publish.
-        </p>
-        <FeatureGate feature="custom_domains">
-          <Button
-            type="button"
-            variant="link"
-            className="h-auto p-0 text-xs"
-            onClick={() => setForkOpen(true)}
-          >
-            Fork a template (Pro+)
-          </Button>
-        </FeatureGate>
+        {site ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+            {site.template_id ? <Badge mono>{site.template_id}</Badge> : <Badge tone="warning">No template</Badge>}
+            <Button asChild variant="outline" size="sm">
+              <Link to={`${tenantBasePath || `/${tenantSlug}`}/sites/${site.id}/template`}>
+                <LayoutTemplate className="size-4" />
+                Change template
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            After you create the site you’ll pick a template from the full gallery. You need one before you can publish.
+          </p>
+        )}
       </div>
-      <ForkTemplateSheet
-        open={forkOpen}
-        onOpenChange={setForkOpen}
-        platformTemplates={templates.filter((t) => !t.is_custom)}
-        onForked={loadTemplates}
-      />
       {site && (
         <FormField
           label="Status"
@@ -345,7 +219,7 @@ function TenantSites() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingSite, setEditingSite] = useState<Site | null>(null)
-  const [previewSite, setPreviewSite] = useState<Site | null>(null)
+  const navigate = useNavigate()
   const [deleteTarget, setDeleteTarget] = useState<Site | null>(null)
 
   // ?new=1 (from the Overview "New site" button) opens the create sheet directly.
@@ -374,7 +248,10 @@ function TenantSites() {
     if (editingSite) {
       return update(editingSite.id, body)
     }
-    return create(body)
+    const created = await create(body)
+    // New sites continue to the full-page template gallery.
+    if (created) navigate(`${base}/sites/${created.id}/template?new=1`)
+    return created
   }
 
   const handleSheetClose = () => {
@@ -427,16 +304,6 @@ function TenantSites() {
           />
         </SheetContent>
       </Sheet>
-
-      {previewSite && (
-        <SitePreview
-          siteId={previewSite.id}
-          siteName={previewSite.name}
-          templateId={previewSite.template_id ?? null}
-          open={!!previewSite}
-          onOpenChange={(open) => !open && setPreviewSite(null)}
-        />
-      )}
 
       <ConfirmDialog
         open={!!deleteTarget}
@@ -503,9 +370,11 @@ function TenantSites() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => setPreviewSite(site)}>
-                          <Eye className="size-4" />
-                          Template preview
+                        <DropdownMenuItem asChild>
+                          <Link to={`${base}/sites/${site.id}/template`}>
+                            <LayoutTemplate className="size-4" />
+                            Change template
+                          </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleEdit(site)}>
                           <Pencil className="size-4" />
