@@ -110,6 +110,7 @@ class Principal:
     is_superadmin: bool
     token_tenant_slug: str | None = None
     token_role: str | None = None
+    token_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -267,6 +268,17 @@ def _member_role(table, tenant_slug: str, sub: str) -> str | None:
     return (item.get("role") or "member").lower()
 
 
+def _tuser_role(table, tenant_slug: str, principal: Principal) -> str | None:
+    """SEC-04: re-check the TUSER row on every request, so deleting, demoting, or resetting a
+    TenantUser (or deleting and re-creating its tenant) revokes tokens minted before the change."""
+    item = _get_table(table).get_item(
+        Key={"pk": f"TENANT#{tenant_slug}", "sk": f"TUSER#{principal.identifier}"}
+    ).get("Item")
+    if not item or item.get("token_version") != principal.token_version:
+        return None
+    return (item.get("role") or "member").lower()
+
+
 # ---------------------------------------------------------------------------
 # Token verification
 # ---------------------------------------------------------------------------
@@ -341,7 +353,7 @@ def _verify_tuser(token: str) -> Principal | None:
     if not secret or secret == "REPLACE_ME":
         return None
     try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        payload = jwt.decode(token, secret, algorithms=["HS256"], options={"require": ["exp", "iat", "username"]})
     except Exception:  # noqa: BLE001
         return None
     if payload.get("user_type") != "tenant_user" or not payload.get("username"):
@@ -353,6 +365,7 @@ def _verify_tuser(token: str) -> Principal | None:
         is_superadmin=False,
         token_tenant_slug=(payload.get("tenant_slug") or "").lower() or None,
         token_role=(payload.get("role") or "member").lower(),
+        token_version=payload.get("tv"),
     )
 
 
@@ -417,7 +430,7 @@ def build_request_context(event: dict, table=None) -> RequestContext:
     role = None
     if principal and tenant_slug:
         if principal.kind == "tuser":
-            role = principal.token_role if principal.token_tenant_slug == tenant_slug else None
+            role = _tuser_role(table, tenant_slug, principal) if principal.token_tenant_slug == tenant_slug else None
         else:
             role = _member_role(table, tenant_slug, principal.identifier)
     role = LEGACY_ROLE_MAP.get(role, role)

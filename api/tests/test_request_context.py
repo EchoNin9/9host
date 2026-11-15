@@ -221,13 +221,37 @@ class TestTenantUser:
     def test_wrong_secret_rejected(self):
         assert rc.authenticate(make_event(tuser_token(secret="nope"))) is None
 
-    def test_role_from_token_in_own_tenant(self):
-        ctx = rc.build_request_context(make_event(tuser_token(), {"x-tenant-slug": "acme"}))
-        assert ctx.require_tenant_member(("manager",)) == ("acme", "manager")
+    @staticmethod
+    def _row(table, role="manager", **extra):
+        table.put_item(Item={"pk": "TENANT#acme", "sk": "TUSER#alice", "username": "alice", "role": role, **extra})
 
-    def test_legacy_editor_token_role_resolves_to_member(self):
-        ctx = rc.build_request_context(make_event(tuser_token(role="editor"), {"x-tenant-slug": "acme"}))
-        assert ctx.effective_role == "member"
+    def _ctx(self, table, tok=None):
+        return rc.build_request_context(make_event(tok or tuser_token(), {"x-tenant-slug": "acme"}), table=table)
+
+    def test_role_in_own_tenant(self, dynamodb_table):
+        self._row(dynamodb_table)
+        assert self._ctx(dynamodb_table).require_tenant_member(("manager",)) == ("acme", "manager")
+
+    def test_legacy_editor_role_resolves_to_member(self, dynamodb_table):
+        self._row(dynamodb_table, role="editor")
+        assert self._ctx(dynamodb_table, tuser_token(role="editor")).effective_role == "member"
+
+    # SEC-04: the TUSER row, not the token, is authoritative.
+    def test_deleted_tuser_token_has_no_role(self, dynamodb_table):
+        assert self._ctx(dynamodb_table).effective_role is None
+
+    def test_demoted_tuser_gets_row_role_not_token_role(self, dynamodb_table):
+        self._row(dynamodb_table, role="member")
+        assert self._ctx(dynamodb_table).effective_role == "member"
+
+    def test_token_minted_before_reset_or_recreate_is_revoked(self, dynamodb_table):
+        self._row(dynamodb_table, token_version="rotated")
+        assert self._ctx(dynamodb_table).effective_role is None
+
+    def test_token_without_iat_rejected(self):
+        tok = jwt.encode({"username": "alice", "tenant_slug": "acme", "role": "manager", "user_type": "tenant_user",
+                          "exp": int(time.time()) + 3600}, JWT_SECRET, algorithm="HS256")
+        assert rc.authenticate(make_event(tok)) is None
 
     def test_locked_to_own_tenant(self):
         ctx = rc.build_request_context(make_event(tuser_token(), {"x-tenant-slug": "other"}))

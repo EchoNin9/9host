@@ -248,7 +248,8 @@ def test_custom_users_role_cannot_touch_privileged_tusers(module_api):
     assert call("PUT", f"{base}/plain", actor, body={"password": "newpassword"})[0] == 200
     assert call("DELETE", f"{base}/plain", actor)[0] == 204
     # a custom-role collaborator may edit (not delete, not promote) their own account
-    me = tuser("peer", role="can-users")
+    me = call("POST", "/api/auth/site-login", None, tenant=None,
+              body={"username": "peer", "password": "password1", "site": "acme"})[1]["token"]
     assert call("PUT", f"{base}/peer", me, body={"password": "my-new-pw", "display_name": "Me"})[0] == 200
     assert call("PUT", f"{base}/peer", me, body={"role": "manager"})[0] == 403
     assert call("DELETE", f"{base}/peer", me)[0] == 403

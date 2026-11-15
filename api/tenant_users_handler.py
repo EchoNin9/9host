@@ -8,6 +8,7 @@ DELETE /api/tenant/tusers/{username}   delete
 """
 
 import re
+import uuid
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
@@ -64,6 +65,7 @@ def create_tuser(store, tenant_slug: str, body: dict) -> tuple[int, dict]:
         "role": role,
         "created_at": now,
         "updated_at": now,
+        "token_version": uuid.uuid4().hex,  # SEC-04: tokens of a deleted same-name user stay dead
     })
     return 201, tuser
 
@@ -109,5 +111,6 @@ def tenant_users_handler(ctx: RequestContext) -> dict:
         if len(body["password"]) < 8:
             return respond(400, {"error": "password must be at least 8 characters."})
         tuser["password_hash"] = _hash(body["password"])
+        tuser["token_version"] = uuid.uuid4().hex  # SEC-04: revoke existing sessions
     tuser["updated_at"] = datetime.now(timezone.utc).isoformat()
     return respond(200, {"user": _tuser_out(store.put_tuser(tenant_slug, tuser))})

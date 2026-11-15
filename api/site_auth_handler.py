@@ -111,6 +111,7 @@ def site_login_handler(event: dict, context: dict) -> dict:
         "tenant_slug": site,
         "role": role,
         "user_type": "tenant_user",
+        "tv": item.get("token_version"),  # SEC-04: re-checked against the TUSER row per request
         "iat": int(now.timestamp()),
         "exp": int(exp.timestamp()),
     }

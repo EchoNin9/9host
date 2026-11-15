@@ -66,9 +66,18 @@ def cognito(key, sub, groups=None):
 
 
 def tuser(username="ed", role="member", tenant="acme"):
+    """Mint a site token; also create the TUSER row (if absent) since tokens are re-checked (SEC-04)."""
     now = int(time.time())
+    try:
+        boto3.resource("dynamodb", region_name="us-east-1").Table("9host-main").put_item(
+            Item={"pk": f"TENANT#{tenant}", "sk": f"TUSER#{username}", "username": username, "role": role},
+            ConditionExpression="attribute_not_exists(pk)",
+        )
+    except boto3.client("dynamodb", region_name="us-east-1").exceptions.ConditionalCheckFailedException:
+        pass
     return jwt.encode(
-        {"username": username, "tenant_slug": tenant, "role": role, "user_type": "tenant_user", "exp": now + 3600},
+        {"username": username, "tenant_slug": tenant, "role": role, "user_type": "tenant_user",
+         "iat": now, "exp": now + 3600},
         JWT_SECRET, algorithm="HS256",
     )
 
@@ -712,3 +721,46 @@ def test_tenant_create_rejects_reserved_slug(api, slug):
     code, body = call("POST", "/api/admin/tenants", superadmin(api), tenant=None, body={"slug": slug})
     assert code == 400 and body["code"] == "slug_reserved", body
     assert api.table.get_item(Key={"pk": f"TENANT#{slug}", "sk": "TENANT"}).get("Item") is None
+
+
+# ---------------------------------------------------------------------------
+# SEC-04: TUSER site tokens are revoked by delete / demote / reset / tenant re-create
+# ---------------------------------------------------------------------------
+
+
+def _site_login(username, password, site="acme"):
+    return call("POST", "/api/auth/site-login", body={"username": username, "password": password, "site": site},
+                tenant=None)
+
+
+def test_sec04_old_tuser_token_revoked_by_demote_reset_and_delete(api):
+    assert call("POST", "/api/tenant/tusers", owner(api),
+                body={"username": "mgr", "password": "password1", "role": "manager"})[0] == 201
+    tok = _site_login("mgr", "password1")[1]["token"]
+    assert call("GET", "/api/tenant/tusers", tok)[0] == 200
+    # demote only: old token now carries the row's role (member), not the token's
+    assert call("PUT", "/api/tenant/tusers/mgr", owner(api), body={"role": "member"})[0] == 200
+    assert call("GET", "/api/tenant/tusers", tok)[0] == 403
+    # password reset: every session minted before it dies
+    assert call("PUT", "/api/tenant/tusers/mgr", owner(api), body={"role": "manager", "password": "newpassword9"})[0] == 200
+    assert call("GET", "/api/tenant/sites", tok)[0] == 403
+    fresh = _site_login("mgr", "newpassword9")[1]["token"]
+    assert call("GET", "/api/tenant/tusers", fresh)[0] == 200
+    # delete: no backdoor via the old token
+    assert call("DELETE", "/api/tenant/tusers/mgr", owner(api))[0] == 204
+    assert call("POST", "/api/tenant/tusers", fresh,
+                body={"username": "backdoor", "password": "backdoor1", "role": "manager"})[0] == 403
+
+
+def test_sec04_old_tuser_token_dead_in_recreated_tenant(api):
+    assert call("POST", "/api/tenant/tusers", owner(api),
+                body={"username": "oldmgr", "password": "password1", "role": "manager"})[0] == 201
+    tok = _site_login("oldmgr", "password1")[1]["token"]
+    assert call("DELETE", "/api/admin/tenants/acme", superadmin(api), tenant=None)[0] == 204
+    newowner = cognito(api.key, "new-owner")
+    assert call("POST", "/api/tenants", newowner, tenant=None, body={"slug": "acme"})[0] == 201
+    assert call("GET", "/api/tenant/sites", tok)[0] == 403
+    # even if the new owner happens to create a TUSER with the same name, the old token stays dead
+    assert call("POST", "/api/tenant/tusers", newowner,
+                body={"username": "oldmgr", "password": "different1", "role": "manager"})[0] == 201
+    assert call("GET", "/api/tenant/sites", tok)[0] == 403
