@@ -218,33 +218,32 @@ def patch_tenant_handler(ctx: RequestContext) -> dict:
         return _json_response(404, {"error": "Tenant not found."})
     tier = tenant_item.get("tier", "FREE")
 
-    # Reject enabling features/modules the tier doesn't support
-    for k, v in mo.items():
-        if k in FEATURE_KEYS:
-            if v and not _tier_has_feature(tier, k):
-                return _json_response(
-                    403,
-                    {
-                        "error": f"Cannot enable {k} on {tier} tier. Upgrade to Pro or Business.",
-                        "feature": k,
-                        "tier": tier,
-                        "upgrade_required": True,
-                    },
-                )
-        elif k in CONTENT_MODULE_KEYS:
-            if v and not _tier_has_module(tier, k):
-                return _json_response(
-                    403,
-                    {
-                        "error": f"Cannot enable {k} on {tier} tier. Upgrade required.",
-                        "feature": k,
-                        "tier": tier,
-                        "upgrade_required": True,
-                    },
-                )
-
+    # SEC-07: a tenant may only switch modules *off*. "On" means "use the tier default", so a
+    # self-enabled module never outlives a downgrade. A stored True can only be a superadmin
+    # grant (admin PATCH), which is preserved as-is.
     valid_keys = set(FEATURE_KEYS) | set(CONTENT_MODULE_KEYS)
-    clean_mo = {k: bool(v) for k, v in mo.items() if k in valid_keys}
+    existing = tenant_item.get("module_overrides") or {}
+    clean_mo = {k: bool(v) for k, v in existing.items() if k in valid_keys}
+    for k, v in mo.items():
+        if k not in valid_keys:
+            continue
+        if not v:
+            clean_mo[k] = False
+            continue
+        if existing.get(k) is True:
+            continue
+        allowed = _tier_has_feature(tier, k) if k in FEATURE_KEYS else _tier_has_module(tier, k)
+        if not allowed:
+            return _json_response(
+                403,
+                {
+                    "error": f"Cannot enable {k} on {tier} tier. Upgrade required.",
+                    "feature": k,
+                    "tier": tier,
+                    "upgrade_required": True,
+                },
+            )
+        clean_mo.pop(k, None)
 
     from datetime import datetime, timezone
 

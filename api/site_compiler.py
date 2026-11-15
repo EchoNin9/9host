@@ -61,6 +61,7 @@ class SiteSnapshot:
     generated_at: str = ""          # ISO timestamp; drives footer year + manifest
     media_base: str = "/media/"     # CLOUDFRONT_MEDIA_URL
     base_domain: str = "echo9.net"  # first of DOMAINS, for sitemap/robots
+    gallery: bool = True            # media_gallery module (PRO); media stays usable in blocks/branding
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
     posts = [{**p, "slug": (p.get("slug") or "").strip()} for p in snapshot.posts if (p.get("slug") or "").strip()]
     events = list(snapshot.events)
     media = list(snapshot.media)
+    has_gallery = bool(media) and snapshot.gallery  # SEC-08
 
     use_blocks = site.get("editor") == "blocks"
     # Template tokens (pinned version, resolved by the caller) apply to block-editor sites only:
@@ -158,7 +160,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
         media=media, pages=pages, posts=posts, events=events, tokens=tokens,
     )
 
-    nav = nav_links(pages, bool(posts), bool(events), bool(media), base_path=base_path)
+    nav = nav_links(pages, bool(posts), bool(events), has_gallery, base_path=base_path)
     pages_html: dict[str, str] = {}
 
     meta_image = media_url(branding.get("logo_s3_key", ""), media_base) if branding.get("logo_s3_key") else ""
@@ -170,7 +172,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
         )
     else:
         pages_html["index.html"] = renderer.render_index(
-            site_name, pages, posts, events, branding, media_base, bool(media), base_path=base_path,
+            site_name, pages, posts, events, branding, media_base, has_gallery, base_path=base_path,
             meta_description=site_name, meta_image=meta_image,
         )
     for p in pages:
@@ -192,7 +194,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
         pages_html["events/index.html"] = renderer.render_events(
             site_name, events, branding, media_base, nav, base_path=base_path,
         )
-    if media:
+    if has_gallery:
         pages_html["gallery/index.html"] = renderer.render_gallery(
             site_name, media, branding, media_base, nav, base_path=base_path,
         )
@@ -205,7 +207,7 @@ def compile_site(snapshot: SiteSnapshot, mode: Literal["live", "draft"] = "live"
         text_files.update(pages_html)
         site_slug = (site.get("slug") or "").strip() or "site"
         base_url = f"https://{site_slug}.{snapshot.base_domain}"
-        text_files["sitemap.xml"] = _sitemap(base_url, pages, posts, bool(events), bool(media))
+        text_files["sitemap.xml"] = _sitemap(base_url, pages, posts, bool(events), has_gallery)
         text_files["robots.txt"] = f"User-agent: *\nAllow: /\nSitemap: {base_url}/sitemap.xml\n"
     else:
         # /preview/style.css can't load without a token, so inline it; append token script.

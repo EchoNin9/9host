@@ -102,8 +102,8 @@ def _build_snapshot(
         pages=content["pages"],
         posts=content["posts"] if features.get("updates_blog", True) else [],
         events=content["events"] if features.get("events_shows", True) else [],
-        # Media: tier gating is enforced at upload, not at publish
         media=content["media"],
+        gallery=features.get("media_gallery", True),  # SEC-08: gallery page is PRO; media stays for blocks/branding
         generated_at=generated_at,
         media_base=media_base,
         base_domain=_base_domain(),
@@ -152,7 +152,8 @@ def _publish_site(
     site_slug = (site_item.get("slug") or "").strip()
     hostnames = [f"{site_slug}.{snapshot.base_domain}"] if site_slug else []
     store = DynamoDBTenantStore(table)
-    hostnames += _active_custom_domains(store, tenant_slug, site_id)
+    if (resolved_features or {}).get("custom_domains", True):  # SEC-07: no custom domains after downgrade
+        hostnames += _active_custom_domains(store, tenant_slug, site_id)
     if hostnames:
         storage.sync_host_mapping(tenant_slug, site_id, hostnames)  # best-effort: never fails a publish
     _update_site(

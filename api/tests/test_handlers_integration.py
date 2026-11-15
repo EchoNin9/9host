@@ -573,7 +573,7 @@ def test_tuser_member_forbidden_on_manager_routes(api, monkeypatch, method, path
 
 def test_tuser_manager_passes_role_gate(api):
     code, body = call("PATCH", "/api/tenant", tuser(role="manager"), body={"module_overrides": {"branding": True}})
-    assert code == 200 and body["module_overrides"] == {"branding": True}
+    assert code == 200 and body["resolved_features"]["branding"] is True  # tier default; nothing stored (SEC-07)
     code, body = call("PUT", "/api/tenant", tuser(role="manager"), body={"owner_sub": "owner-1"})
     assert code == 403 and "Cognito" in body["error"]  # ownership transfer stays Cognito-owner only
 
@@ -764,3 +764,59 @@ def test_sec04_old_tuser_token_dead_in_recreated_tenant(api):
     assert call("POST", "/api/tenant/tusers", newowner,
                 body={"username": "oldmgr", "password": "different1", "role": "manager"})[0] == 201
     assert call("GET", "/api/tenant/sites", tok)[0] == 403
+
+
+# ---------------------------------------------------------------------------
+# SEC-07 / SEC-08: tier gating survives downgrades; media gallery page is PRO-only
+# ---------------------------------------------------------------------------
+
+
+def _tenant_row(api):
+    return api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"]
+
+
+def test_sec07_self_enabled_features_do_not_survive_downgrade(api):
+    tok = owner(api)  # acme is PRO
+    code, _ = call("PATCH", "/api/tenant", tok, body={"module_overrides": {
+        "custom_domains": True, "advanced_analytics": True, "media_gallery": True}})
+    assert code == 200
+    assert not any(_tenant_row(api).get("module_overrides", {}).values())  # no stored self-grants
+    assert call("PATCH", "/api/admin/tenants/acme", superadmin(api), body={"tier": "FREE"})[0] == 200
+    assert call("GET", "/api/tenant/analytics", tok)[0] == 403
+    assert call("GET", "/api/tenant/domains", tok)[0] == 403
+    feats = call("GET", "/api/tenant", tok)[1]["resolved_features"]
+    assert (feats["custom_domains"], feats["advanced_analytics"], feats["media_gallery"]) == (False, False, False)
+
+
+def test_sec07_tenant_can_disable_and_keeps_superadmin_grant(api):
+    api.table.update_item(Key={"pk": "TENANT#acme", "sk": "TENANT"},
+                          UpdateExpression="SET tier = :t, module_overrides = :mo",
+                          ExpressionAttributeValues={":t": "FREE", ":mo": {"advanced_analytics": True}})
+    tok = owner(api)
+    # unrelated toggles keep the superadmin grant; re-sending True for it is fine
+    assert call("PATCH", "/api/tenant", tok, body={"module_overrides": {
+        "branding": False, "advanced_analytics": True}})[0] == 200
+    assert _tenant_row(api)["module_overrides"] == {"advanced_analytics": True, "branding": False}
+    assert call("GET", "/api/tenant/analytics", tok)[0] == 200
+    assert call("PATCH", "/api/tenant", tok, body={"module_overrides": {"custom_domains": True}})[0] == 403
+
+
+def test_sec08_free_tier_publishes_no_gallery_page(api):
+    import publish_handler as ph
+    from site_compiler import compile_site
+    from tenant_store import DynamoDBTenantStore as Store
+
+    api.table.update_item(Key={"pk": "TENANT#acme", "sk": "TENANT"},
+                          UpdateExpression="SET tier = :t", ExpressionAttributeValues={":t": "FREE"})
+    site_id = create_site(api, owner(api))
+    store = Store(api.table)
+    store.put_content("acme", site_id, "MEDIA", {"s3_key": f"acme/{site_id}/a.png", "caption": "c"})
+    feats = ph._resolve_features(_tenant_row(api))
+    snap = ph._build_snapshot(api.table, "acme", site_id, store.get_site("acme", site_id), {"slug": "basic"},
+                              "/media/", feats, published_only=True, generated_at="2026-11-15T00:00:00Z")
+    files = compile_site(snap, mode="live").files
+    assert len(snap.media) == 1 and "gallery/index.html" not in files
+    feats["media_gallery"] = True
+    snap = ph._build_snapshot(api.table, "acme", site_id, store.get_site("acme", site_id), {"slug": "basic"},
+                              "/media/", feats, published_only=True, generated_at="2026-11-15T00:00:00Z")
+    assert "gallery/index.html" in compile_site(snap, mode="live").files
