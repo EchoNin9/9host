@@ -89,6 +89,11 @@ def tenant_users_handler(ctx: RequestContext) -> dict:
     tuser = store.get_tuser(tenant_slug, username)
     if not tuser:
         return respond(404, {"error": "User not found."})
+    # SEC-03: custom-role callers may only edit/delete users they could have created, or edit themselves.
+    p = ctx.principal
+    is_self = method == "PUT" and p is not None and p.kind == "tuser" and p.identifier == username
+    if caller_role not in MANAGE_ROLES and not is_self and tuser.get("role", "member") not in CUSTOM_ASSIGNABLE:
+        return respond(403, {"error": "Custom roles may only manage: member."})
     if method == "DELETE":
         store.delete_tuser(tenant_slug, username)
         return respond(204)

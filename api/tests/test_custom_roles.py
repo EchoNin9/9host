@@ -228,6 +228,33 @@ def test_custom_users_role_cannot_assign_privileged_roles(module_api):
     assert store.get_tuser("acme", "x-manager") is None
 
 
+def test_custom_users_role_cannot_touch_privileged_tusers(module_api):
+    """SEC-03: password reset / delete of a manager (or custom-role) TUSER was a takeover path."""
+    owner = tuser(role="admin")
+    base = "/api/tenant/tusers"
+    for u, r in (("boss", "manager"), ("peer", "can-users"), ("plain", "member")):
+        assert call("POST", base, owner, body={"username": u, "password": "password1", "role": r})[0] == 201
+    actor = tuser("cr", role="can-users")
+    for u in ("boss", "peer"):
+        assert call("PUT", f"{base}/{u}", actor, body={"password": "attacker-pw"})[0] == 403, u
+        assert call("PUT", f"{base}/{u}", actor, body={"display_name": "x"})[0] == 403, u
+        assert call("PUT", f"{base}/{u}", actor, body={"role": "member"})[0] == 403, u  # no demotion
+        assert call("DELETE", f"{base}/{u}", actor)[0] == 403, u
+    store = DynamoDBTenantStore(module_api.table)
+    assert store.get_tuser("acme", "boss")["role"] == "manager"
+    assert call("POST", "/api/auth/site-login", None, tenant=None,
+                body={"username": "boss", "password": "attacker-pw", "site": "acme"})[0] == 401
+    # member targets stay manageable
+    assert call("PUT", f"{base}/plain", actor, body={"password": "newpassword"})[0] == 200
+    assert call("DELETE", f"{base}/plain", actor)[0] == 204
+    # a custom-role collaborator may edit (not delete, not promote) their own account
+    me = tuser("peer", role="can-users")
+    assert call("PUT", f"{base}/peer", me, body={"password": "my-new-pw", "display_name": "Me"})[0] == 200
+    assert call("PUT", f"{base}/peer", me, body={"role": "manager"})[0] == 403
+    assert call("DELETE", f"{base}/peer", me)[0] == 403
+    assert store.get_tuser("acme", "peer")["role"] == "can-users"
+
+
 @pytest.mark.parametrize("role", ["admin", "manager"])
 def test_builtin_managers_still_assign_any_role(module_api, role):
     token = tuser(role=role)
