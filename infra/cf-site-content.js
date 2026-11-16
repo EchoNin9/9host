@@ -2,7 +2,8 @@
  * CloudFront Function (cloudfront-js-2.0): EdgeHostRouter — public site path rewrite.
  * docs/SPEC.md §3 Module 1C. KVS: 9host-site-hosts-kvs (HostMappingKVS).
  *
- *   /site/{tenant}/{site_id}/...  (backward compatible)  -> /{tenant}/{site_id}/published/current/...
+ *   /site/{tenant}/{site_id}/...  (legacy links)  -> same rewrite, but ONLY when the effective
+ *                                 host maps to that {tenant, site_id} (SEC-12: no cross-host serving)
  *   Host or X-Forwarded-Host (Cloudflare SaaS Worker) looked up in KVS:
  *     "<host>" -> {"tenant","site_id"}                    -> /{tenant}/{site_id}/published/current/...
  *
@@ -109,11 +110,10 @@ async function handler(event) {
         return notFound();
     }
 
-    // 1. Backwards-compatible explicit /site/{tenant}/{site_id}/... path
+    // 1. Legacy /site/{tenant}/{site_id}/... path: strip the prefix; the host must map to it (step 3).
     var siteMatch = uri.match(/^\/site\/([a-z0-9_-]+)\/([a-zA-Z0-9_-]+)(\/.*)?$/);
     if (siteMatch) {
-        request.uri = '/' + siteMatch[1] + '/' + siteMatch[2] + '/published/current' + resolvePath(siteMatch[3] || '/');
-        return request;
+        uri = siteMatch[3] || '/';
     }
 
     // 2. Effective hostname: X-Forwarded-Host (Cloudflare for SaaS Worker, if trusted) or Host
@@ -138,6 +138,9 @@ async function handler(event) {
                 var mapping = JSON.parse(raw);
                 if (mapping && typeof mapping.tenant === 'string' && typeof mapping.site_id === 'string' &&
                         TENANT_RE.test(mapping.tenant) && SITE_RE.test(mapping.site_id)) {
+                    if (siteMatch && (siteMatch[1] !== mapping.tenant || siteMatch[2] !== mapping.site_id)) {
+                        return notFound();  // SEC-12: another tenant's site under this host
+                    }
                     request.uri = '/' + mapping.tenant + '/' + mapping.site_id + '/published/current' + resolvePath(uri);
                     return request;
                 }

@@ -66,10 +66,18 @@ test('site: draft path on an unmapped host -> 404 (never passed through)', async
   assert.equal(out.statusCode, 404);
 });
 
-test('site: legacy /site/{t}/{s}/ rewrite', async () => {
-  const h = site({});
-  assert.equal((await h(req('/site/acme/s1/', 'x.echo9.net'))).uri, BASE + '/index.html');
-  assert.equal((await h(req('/site/acme/s1/blog/post', 'x.echo9.net'))).uri, BASE + '/blog/post/index.html');
+test('site: legacy /site/{t}/{s}/ rewrite only on a host mapped to that site', async () => {
+  const h = site();
+  assert.equal((await h(req('/site/acme/s1/', 'band.echo9.net'))).uri, BASE + '/index.html');
+  assert.equal((await h(req('/site/acme/s1/blog/post', 'band.echo9.net'))).uri, BASE + '/blog/post/index.html');
+});
+
+test('site: SEC-12 /site/{other tenant} on a victim host or unmapped host -> 404', async () => {
+  const h = site();
+  assert.equal((await h(req('/site/evil/es1/', 'band.echo9.net'))).statusCode, 404);
+  assert.equal((await h(req('/site/acme/s2/', 'band.echo9.net'))).statusCode, 404);
+  assert.equal((await h(req('/site/acme/s1/', 'x.echo9.net'))).statusCode, 404);
+  assert.equal((await site({})(req('/site/acme/s1/', 'band.echo9.net'))).statusCode, 404);
 });
 
 test('site: ".." and "%2e%2e" segments -> 404', async () => {
@@ -172,13 +180,15 @@ const b64u = (o) => Buffer.from(typeof o === 'string' ? o : JSON.stringify(o)).t
 
 function token(key, claims = {}, header = { alg: 'HS256', typ: 'JWT' }) {
   const now = Math.floor(Date.now() / 1000);
-  const body = { tenant_slug: 'acme', site_id: 's1', type: 'draft', iat: now, exp: now + 3600, ...claims };
+  const body = { tenant_slug: 'acme', site_id: 's1', host: 'band.echo9.net', type: 'draft', iat: now, exp: now + 3600, ...claims };
   const signing = `${b64u(header)}.${b64u(body)}`;
   return `${signing}.${createHmac('sha256', key).update(signing).digest('base64url')}`;
 }
 
 const preview = (kvs = { __preview_jwt_secret__: DERIVED }) => load('cf-preview-content.js', kvs);
-const previewReq = (uri, tok) => ({ request: { uri, headers: {}, querystring: tok ? { token: { value: tok } } : {} } });
+const previewReq = (uri, tok, host = 'band.echo9.net') => ({
+  request: { uri, headers: host ? { host: { value: host } } : {}, querystring: tok ? { token: { value: tok } } : {} },
+});
 
 test('preview: valid token served and rewritten to draft/', async () => {
   const h = preview();
@@ -224,4 +234,13 @@ test('preview: ".." in path rejected even with a valid token', async () => {
 test('preview: token signed with the raw (non-derived) secret -> 403', async () => {
   const t = token(RAW_SECRET);
   assert.equal((await preview()(previewReq('/preview/', t))).statusCode, 403);
+});
+
+test('preview: SEC-12 token only works on its own host', async () => {
+  const h = preview();
+  const t = token(DERIVED);
+  assert.equal((await h(previewReq('/preview/', t, 'BAND.echo9.net:443'))).uri, '/acme/s1/draft/index.html');
+  assert.equal((await h(previewReq('/preview/', t, 'victim.echo9.net'))).statusCode, 403);
+  assert.equal((await h(previewReq('/preview/', t, null))).statusCode, 403);
+  assert.equal((await h(previewReq('/preview/', token(DERIVED, { host: undefined })))).statusCode, 403);
 });

@@ -28,10 +28,12 @@ def draft_token_handler(ctx: RequestContext) -> dict:
     # One-way derived key: the edge KVS holds this value, never the raw TUSER signing secret.
     preview_key = hashlib.sha256(f"{secret}:9host-preview-v1".encode()).hexdigest()
     now = datetime.now(timezone.utc)
+    host = f"{site_slug}.{_base_domain()}"
     token = jwt.encode(
         {
             "tenant_slug": tenant_slug,
             "site_id": site_id,
+            "host": host,  # SEC-12: cf-preview-content.js only serves the draft on this host
             "type": "draft",
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=1)).timestamp()),
@@ -39,5 +41,5 @@ def draft_token_handler(ctx: RequestContext) -> dict:
         preview_key,
         algorithm="HS256",
     )
-    preview_url = f"https://{site_slug}.{_base_domain()}/preview?token={token}"
+    preview_url = f"https://{host}/preview?token={token}"
     return respond(200, {"token": token, "preview_url": preview_url, "expires_in": 3600})

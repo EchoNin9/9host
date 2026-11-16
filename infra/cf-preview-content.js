@@ -8,6 +8,8 @@
  * api/draft_handler.py) and checks exp BEFORE
  * serving any draft/ content. Rejects with 403 on a missing/invalid/expired token
  * or when the secret is unavailable (fail closed).
+ * SEC-12: the token's "host" claim must equal the request Host, so a draft can't be shown
+ * under another tenant's hostname.
  * Rewrites to S3: {tenant}/{site_id}/draft/{path}
  *
  * The CloudFront Functions runtime has no WebCrypto (crypto.subtle); the built-in
@@ -143,6 +145,12 @@ async function handler(event) {
     var tenant = String(payload.tenant_slug || '').toLowerCase();
     var siteId = String(payload.site_id || '');
     if (!/^[a-z0-9_-]+$/.test(tenant) || !/^[a-zA-Z0-9_-]+$/.test(siteId)) {
+        return forbidden('Invalid token');
+    }
+
+    var host = String((request.headers && request.headers.host && request.headers.host.value) || '')
+        .toLowerCase().split(':')[0];
+    if (typeof payload.host !== 'string' || !host || payload.host !== host) {
         return forbidden('Invalid token');
     }
 
