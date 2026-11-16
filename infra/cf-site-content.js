@@ -4,6 +4,8 @@
  *
  *   /site/{tenant}/{site_id}/...  (legacy links)  -> same rewrite, but ONLY when the effective
  *                                 host maps to that {tenant, site_id} (SEC-12: no cross-host serving)
+ *   /media/{tenant}/{site}/{file} (sites distribution's media behaviour) -> /{tenant}/{site}/{file}
+ *                                 on the media bucket, ONLY when the host maps to that tenant (SEC-12)
  *   Host or X-Forwarded-Host (Cloudflare SaaS Worker) looked up in KVS:
  *     "<host>" -> {"tenant","site_id"}                    -> /{tenant}/{site_id}/published/current/...
  *
@@ -110,8 +112,14 @@ async function handler(event) {
         return notFound();
     }
 
-    // 1. Legacy /site/{tenant}/{site_id}/... path: strip the prefix; the host must map to it (step 3).
-    var siteMatch = uri.match(/^\/site\/([a-z0-9_-]+)\/([a-zA-Z0-9_-]+)(\/.*)?$/);
+    // 1a. /media/{tenant}/... (media behaviour). Matched on the raw URI only: a /site/.../media/...
+    //     path must never reach the media rewrite (it would expose sites-bucket draft/ keys).
+    var mediaMatch = uri.match(/^\/media\/([a-z0-9_-]+)\/(.+)$/);
+    if (!mediaMatch && /^\/media(\/|$)/.test(uri)) {
+        return notFound();
+    }
+    // 1b. Legacy /site/{tenant}/{site_id}/... path: strip the prefix; the host must map to it (step 3).
+    var siteMatch = mediaMatch ? null : uri.match(/^\/site\/([a-z0-9_-]+)\/([a-zA-Z0-9_-]+)(\/.*)?$/);
     if (siteMatch) {
         uri = siteMatch[3] || '/';
     }
@@ -140,6 +148,11 @@ async function handler(event) {
                         TENANT_RE.test(mapping.tenant) && SITE_RE.test(mapping.site_id)) {
                     if (siteMatch && (siteMatch[1] !== mapping.tenant || siteMatch[2] !== mapping.site_id)) {
                         return notFound();  // SEC-12: another tenant's site under this host
+                    }
+                    if (mediaMatch) {
+                        if (mediaMatch[1] !== mapping.tenant) return notFound();  // SEC-12: other tenant's media
+                        request.uri = '/' + mediaMatch[1] + '/' + mediaMatch[2];
+                        return request;
                     }
                     request.uri = '/' + mapping.tenant + '/' + mapping.site_id + '/published/current' + resolvePath(uri);
                     return request;

@@ -244,3 +244,16 @@ test('preview: SEC-12 token only works on its own host', async () => {
   assert.equal((await h(previewReq('/preview/', t, null))).statusCode, 403);
   assert.equal((await h(previewReq('/preview/', token(DERIVED, { host: undefined })))).statusCode, 403);
 });
+
+test('site: SEC-12 /media/ served only for the host\'s own tenant', async () => {
+  const h = site();
+  assert.equal((await h(req('/media/acme/s1/ab12-logo.png', 'band.echo9.net'))).uri, '/acme/s1/ab12-logo.png');
+  assert.equal((await h(req('/media/acme/s2/x.jpg', 'band.echo9.net'))).uri, '/acme/s2/x.jpg');  // same tenant, other site
+  assert.equal((await h(req('/media/evil/es1/x.jpg', 'band.echo9.net'))).statusCode, 404);
+  assert.equal((await h(req('/media/acme/s1/x.jpg', 'nobody.echo9.net'))).statusCode, 404);
+  assert.equal((await h(req('/media/acme/../evil/x.jpg', 'band.echo9.net'))).statusCode, 404);
+  assert.equal((await h(req('/media/acme', 'band.echo9.net'))).statusCode, 404);
+  // /site/ + embedded /media/ must stay a published-site path, never a raw-key rewrite (draft leak)
+  assert.equal((await h(req('/site/acme/s1/media/acme/s1/draft/index.html', 'band.echo9.net'))).uri,
+    BASE + '/media/acme/s1/draft/index.html');
+});

@@ -384,7 +384,8 @@ resource "aws_cloudfront_distribution" "sites" {
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
-  # Task 1.110: Media — /media/{tenant}/{site}/{filename} → 9host-media
+  # Task 1.110: Media — /media/{tenant}/{site}/{filename} → 9host-media.
+  # SEC-12: site_content (not media_content) so the host must map to {tenant} (KVS).
   ordered_cache_behavior {
     path_pattern           = "/media/*"
     target_origin_id       = "S3-9host-media"
@@ -402,7 +403,7 @@ resource "aws_cloudfront_distribution" "sites" {
 
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.media_content.arn
+      function_arn = aws_cloudfront_function.site_content.arn
     }
 
     min_ttl     = 0
