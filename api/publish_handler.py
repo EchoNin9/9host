@@ -111,12 +111,14 @@ def _build_snapshot(
 
 
 def _active_custom_domains(store, tenant_slug: str, site_id: str) -> list[str]:
-    """ACTIVE custom domains (TENANT#{slug} / DOMAIN#{domain}) bound to this site, for HostMappingKVS."""
-    return [
-        row["sk"][len("DOMAIN#"):]
-        for row in store.list_domains(tenant_slug)
-        if row.get("site_id") == site_id and (row.get("status") or "").upper() == "ACTIVE"
-    ]
+    """ACTIVE custom domains (+ their www. twin once active) bound to this site, for HostMappingKVS."""
+    out = []
+    for row in store.list_domains(tenant_slug):
+        if row.get("site_id") == site_id and (row.get("status") or "").upper() == "ACTIVE":
+            out.append(row["sk"][len("DOMAIN#"):])
+            if row.get("www_status") == "ACTIVE":
+                out.append(f"www.{out[-1]}")
+    return out
 
 
 def _update_site(store, tenant_slug: str, site_id: str, **fields) -> None:

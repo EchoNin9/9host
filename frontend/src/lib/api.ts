@@ -684,11 +684,18 @@ export interface Domain {
   ssl_status?: string
   validation_records?: DomainValidationRecord[]
   verification_errors?: string[]
+  /** www.<domain>, provisioned alongside the apex (absent on older single-host domains) */
+  www_domain?: string
+  www_status?: DomainStatus
   /** Always "proxy.echonin9.com" (kept by the backend for compatibility) */
   verification_cname_target?: string
   created_at?: string
   updated_at?: string
 }
+
+/** Still provisioning: apex not active yet, or its www twin isn't. */
+export const isDomainPending = (d: Domain) =>
+  d.status?.toUpperCase() === "PENDING_VALIDATION" || (!!d.www_domain && d.www_status !== "ACTIVE")
 
 export interface DomainsResponse {
   domains: Domain[]

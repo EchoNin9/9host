@@ -1,7 +1,7 @@
 /**
  * Domain Setup Guide (DNS wizard) — Cloudflare for SaaS custom hostnames.
- * The tenant adds one CNAME → proxy.echonin9.com plus the TXT validation record(s)
- * returned by the API (hostname ownership and/or SSL). Rendered inside the
+ * The tenant first adds the _9host-verify TXT ownership record (SEC-05), then CNAMEs for the
+ * apex and www → proxy.echonin9.com, plus any TXT records Cloudflare asks for. Rendered inside the
  * custom_domains FeatureGate on the Domains page.
  */
 
@@ -58,6 +58,7 @@ export function DomainSetupGuideDialog({
 }: DomainSetupGuideProps) {
   const target = domain.cname_target || PROXY_CNAME_TARGET
   const txtRecords = domain.validation_records ?? []
+  const hosts = [domain.domain, ...(domain.www_domain ? [domain.www_domain] : [])]
   const isActive = domain.status === "ACTIVE"
 
   return (
@@ -67,29 +68,15 @@ export function DomainSetupGuideDialog({
           <SheetTitle>DNS Setup: {domain.domain}</SheetTitle>
         </SheetHeader>
         <p className="text-sm text-muted-foreground">
-          Add these records at your DNS provider. SSL is issued automatically once they resolve.
+          Add these records at your DNS provider. We provision the domain once the ownership TXT
+          record resolves; SSL is issued automatically after that.
         </p>
 
         <div className="space-y-6">
           <div>
             <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
-              <Globe className="size-4" />
-              Step 1: Point your domain (CNAME)
-            </h3>
-            <div className="rounded-lg border p-3 space-y-2">
-              <RecordField label="Name" value={domain.domain} />
-              <RecordField label="Target" value={target} />
-              <p className="text-xs text-muted-foreground">
-                For an apex domain (e.g. example.com) use your provider&apos;s CNAME flattening,
-                ALIAS or ANAME record.
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
               <ShieldCheck className="size-4" />
-              Step 2: Validation (TXT)
+              Step 1: Ownership & validation (TXT)
             </h3>
             {txtRecords.length === 0 ? (
               <p className="text-xs text-muted-foreground">
@@ -110,11 +97,28 @@ export function DomainSetupGuideDialog({
             )}
           </div>
 
+          <div>
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-2">
+              <Globe className="size-4" />
+              Step 2: Point your domain
+            </h3>
+            {hosts.map((host, i) => (
+              <div key={host} className="rounded-lg border p-3 space-y-2 mt-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {i === 0 ? "ALIAS / ANAME record (apex — CNAME isn't allowed here; or CNAME flattening)" : "CNAME record"}
+                </p>
+                <RecordField label="Name" value={host} />
+                <RecordField label="Target" value={target} />
+              </div>
+            ))}
+          </div>
+
           <div className="rounded-lg border p-3 text-xs space-y-1">
             <p>
               Status: <strong>{isActive ? "Active" : "Pending validation"}</strong>
               {domain.cf_status && <> · hostname {domain.cf_status}</>}
               {domain.ssl_status && <> · SSL {domain.ssl_status}</>}
+              {domain.www_domain && <> · www {domain.www_status === "ACTIVE" ? "active" : "pending"}</>}
             </p>
             {domain.verification_errors?.map((err) => (
               <p key={err} className="text-destructive">{err}</p>

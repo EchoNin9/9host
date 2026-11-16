@@ -110,6 +110,11 @@ def entity_keys_tenant(tenant_slug: str) -> dict:
     return {"gsi3pk": ENTITY_TENANT, "gsi3sk": pk_tenant(tenant_slug)}
 
 
+def is_domain_owner_row(item: dict) -> bool:
+    """A DOMAIN# row that owns its domain: DNS ownership proven, or ACTIVE from before SEC-05."""
+    return bool(item.get("ownership_verified")) or (item.get("status") or "").upper() == "ACTIVE"
+
+
 def entity_keys_domain(tenant_slug: str, domain: str) -> dict:
     """byEntity GSI attributes for a custom-domain row (sk=DOMAIN#{domain})."""
     return {"gsi3pk": ENTITY_DOMAIN, "gsi3sk": f"{pk_tenant(tenant_slug)}#DOMAIN#{domain.lower()}"}
@@ -693,12 +698,15 @@ class DynamoDBTenantStore(_StoreBase):
 
 
     def domain_owner(self, domain: str) -> str | None:
-        """Global custom-domain uniqueness via the byDomain GSI. Returns the owning tenant."""
-        resp = self.table.query(
-            IndexName="byDomain", KeyConditionExpression=Key("gsi2pk").eq(gsi2pk_domain(domain)), Limit=1,
-        )
-        items = resp.get("Items", [])
-        return items[0]["pk"][len("TENANT#"):] if items else None
+        """Global custom-domain uniqueness via the byDomain GSI. Returns the owning tenant.
+
+        SEC-05: only a row whose DNS ownership is proven (or ACTIVE, pre-proof) owns the
+        domain, so an unverified claim can't squat it."""
+        resp = self.table.query(IndexName="byDomain", KeyConditionExpression=Key("gsi2pk").eq(gsi2pk_domain(domain)))
+        for item in resp.get("Items", []):
+            if is_domain_owner_row(item):
+                return item["pk"][len("TENANT#"):]
+        return None
 
     def delete_tenant_cascade(self, tenant_slug: str) -> None:
         """Delete every row in the TENANT#{slug} partition (superadmin tenant delete)."""
@@ -785,7 +793,7 @@ class InMemoryTenantStore(_StoreBase):
 
     def domain_owner(self, domain: str) -> str | None:
         for (pk, _), item in sorted(self.items.items()):
-            if item.get("gsi2pk") == gsi2pk_domain(domain):
+            if item.get("gsi2pk") == gsi2pk_domain(domain) and is_domain_owner_row(item):
                 return pk[len("TENANT#"):]
         return None
 

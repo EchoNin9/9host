@@ -90,8 +90,10 @@ def _own_hosts(store, tenant_slug: str, site_id: str) -> set[str]:
     slug = (site.get("slug") or "").strip().lower()
     domains = [d.strip().lower() for d in (os.environ.get("DOMAINS") or "echo9.net").split(",") if d.strip()]
     hosts = {f"{slug}.{d}" for d in domains} if slug else set()
-    hosts.update(r["sk"][len("DOMAIN#"):].lower() for r in store.list_domains(tenant_slug)
-                 if r.get("site_id") == site_id and r.get("sk", "").startswith("DOMAIN#"))
+    from custom_domain_handler import domain_hosts
+
+    hosts.update(h.lower() for r in store.list_domains(tenant_slug)
+                 if r.get("site_id") == site_id and r.get("sk", "").startswith("DOMAIN#") for h in domain_hosts(r))
     return hosts
 
 

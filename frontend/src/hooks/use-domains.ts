@@ -2,7 +2,7 @@
 
 import { useTenantScope } from "@/context/tenant-scope-context"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { getToken } from "@/lib/api"
+import { getToken, isDomainPending } from "@/lib/api"
 import {
   fetchDomains,
   createDomain,
@@ -64,9 +64,7 @@ export function useDomains(): UseDomainsResult {
   }, [tenantSlug, api])
 
   // Task 2.118: Auto-poll when any domain is PENDING_VALIDATION
-  const hasPending = domains.some(
-    (d) => d.status?.toUpperCase() === "PENDING_VALIDATION"
-  )
+  const hasPending = domains.some(isDomainPending)
 
   useEffect(() => {
     if (hasPending && !pollTimerRef.current) {

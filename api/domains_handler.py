@@ -4,7 +4,7 @@ Domains API — GET/POST/DELETE /api/tenant/domains[/{domain}[/activate]]
 
 Custom domains require the ``custom_domains`` feature (Pro+ tier or module override); an
 impersonating superadmin bypasses the tier gate. Domains are Cloudflare for SaaS custom
-hostnames (``CNAME -> proxy.echonin9.com``) managed through ``custom_domain_handler``, which keeps
+hostnames (``CNAME -> proxy.echonin9.com``, apex + www, SEC-05 TXT proof first) managed through ``custom_domain_handler``, which keeps
 Cloudflare, HostMappingKVS and the DOMAIN# row in sync.
 """
 
@@ -12,7 +12,10 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import unquote
 
 from cloudflare_saas import CloudflareAPIError, InvalidDomainError, validate_domain
-from custom_domain_handler import STATUS_ACTIVE, domain_to_response, refresh_domain_status, register_domain, remove_domain
+from custom_domain_handler import (
+    CNAME_TARGET, STATUS_ACTIVE, VERIFY_PREFIX, domain_to_response, needs_refresh, refresh_domain_status,
+    register_domain, remove_domain,
+)
 from request_context import HttpError, RequestContext, respond
 from tenant_store import DynamoDBTenantStore
 
@@ -51,7 +54,7 @@ def _refresh_pending(table, items: list[dict]) -> list[dict]:
     """
     now = _utcnow()
     for item in items:
-        if (item.get("status") or "").upper() == STATUS_ACTIVE and item.get("cf_hostname_id"):
+        if not needs_refresh(item):
             continue
         if _checked_recently(item, now):
             continue
@@ -67,24 +70,26 @@ def _create_domain(store, tenant_slug: str, body: dict) -> dict:
         return respond(400, {"error": "site_id is required."})
     try:
         domain = validate_domain(body.get("domain"))
+        if domain.startswith("www."):  # the apex is what's entered; www.<apex> comes with it
+            domain = validate_domain(domain[len("www."):])
     except InvalidDomainError as e:
         return respond(400, {"error": str(e)})
     if store.get_site(tenant_slug, site_id) is None:
         return respond(404, {"error": "Site not found."})
     if store.get_domain(tenant_slug, domain):
         return respond(409, {"error": "Domain already exists for this tenant."})
-    if store.domain_owner(domain):
+    if store.domain_owner(domain) or store.domain_owner(f"www.{domain}"):
         return respond(409, {"error": "Domain is already in use by another site."})
-    try:
-        out = domain_to_response(register_domain(store.table, tenant_slug, domain, site_id))
-    except CloudflareAPIError as e:
-        return _cf_error(e)
-    return respond(201, {"domain": out, "message": f"Add a CNAME record pointing {domain} to {out['cname_target']}."})
+    out = domain_to_response(register_domain(store.table, tenant_slug, domain, site_id))
+    return respond(201, {"domain": out, "message": (
+        f"Add TXT {VERIFY_PREFIX}.{domain} = {out['validation_records'][0]['value']}, then point {domain} "
+        f"and www.{domain} at {CNAME_TARGET} (ALIAS/ANAME for the apex, CNAME for www)."
+    )})
 
 
 def _activate_domain(store, item: dict, domain: str) -> dict:
     """Re-check Cloudflare status now (registers legacy rows lacking cf_hostname_id)."""
-    if (item.get("status") or "").upper() == STATUS_ACTIVE and item.get("cf_hostname_id"):
+    if not needs_refresh(item):
         return respond(400, {"error": "Domain already ACTIVE. No activation needed."})
     try:
         refresh_domain_status(store.table, item, raise_errors=True)
@@ -95,8 +100,8 @@ def _activate_domain(store, item: dict, domain: str) -> dict:
         message = "Domain is active."
     else:
         message = (
-            f"Point a CNAME for {domain} to {out['cname_target']}. If you cannot use a CNAME "
-            "(apex domain), add the TXT validation records. SSL is issued automatically once verified."
+            f"Add the {VERIFY_PREFIX} TXT record, then point {domain} and www.{domain} at {out['cname_target']} "
+            "(ALIAS/ANAME for the apex, CNAME for www). SSL is issued automatically once verified."
         )
     return respond(200, {
         "domain": out,

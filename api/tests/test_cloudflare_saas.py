@@ -154,11 +154,22 @@ def _call(*args, **kwargs):
 
 
 @pytest.fixture
-def env(dynamodb_table, cf, kvs, auth):
+def env(dynamodb_table, cf, kvs, auth, monkeypatch):
     _seed_tenant(dynamodb_table, "tenanta")
     _seed_tenant(dynamodb_table, "tenantb")
+    _seed_tenant(dynamodb_table, "freebie2")
     _seed_tenant(dynamodb_table, "freebie", tier="FREE")
-    return type("Env", (), {"table": dynamodb_table, "cf": cf, "kvs": kvs})
+    dns: dict[str, set] = {}  # fake public DNS: TXT name -> values
+    monkeypatch.setattr(custom_domain_handler, "txt_values", lambda name: dns.get(name, set()))
+    return type("Env", (), {"table": dynamodb_table, "cf": cf, "kvs": kvs, "dns": dns})
+
+
+def _create_verified(env, domain="myband.com", tenant="tenanta"):
+    """Add a domain and publish its _9host-verify TXT (the owner's DNS step)."""
+    code, body = _call("POST", "/api/tenant/domains", tenant, body={"domain": domain, "site_id": "site1"})
+    assert code == 201, body
+    env.dns[f"_9host-verify.{domain}"] = {"unrelated", _row(env.table, tenant, domain)["verify_token"]}
+    assert _call("POST", f"/api/tenant/domains/{domain}/activate", tenant)[0] == 200  # verify + register apex/www
 
 
 def _advance_clock(monkeypatch, seconds):
@@ -313,113 +324,116 @@ class TestAdapter:
 
 
 class TestDomainLifecycle:
-    def test_create_registers_hostname_and_returns_dns_instructions(self, env):
+    def test_create_writes_pending_row_with_txt_proof_and_no_cloudflare(self, env):
         code, body = _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "MyBand.com", "site_id": "site1"})
         assert code == 201, body
         d = body["domain"]
-        assert d["domain"] == "myband.com"
-        assert d["status"] == "PENDING_VALIDATION"
-        assert d["cname_target"] == "proxy.echonin9.com"
-        assert d["verification_cname_target"] == "proxy.echonin9.com"
-        assert d["cf_hostname_id"] == "cfh-0001"
-        assert d["ssl_status"] == "pending_validation"
-        assert {"type": "TXT", "name": "_cf-custom-hostname.myband.com", "value": "own-cfh-0001", "purpose": "ownership"} in d["validation_records"]
-        assert d["acm_validation_records"] == d["validation_records"]
-        assert "acm_certificate_arn" not in d and "verification_txt_record" not in d
-
+        assert d["domain"] == "myband.com" and d["www_domain"] == "www.myband.com"
+        assert d["status"] == "PENDING_VALIDATION" and d["www_status"] == "PENDING_VALIDATION"
+        assert d["cname_target"] == d["verification_cname_target"] == "proxy.echonin9.com"
         row = _row(env.table, "tenanta", "myband.com")
-        assert row["cf_hostname_id"] == "cfh-0001"
-        assert row["status"] == "PENDING_VALIDATION"
+        assert d["validation_records"][0] == {
+            "type": "TXT", "name": "_9host-verify.myband.com", "value": row["verify_token"], "purpose": "ownership",
+        }
+        assert d["acm_validation_records"] == d["validation_records"]
+        assert row["verify_token"] in body["message"]
         assert row["gsi2pk"] == "DOMAIN#myband.com" and row["gsi2sk"] == "TENANT#tenanta"
-        assert env.kvs.calls == []  # not mapped until active
+        assert env.cf.calls == [] and env.kvs.calls == []  # nothing provisioned before proof
 
-    def test_polling_pending_to_active_flips_row_and_writes_kvs(self, env, monkeypatch):
+    def test_www_prefix_is_stripped_to_apex(self, env):
+        code, body = _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "www.MyBand.com", "site_id": "site1"})
+        assert code == 201 and body["domain"]["domain"] == "myband.com"
+
+    def test_no_txt_no_cloudflare_no_kvs(self, env, monkeypatch):
         _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        env.dns["_9host-verify.myband.com"] = {"wrong-token"}
+        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
+        assert code == 200 and body["domain"]["status"] == "PENDING_VALIDATION"
+        assert env.cf.calls == [] and env.kvs.calls == []
 
-        code, body = _call("GET", "/api/tenant/domains", "tenanta")
+    def test_verified_registers_apex_and_www_then_maps_both(self, env, monkeypatch):
+        _create_verified(env)
+        code, body = _call("GET", "/api/tenant/domains", "tenanta")  # throttled: activate just polled
         assert code == 200 and body["domains"][0]["status"] == "PENDING_VALIDATION"
+        assert [c["payload"]["hostname"] for c in env.cf.calls if c["method"] == "POST"] == ["myband.com", "www.myband.com"]
+        row = _row(env.table, "tenanta", "myband.com")
+        assert row["cf_hostname_id"] == "cfh-0001" and row["www_cf_hostname_id"] == "cfh-0002"
+        assert row["ownership_verified"] is True
         assert env.kvs.calls == []
+        assert body["domains"][0]["validation_records"][0]["name"] != "_9host-verify.myband.com"  # proof no longer shown
 
         env.cf.activate("cfh-0001")
-        _advance_clock(monkeypatch, 31)  # past the poll throttle
+        _advance_clock(monkeypatch, 31)
         code, body = _call("GET", "/api/tenant/domains", "tenanta")
-        assert code == 200
-        assert body["domains"][0]["status"] == "ACTIVE"
-        assert body["domains"][0]["ssl_status"] == "active"
-        assert _row(env.table, "tenanta", "myband.com")["status"] == "ACTIVE"
-        assert env.kvs.calls == [("put", "myband.com", "tenanta", "site1")]
-        assert env.kvs.store["myband.com"] == {"tenant": "tenanta", "site_id": "site1"}
+        assert body["domains"][0]["status"] == "ACTIVE" and body["domains"][0]["www_status"] == "PENDING_VALIDATION"
+        assert env.kvs.store == {"myband.com": {"tenant": "tenanta", "site_id": "site1"}}
 
-        # ACTIVE rows are not re-polled
-        n = len(env.cf.calls)
+        env.cf.activate("cfh-0002")
+        _advance_clock(monkeypatch, 62)
+        code, body = _call("GET", "/api/tenant/domains", "tenanta")
+        assert body["domains"][0]["www_status"] == "ACTIVE"
+        assert env.kvs.store["www.myband.com"] == {"tenant": "tenanta", "site_id": "site1"}
+
+        n = len(env.cf.calls)  # fully ACTIVE rows are not re-polled
+        _advance_clock(monkeypatch, 93)
         _call("GET", "/api/tenant/domains", "tenanta")
         _call("GET", "/api/tenant/domains/myband.com", "tenanta")
         assert len(env.cf.calls) == n
+        assert _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")[0] == 400
+
+    def test_dangling_cname_cannot_be_reclaimed_by_another_tenant(self, env):
+        """SEC-05: A removes the domain, leaves CNAME + its TXT; B's claim never verifies."""
+        _create_verified(env)
+        env.cf.activate("cfh-0001")
+        env.cf.activate("cfh-0002")
+        _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
+        assert _call("DELETE", "/api/tenant/domains/myband.com", "tenanta")[0] == 204
+        assert env.kvs.store == {} and env.cf.hostnames == {}
+
+        assert _call("POST", "/api/tenant/domains", "tenantb", body={"domain": "myband.com", "site_id": "site1"})[0] == 201
+        n = len(env.cf.calls)
+        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenantb")
+        assert code == 200 and body["domain"]["status"] == "PENDING_VALIDATION"
+        assert len(env.cf.calls) == n and env.kvs.store == {}
+
+    def test_unverified_claim_does_not_squat(self, env):
+        assert _call("POST", "/api/tenant/domains", "tenantb", body={"domain": "myband.com", "site_id": "site1"})[0] == 201
+        _create_verified(env)  # the real owner still gets it
+        assert len(env.cf.hostnames) == 2
+        # ...and once proven, nobody else can add it
+        code, body = _call("POST", "/api/tenant/domains", "freebie2", body={"domain": "myband.com", "site_id": "site1"})
+        assert code == 409 and "tenanta" not in json.dumps(body)
 
     def test_status_poll_throttled_per_row(self, env, monkeypatch):
         """T-18: a non-ACTIVE row polled < 30 s ago is not re-checked with Cloudflare."""
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
-        _call("GET", "/api/tenant/domains", "tenanta")
-        assert len(_cf_gets(env)) == 1
-        assert _row(env.table, "tenanta", "myband.com")["last_checked_at"]
-
+        _create_verified(env)
+        assert len(env.cf.calls) == 2  # apex + www registered
         for _ in range(3):  # UI polls every 10 s
-            code, body = _call("GET", "/api/tenant/domains", "tenanta")
-            assert code == 200 and body["domains"][0]["status"] == "PENDING_VALIDATION"
+            _call("GET", "/api/tenant/domains", "tenanta")
             _call("GET", "/api/tenant/domains/myband.com", "tenanta")
-        assert len(_cf_gets(env)) == 1
-
+        assert len(env.cf.calls) == 2
         _advance_clock(monkeypatch, 31)
         _call("GET", "/api/tenant/domains", "tenanta")
         assert len(_cf_gets(env)) == 2
 
-    def test_activate_bypasses_poll_throttle(self, env):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
-        _call("GET", "/api/tenant/domains", "tenanta")
-        env.cf.activate("cfh-0001")
-        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
-        assert code == 200 and body["domain"]["status"] == "ACTIVE"
-        assert len(_cf_gets(env)) == 2
-
-    def test_failed_poll_is_throttled_too(self, env, monkeypatch):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+    def test_failed_poll_keeps_progress(self, env, monkeypatch):
+        _create_verified(env)
         env.cf.fail_next = (500, {"success": False, "errors": []})
-        _call("GET", "/api/tenant/domains", "tenanta")
-        assert _row(env.table, "tenanta", "myband.com")["last_checked_at"]
-        n = len(env.cf.calls)
-        _call("GET", "/api/tenant/domains", "tenanta")
-        assert len(env.cf.calls) == n
         _advance_clock(monkeypatch, 31)
-        _call("GET", "/api/tenant/domains", "tenanta")
-        assert len(env.cf.calls) == n + 1
-
-    def test_activate_endpoint_rechecks_status(self, env):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
-        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
-        assert code == 200 and body["domain"]["status"] == "PENDING_VALIDATION"
-        assert body["validation_records"] and body["acm_validation_records"] == body["validation_records"]
-
-        env.cf.activate("cfh-0001")
-        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
-        assert code == 200 and body["domain"]["status"] == "ACTIVE"
-        assert ("put", "myband.com", "tenanta", "site1") in env.kvs.calls
-
-        code, _ = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
-        assert code == 400
+        code, body = _call("GET", "/api/tenant/domains", "tenanta")
+        assert code == 200 and body["domains"][0]["status"] == "PENDING_VALIDATION"
+        row = _row(env.table, "tenanta", "myband.com")
+        assert row["ownership_verified"] is True and row["cf_hostname_id"] == "cfh-0001"
 
     def test_kvs_failure_keeps_domain_pending(self, env, monkeypatch):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        _create_verified(env)
+        _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
         env.cf.activate("cfh-0001")
-
-        def broken(*a):
-            return False  # put_host_mapping never raises; False = write failed
-
-        monkeypatch.setattr(site_storage, "put_host_mapping", broken, raising=False)
-        code, body = _call("GET", "/api/tenant/domains/myband.com", "tenanta")
+        monkeypatch.setattr(site_storage, "put_host_mapping", lambda *a: False, raising=False)
+        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
         assert code == 200 and body["domain"]["status"] == "PENDING_VALIDATION"
-        assert _row(env.table, "tenanta", "myband.com")["status"] == "PENDING_VALIDATION"
 
-    def test_legacy_acm_row_is_registered_on_activate(self, env):
+    def test_legacy_active_row_is_grandfathered(self, env):
         env.table.put_item(Item={
             "pk": "TENANT#tenanta", "sk": "DOMAIN#legacy.com", "gsi2pk": "DOMAIN#legacy.com",
             "gsi2sk": "TENANT#tenanta", "site_id": "site1", "status": "ACTIVE",
@@ -428,44 +442,51 @@ class TestDomainLifecycle:
         code, body = _call("POST", "/api/tenant/domains/legacy.com/activate", "tenanta")
         assert code == 200
         assert body["domain"]["cf_hostname_id"] and body["domain"]["status"] == "PENDING_VALIDATION"
-        assert env.cf.calls[-1]["payload"]["hostname"] == "legacy.com"
+        assert env.cf.calls[-1]["payload"]["hostname"] == "legacy.com"  # no www twin for old rows
+        assert _row(env.table, "tenanta", "legacy.com")["ownership_verified"] is True
+        assert _call("POST", "/api/tenant/domains", "tenantb", body={"domain": "legacy.com", "site_id": "site1"})[0] == 409
 
-    def test_delete_removes_hostname_kvs_and_row(self, env):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+    def test_legacy_pending_row_needs_txt(self, env):
+        env.table.put_item(Item={
+            "pk": "TENANT#tenanta", "sk": "DOMAIN#old.com", "gsi2pk": "DOMAIN#old.com",
+            "gsi2sk": "TENANT#tenanta", "site_id": "site1", "status": "PENDING_VALIDATION", "cf_hostname_id": "cfh-9",
+        })
+        code, body = _call("POST", "/api/tenant/domains/old.com/activate", "tenanta")
+        assert code == 200 and body["domain"]["validation_records"][0]["name"] == "_9host-verify.old.com"
+        assert env.cf.calls == []
+
+    def test_delete_removes_both_hostnames_kvs_and_row(self, env):
+        _create_verified(env)
+        env.cf.fail_next = None
+        _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
         env.cf.activate("cfh-0001")
-        _call("GET", "/api/tenant/domains", "tenanta")
-        assert "myband.com" in env.kvs.store
+        env.cf.activate("cfh-0002")
+        _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
+        assert set(env.kvs.store) == {"myband.com", "www.myband.com"}
 
         code, body = _call("DELETE", "/api/tenant/domains/myband.com", "tenanta")
         assert code == 204 and body is None
-        assert env.cf.hostnames == {}
-        assert env.cf.calls[-1]["method"] == "DELETE" and env.cf.calls[-1]["url"].endswith("/cfh-0001")
-        assert ("delete", "myband.com") in env.kvs.calls
-        assert "myband.com" not in env.kvs.store
+        assert env.cf.hostnames == {} and env.kvs.store == {}
         assert _row(env.table, "tenanta", "myband.com") is None
 
     def test_delete_cloudflare_error_keeps_row(self, env):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        _create_verified(env)
+        _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
         env.cf.fail_next = (500, {"success": False, "errors": [{"code": 1000, "message": "boom"}]})
         code, body = _call("DELETE", "/api/tenant/domains/myband.com", "tenanta")
         assert code == 502 and body["code"] == "cloudflare_upstream_error"
         assert "boom" not in json.dumps(body)
         assert _row(env.table, "tenanta", "myband.com") is not None
 
-    def test_create_cloudflare_error_writes_no_row(self, env):
+    def test_activate_surfaces_cloudflare_error(self, env):
+        _create_verified(env)
         env.cf.fail_next = (500, {"success": False, "errors": [{"code": 1000, "message": "internal"}]})
-        code, body = _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
+        code, body = _call("POST", "/api/tenant/domains/myband.com/activate", "tenanta")
         assert code == 502
         assert body == {"error": "Custom domain provider error. Try again later.", "code": "cloudflare_upstream_error", "cf_error_code": 1000}
-        assert _row(env.table, "tenanta", "myband.com") is None
+        assert _row(env.table, "tenanta", "myband.com")["ownership_verified"] is True
 
-    def test_list_tolerates_cloudflare_errors(self, env):
-        _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})
-        env.cf.fail_next = (500, {"success": False, "errors": []})
-        code, body = _call("GET", "/api/tenant/domains", "tenanta")
-        assert code == 200 and body["domains"][0]["status"] == "PENDING_VALIDATION"
-
-    @pytest.mark.parametrize("domain", ["not a domain", "shop.echo9.net", "*.example.com"])
+    @pytest.mark.parametrize("domain", ["not a domain", "shop.echo9.net", "*.example.com", "www.echo9.net"])
     def test_invalid_domain_rejected(self, env, domain):
         code, body = _call("POST", "/api/tenant/domains", "tenanta", body={"domain": domain, "site_id": "site1"})
         assert code == 400 and "error" in body
@@ -478,11 +499,11 @@ class TestDomainLifecycle:
         assert env.cf.calls == []
 
     def test_duplicate_domain_same_and_other_tenant(self, env):
-        assert _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})[0] == 201
+        _create_verified(env)
         assert _call("POST", "/api/tenant/domains", "tenanta", body={"domain": "myband.com", "site_id": "site1"})[0] == 409
-        code, body = _call("POST", "/api/tenant/domains", "tenantb", body={"domain": "myband.com", "site_id": "site1"})
-        assert code == 409 and "tenanta" not in json.dumps(body)
-        assert len(env.cf.hostnames) == 1
+        for d in ("myband.com", "www.myband.com"):
+            code, body = _call("POST", "/api/tenant/domains", "tenantb", body={"domain": d, "site_id": "site1"})
+            assert code == 409 and "tenanta" not in json.dumps(body)
 
     def test_tier_gating(self, env):
         code, body = _call("POST", "/api/tenant/domains", "freebie", body={"domain": "free.com", "site_id": "site1"})

@@ -16,7 +16,7 @@ import boto3
 
 import site_storage
 from cloudflare_saas import CloudflareAPIError
-from custom_domain_handler import remove_domain
+from custom_domain_handler import domain_hosts, remove_domain
 from reserved_slugs import is_reserved_slug, reserved_slug_error
 from request_context import RequestContext, respond
 from tenant_store import DynamoDBTenantStore, entity_keys_tenant
@@ -377,7 +377,8 @@ def delete_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
         try:
             remove_domain(store.table, row)
         except CloudflareAPIError:
-            site_storage.delete_host_mapping(row["sk"][len("DOMAIN#"):])
+            for host in domain_hosts(row):
+                site_storage.delete_host_mapping(host)
     for site in store.list_sites(tenant_slug):
         if site.get("slug"):
             site_storage.delete_host_mapping(f"{site['slug']}.{_base_domain()}")

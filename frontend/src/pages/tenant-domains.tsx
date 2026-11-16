@@ -28,7 +28,7 @@ import { useTenantMetadata } from "@/hooks/use-tenant-metadata"
 import { useTenantRole } from "@/hooks/use-tenant-role"
 import { useDomains } from "@/hooks/use-domains"
 import { useSites } from "@/hooks/use-sites"
-import type { Domain } from "@/lib/api"
+import { isDomainPending, type Domain } from "@/lib/api"
 import { TenantPage, TenantPageHeader } from "@/components/tenant-page"
 
 function DomainForm({
@@ -63,7 +63,7 @@ function DomainForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-      <FormField label="Domain" htmlFor="domain" hint="An apex domain (example.com) or a subdomain (blog.example.com).">
+      <FormField label="Domain" htmlFor="domain" hint="Your apex domain (example.com). We set up www.example.com with it.">
         <Input
           id="domain"
           type="text"
@@ -143,15 +143,15 @@ function DomainsContent() {
     setSheetOpen(false)
   }
 
-  const canActivate = (d: Domain) => d.status === "PENDING_VALIDATION"
+  const canActivate = isDomainPending
 
   const header = (
     <TenantPageHeader
       title="Domains"
       description={
         <>
-          Serve a site from your own domain. Each domain needs a CNAME to{" "}
-          <span className="font-mono text-foreground">proxy.echonin9.com</span> plus the validation records we show you.
+          Serve a site from your own domain and its www. Prove ownership with a TXT record, then point both at{" "}
+          <span className="font-mono text-foreground">proxy.echonin9.com</span>.
         </>
       }
       actions={
@@ -205,7 +205,7 @@ function DomainsContent() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title={`Remove ${deleteTarget?.domain ?? "domain"}?`}
-        description="The domain stops serving your site. You can add it again later, but DNS validation starts over."
+        description="The domain and its www stop serving your site. Also delete its CNAME and _9host-verify TXT records at your DNS provider. Adding it again later needs a new TXT record."
         confirmLabel="Remove domain"
         pendingLabel="Removing…"
         onConfirm={async () => {
@@ -243,6 +243,11 @@ function DomainsContent() {
               <li key={d.domain} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-mono text-sm font-medium">{d.domain}</p>
+                  {d.www_domain && (
+                    <p className="truncate font-mono text-xs text-muted-foreground">
+                      + {d.www_domain}{d.status === "ACTIVE" && d.www_status !== "ACTIVE" ? " (pending)" : ""}
+                    </p>
+                  )}
                   <p className="truncate text-xs text-muted-foreground">
                     Serves {sites.find((s) => s.id === d.site_id)?.name ?? d.site_id}
                   </p>

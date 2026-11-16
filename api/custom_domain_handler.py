@@ -5,10 +5,15 @@ Replaces the ACM certificate / CloudFront alias flow (Tasks 1.146, 1.147). Each
 custom domain is a DynamoDB row ``pk=TENANT#{slug}, sk=DOMAIN#{domain}`` that
 carries the Cloudflare ``cf_hostname_id``. Lifecycle:
 
-    register_domain(...)       -> Cloudflare custom hostname created, row PENDING_VALIDATION
-    refresh_domain_status(...) -> poll Cloudflare; when active: row ACTIVE + KVS put;
-                                  always stamps last_checked_at (poll throttle)
-    remove_domain(...)         -> Cloudflare hostname deleted, KVS key deleted, row deleted
+    register_domain(...)       -> row PENDING_VALIDATION with a random verify_token (no Cloudflare yet)
+    refresh_domain_status(...) -> SEC-05: until TXT _9host-verify.<domain> = verify_token is seen in DNS,
+                                  nothing else happens. Then Cloudflare hostnames are created for the
+                                  apex and www.<apex>, each KVS-mapped once active; row ACTIVE with
+                                  the apex. Always stamps last_checked_at (poll throttle)
+    remove_domain(...)         -> Cloudflare hostnames deleted, KVS keys deleted, row deleted
+
+A dangling CNAME to proxy.echonin9.com is not enough to claim a domain: the TXT token is
+random per row, so a removed domain can't be re-claimed by another tenant without fresh DNS.
 
 The Cloudflare port is resolved through ``get_custom_domain_port()`` so tests can
 inject a fake (``set_custom_domain_port``).
@@ -18,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from cloudflare_saas import (
@@ -34,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 STATUS_PENDING = "PENDING_VALIDATION"
 STATUS_ACTIVE = "ACTIVE"
+VERIFY_PREFIX = "_9host-verify"
 
 _port: CustomDomainPort | None = None
 
@@ -92,9 +99,14 @@ def record_fields(rec: CustomHostnameRecord) -> dict:
 
 def domain_to_response(item: dict) -> dict:
     """Public API shape for a domain row (frontend contract)."""
-    validation_records = _load_list(item.get("validation_records"))
+    domain = domain_from_item(item)
+    validation_records = _load_list(item.get("validation_records")) + _load_list(item.get("www_validation_records"))
+    if item.get("verify_token") and not item.get("ownership_verified"):
+        validation_records.insert(0, {
+            "type": "TXT", "name": f"{VERIFY_PREFIX}.{domain}", "value": item["verify_token"], "purpose": "ownership",
+        })
     out = {
-        "domain": domain_from_item(item),
+        "domain": domain,
         "site_id": item.get("site_id", ""),
         "status": item.get("status", "pending"),
         "created_at": item.get("created_at", ""),
@@ -105,6 +117,9 @@ def domain_to_response(item: dict) -> dict:
         # Back-compat alias: the existing wizard renders {type, name, value} rows from here.
         "acm_validation_records": validation_records,
     }
+    if item.get("www"):
+        out["www_domain"] = f"www.{domain}"
+        out["www_status"] = item.get("www_status", STATUS_PENDING)
     if item.get("cf_hostname_id"):
         out["cf_hostname_id"] = item["cf_hostname_id"]
     if item.get("cf_status"):
@@ -118,13 +133,8 @@ def domain_to_response(item: dict) -> dict:
 
 
 def register_domain(table, tenant_slug: str, domain: str, site_id: str) -> dict:
-    """Create the Cloudflare custom hostname and persist the domain row.
-
-    Caller has already validated input, uniqueness and site existence.
-    Raises CloudflareAPIError on provider failure (no row is written).
-    """
-    port = get_custom_domain_port()
-    rec = port.register_hostname(domain)
+    """Persist a PENDING domain row (apex + www). Cloudflare is only called once the
+    ownership TXT verifies (SEC-05). Caller has validated input, uniqueness and site."""
     now = _now()
     item = {
         "pk": f"TENANT#{tenant_slug}",
@@ -133,20 +143,38 @@ def register_domain(table, tenant_slug: str, domain: str, site_id: str) -> dict:
         "gsi2sk": f"TENANT#{tenant_slug}",
         **entity_keys_domain(tenant_slug, domain),  # byEntity: superadmin list_all_domains (T-17)
         "site_id": site_id,
+        "status": STATUS_PENDING,
+        "verify_token": uuid.uuid4().hex,
+        "www": True,
         "created_at": now,
         "updated_at": now,
-        **_fields_for(rec, tenant_slug, domain, site_id),
     }
-    try:
-        table.put_item(Item=item, ConditionExpression="attribute_not_exists(pk)")
-    except Exception:
-        # Don't leak a Cloudflare hostname we have no row for.
-        try:
-            port.delete_hostname(rec.cf_hostname_id)
-        except CloudflareAPIError:
-            logger.warning("custom_domain: rollback delete failed for %s", domain)
-        raise
+    table.put_item(Item=item, ConditionExpression="attribute_not_exists(pk)")
     return item
+
+
+def txt_values(name: str) -> set[str]:
+    """TXT strings published at ``name`` (empty on NXDOMAIN / any DNS error)."""
+    import dns.resolver
+
+    try:
+        answer = dns.resolver.resolve(name, "TXT", lifetime=3)
+    except Exception:  # noqa: BLE001 — unverifiable == not verified
+        return set()
+    return {b"".join(r.strings).decode("utf-8", "replace") for r in answer}
+
+
+def domain_hosts(item: dict) -> list[str]:
+    """Hostnames a domain row serves: the domain, plus www.<domain> for rows created with it."""
+    d = domain_from_item(item)
+    return [d, f"www.{d}"] if item.get("www") else [d]
+
+
+def needs_refresh(item: dict) -> bool:
+    """False once the apex is ACTIVE on Cloudflare and www (if any) is too."""
+    if (item.get("status") or "").upper() != STATUS_ACTIVE or not item.get("cf_hostname_id"):
+        return True
+    return bool(item.get("www")) and item.get("www_status") != STATUS_ACTIVE
 
 
 def _put_mapping(tenant_slug: str, domain: str, site_id: str) -> bool:
@@ -159,54 +187,50 @@ def _put_mapping(tenant_slug: str, domain: str, site_id: str) -> bool:
     return False
 
 
-def _fields_for(rec: CustomHostnameRecord, tenant_slug: str, domain: str, site_id: str) -> dict:
-    """Row attributes for ``rec``; only ACTIVE once the KVS mapping is written."""
-    fields = record_fields(rec)
-    if rec.is_active and not _put_mapping(tenant_slug, domain, site_id):
-        fields["status"] = STATUS_PENDING  # retried on next poll
-    return fields
-
-
-def _mark_checked(table, item: dict, checked_at: str) -> None:
-    """Best-effort ``last_checked_at`` write after a failed Cloudflare poll."""
-    try:
-        table.update_item(
-            Key={"pk": item["pk"], "sk": item["sk"]},
-            UpdateExpression="SET last_checked_at = :t",
-            ExpressionAttributeValues={":t": checked_at},
-        )
-    except Exception:  # noqa: BLE001 — throttling is an optimisation, never fail the request
-        logger.warning("custom_domain: could not record last_checked_at for %s", domain_from_item(item))
-        return
-    item["last_checked_at"] = checked_at
+def _poll(port, cf_id: str | None, hostname: str) -> CustomHostnameRecord:
+    return port.get_hostname_status(cf_id) if cf_id else port.register_hostname(hostname)
 
 
 def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> dict:
-    """Poll Cloudflare for a non-ACTIVE domain row and persist the result.
+    """Advance a domain row: ownership TXT -> Cloudflare hostnames -> KVS -> ACTIVE.
 
-    Rows without ``cf_hostname_id`` (legacy ACM-era rows) are registered with
-    Cloudflare first. Mutates and returns ``item``.
+    Rows without ``cf_hostname_id`` (new, or legacy ACM-era) are registered with Cloudflare
+    once ownership is proven. Legacy rows already ACTIVE are grandfathered. Mutates and
+    returns ``item``; progress made before a Cloudflare error is still persisted.
     """
-    if (item.get("status") or "").upper() == STATUS_ACTIVE and item.get("cf_hostname_id"):
+    if not needs_refresh(item):
         return item
 
-    port = get_custom_domain_port()
+    domain, tenant, site_id = domain_from_item(item), tenant_from_item(item), item.get("site_id", "")
     checked_at = _now()
-    try:
-        if item.get("cf_hostname_id"):
-            rec = port.get_hostname_status(item["cf_hostname_id"])
-        else:
-            rec = port.register_hostname(domain_from_item(item))
-    except CloudflareAPIError:
-        if raise_errors:
-            raise
-        _mark_checked(table, item, checked_at)  # a failing provider is throttled too
-        return item
+    fields: dict = {"last_checked_at": checked_at, **entity_keys_domain(tenant, domain)}  # self-heal (T-17)
+    error: CloudflareAPIError | None = None
 
-    fields = _fields_for(rec, tenant_from_item(item), domain_from_item(item), item.get("site_id", ""))
+    if (item.get("status") or "").upper() == STATUS_ACTIVE:
+        fields["ownership_verified"] = True  # grandfathered pre-SEC-05 row
+    elif not item.get("ownership_verified"):
+        token = fields["verify_token"] = item.get("verify_token") or uuid.uuid4().hex
+        if token in txt_values(f"{VERIFY_PREFIX}.{domain}"):
+            fields["ownership_verified"] = True
+
+    if item.get("ownership_verified") or fields.get("ownership_verified"):
+        port = get_custom_domain_port()
+        try:
+            if (item.get("status") or "").upper() != STATUS_ACTIVE or not item.get("cf_hostname_id"):
+                rec = _poll(port, item.get("cf_hostname_id"), domain)
+                fields.update(record_fields(rec))
+                if rec.is_active and not _put_mapping(tenant, domain, site_id):
+                    fields["status"] = STATUS_PENDING  # retried on next poll
+            if item.get("www") and item.get("www_status") != STATUS_ACTIVE:
+                rec = _poll(port, item.get("www_cf_hostname_id"), f"www.{domain}")
+                fields.update({f"www_{k}": v for k, v in record_fields(rec).items()
+                               if k in ("cf_hostname_id", "status", "ssl_status", "validation_records")})
+                if rec.is_active and not _put_mapping(tenant, f"www.{domain}", site_id):
+                    fields["www_status"] = STATUS_PENDING
+        except CloudflareAPIError as e:
+            error = e
+
     fields["updated_at"] = checked_at
-    fields["last_checked_at"] = checked_at  # poll throttle (T-18, domains_handler)
-    fields.update(entity_keys_domain(tenant_from_item(item), domain_from_item(item)))  # self-heal (T-17)
     names = {f"#{k}": k for k in fields}
     values = {f":{k}": v for k, v in fields.items()}
     table.update_item(
@@ -216,19 +240,22 @@ def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> d
         ExpressionAttributeValues=values,
     )
     item.update(fields)
+    if error and raise_errors:
+        raise error
     return item
 
 
 def remove_domain(table, item: dict) -> None:
-    """Delete the Cloudflare hostname, the KVS key and the DynamoDB row.
+    """Delete the Cloudflare hostnames, the KVS keys and the DynamoDB row.
 
     Raises CloudflareAPIError if Cloudflare deletion fails (row kept for retry).
     """
-    from site_storage import delete_host_mapping
+    import site_storage
 
-    domain = domain_from_item(item)
-    cf_id = (item.get("cf_hostname_id") or "").strip()
-    if cf_id:
-        get_custom_domain_port().delete_hostname(cf_id)
-    delete_host_mapping(domain)  # best-effort, never raises
+    for key in ("cf_hostname_id", "www_cf_hostname_id"):
+        cf_id = (item.get(key) or "").strip()
+        if cf_id:
+            get_custom_domain_port().delete_hostname(cf_id)
+    for host in domain_hosts(item):
+        site_storage.delete_host_mapping(host)  # best-effort, never raises
     table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
