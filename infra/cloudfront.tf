@@ -46,12 +46,13 @@ resource "aws_cloudfront_distribution" "staging" {
 
   # Task 8.1: Media — /media/{tenant}/{site}/{filename} → 9host-media (staging)
   ordered_cache_behavior {
-    path_pattern           = "/media/*"
-    target_origin_id       = "S3-9host-media-staging"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    path_pattern               = "/media/*"
+    target_origin_id           = "S3-9host-media-staging"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.media.id # SEC-26
 
     forwarded_values {
       query_string = false
@@ -71,11 +72,12 @@ resource "aws_cloudfront_distribution" "staging" {
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-9host-frontend-staging"
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    target_origin_id           = "S3-9host-frontend-staging"
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.app.id # SEC-26
 
     forwarded_values {
       query_string = false
@@ -171,12 +173,13 @@ resource "aws_cloudfront_distribution" "production" {
 
   # T-22: Media — /media/{tenant}/{site}/{filename} → 9host-media (production)
   ordered_cache_behavior {
-    path_pattern           = "/media/*"
-    target_origin_id       = "S3-9host-media-production"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    path_pattern               = "/media/*"
+    target_origin_id           = "S3-9host-media-production"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.media.id # SEC-26
 
     forwarded_values {
       query_string = false
@@ -196,11 +199,12 @@ resource "aws_cloudfront_distribution" "production" {
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-9host-frontend-production"
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    target_origin_id           = "S3-9host-frontend-production"
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.app.id # SEC-26
 
     forwarded_values {
       query_string = false
@@ -387,12 +391,13 @@ resource "aws_cloudfront_distribution" "sites" {
   # Task 1.110: Media — /media/{tenant}/{site}/{filename} → 9host-media.
   # SEC-12: site_content (not media_content) so the host must map to {tenant} (KVS).
   ordered_cache_behavior {
-    path_pattern           = "/media/*"
-    target_origin_id       = "S3-9host-media"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    path_pattern               = "/media/*"
+    target_origin_id           = "S3-9host-media"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.media.id # SEC-26
 
     forwarded_values {
       query_string = false
@@ -413,12 +418,13 @@ resource "aws_cloudfront_distribution" "sites" {
 
   # Task 1.118: Draft preview — /preview*?token=jwt → 9host-sites draft/
   ordered_cache_behavior {
-    path_pattern           = "/preview*"
-    target_origin_id       = "S3-9host-sites"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    path_pattern               = "/preview*"
+    target_origin_id           = "S3-9host-sites"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.site.id # SEC-26
 
     forwarded_values {
       query_string = true
@@ -439,12 +445,13 @@ resource "aws_cloudfront_distribution" "sites" {
 
   # Task 1.97: Legacy site content — /site/{tenant}/{site_id}/* → 9host-sites
   ordered_cache_behavior {
-    path_pattern           = "/site/*"
-    target_origin_id       = "S3-9host-sites"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    path_pattern               = "/site/*"
+    target_origin_id           = "S3-9host-sites"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.site.id # SEC-26
 
     forwarded_values {
       query_string = false
@@ -465,11 +472,12 @@ resource "aws_cloudfront_distribution" "sites" {
 
   # T-08 (US-01/US-02): Host-routed published site — /* → 9host-sites published/current/
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "S3-9host-sites"
-    compress               = true
-    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    target_origin_id           = "S3-9host-sites"
+    compress                   = true
+    viewer_protocol_policy     = "redirect-to-https"
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.site.id # SEC-26
 
     # No headers forwarded: Host stays the S3 origin host (required for OAC/S3).
     forwarded_values {
@@ -509,3 +517,64 @@ resource "aws_cloudfront_distribution" "sites" {
   }
 }
 
+
+# ------------------------------------------------------------------------------
+# SEC-26: security response headers.
+#   app   — admin SPA (app./stage.): HSTS, nosniff, no framing, referrer policy.
+#   site  — public sites + landing: nosniff + referrer policy. No HSTS: the same responses
+#           reach tenant custom domains via Cloudflare, and a pinned HSTS would outlive them.
+#   media — /media/* uploads: nosniff + CSP sandbox, so an upload opened directly can't run script.
+# ponytail: no full CSP on the SPA yet (Amplify/Cognito/Stripe origins need a browser pass first).
+# ------------------------------------------------------------------------------
+
+resource "aws_cloudfront_response_headers_policy" "app" {
+  name = "9host-app-security-headers"
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = false
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+  }
+}
+
+resource "aws_cloudfront_response_headers_policy" "site" {
+  name = "9host-site-security-headers"
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+  }
+}
+
+resource "aws_cloudfront_response_headers_policy" "media" {
+  name = "9host-media-security-headers"
+  security_headers_config {
+    content_type_options {
+      override = true
+    }
+    content_security_policy {
+      content_security_policy = "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'"
+      override                = true
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+  }
+}
