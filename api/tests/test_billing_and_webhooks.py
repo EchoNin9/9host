@@ -109,8 +109,8 @@ class TestBillingCheckoutAndPortal:
                 "headers": {"x-tenant-slug": tenant_slug},
                 "body": json.dumps({
                     "tier": "pro",
-                    "success_url": "https://echo9.net/success",
-                    "cancel_url": "https://echo9.net/cancel",
+                    "success_url": "https://app.echo9.net/success",
+                    "cancel_url": "https://app.echo9.net/cancel",
                 }),
             }
             resp = billing_handler.billing_checkout_handler(auth_mock(event))
@@ -146,8 +146,8 @@ class TestBillingCheckoutAndPortal:
             "headers": {"x-tenant-slug": tenant_slug},
             "body": json.dumps({
                 "tier": "pro",
-                "success_url": "https://echo9.net/success",
-                "cancel_url": "https://echo9.net/cancel",
+                "success_url": "https://app.echo9.net/success",
+                "cancel_url": "https://app.echo9.net/cancel",
             }),
         }
         resp = billing_handler.billing_checkout_handler(auth_mock(event))
@@ -176,7 +176,7 @@ class TestBillingCheckoutAndPortal:
         event = {
             "tenant_slug": tenant_slug,
             "headers": {"x-tenant-slug": tenant_slug},
-            "body": json.dumps({"return_url": "https://echo9.net/settings"}),
+            "body": json.dumps({"return_url": "https://app.echo9.net/settings"}),
         }
         resp = billing_handler.billing_portal_handler(auth_mock(event))
         assert resp["statusCode"] == 400
@@ -376,6 +376,32 @@ class TestStripeWebhookHandler:
         assert item["tier"] == "FREE"
         assert "stripe_subscription_id" not in item
 
+    def _send(self, evt_payload):
+        with patch("stripe.Webhook.construct_event", return_value=evt_payload):
+            event = {"requestContext": {"http": {"method": "POST"}}, "headers": {"Stripe-Signature": "sig"},
+                     "body": json.dumps(evt_payload)}
+            return stripe_webhook_handler.stripe_webhook_handler(event, {})
+
+    def test_webhook_never_resurrects_deleted_tenant_and_skips_stale_events(
+        self, dynamodb_table, mock_stripe_config, monkeypatch
+    ):
+        """SEC-22: no row for a deleted tenant; an older event can't undo a newer one."""
+        monkeypatch.setattr("stripe_webhook_handler._get_stripe_config", lambda: mock_stripe_config)
+        monkeypatch.setattr("stripe_helpers._get_stripe_config", lambda: mock_stripe_config)
+
+        def sub_evt(slug, status, created):
+            return {"type": "customer.subscription.updated", "created": created, "data": {"object": {
+                "id": "sub_1", "customer": "cus_1", "status": status, "metadata": {"tenant_slug": slug},
+                "items": {"data": [{"price": {"id": mock_stripe_config["price_pro"]}}]}}}}
+
+        assert self._send(sub_evt("ghost-tenant", "active", 100))["statusCode"] == 200
+        assert "Item" not in dynamodb_table.get_item(Key=get_tenant_item("ghost-tenant"))
+
+        dynamodb_table.put_item(Item={**get_tenant_item("ordered"), "tier": "FREE"})
+        self._send(sub_evt("ordered", "canceled", 200))
+        self._send(sub_evt("ordered", "active", 150))  # delivered late
+        assert dynamodb_table.get_item(Key=get_tenant_item("ordered"))["Item"]["tier"] == "FREE"
+
     def test_webhook_runs_even_when_billing_disabled(
         self, dynamodb_table, mock_stripe_config, monkeypatch
     ):
@@ -425,3 +451,16 @@ class TestStripeWebhookHandler:
 
         item = dynamodb_table.get_item(Key=get_tenant_item(tenant_slug)).get("Item")
         assert item["tier"] == "PRO"
+
+
+def test_billing_redirects_must_be_our_app(monkeypatch):
+    """SEC-23: Stripe success/cancel/return URLs are allowlisted to app./stage.<DOMAINS>."""
+    import billing_handler
+
+    monkeypatch.setenv("DOMAINS", "echo9.net,echo9.ca")
+    ok = billing_handler._allowed_redirect
+    assert ok("https://app.echo9.net/acme/settings?checkout=success")
+    assert ok("https://stage.echo9.ca/x")
+    for bad in ("https://evil.com/", "http://app.echo9.net/", "https://app.echo9.net.evil.com/",
+                "https://evil.com@app.echo9.net.evil.com/", "javascript:alert(1)", "//app.echo9.net/"):
+        assert not ok(bad), bad

@@ -19,6 +19,15 @@ from stripe_helpers import get_stripe_api_key, get_stripe_price_id, stripe_confi
 logger = logging.getLogger(__name__)
 
 
+
+def _allowed_redirect(url: str) -> bool:
+    """SEC-23: Stripe redirects only back to our own admin app (https://app.|stage.<DOMAINS>)."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    domains = [d.strip().lower() for d in (os.environ.get("DOMAINS") or "echo9.net").split(",") if d.strip()]
+    return parts.scheme == "https" and (parts.hostname or "") in {f"{p}.{d}" for d in domains for p in ("app", "stage")}
+
 def is_billing_enabled() -> bool:
     """Check if billing is enabled via BILLING_ENABLED environment variable."""
     return os.environ.get("BILLING_ENABLED", "").lower() in ("true", "1", "yes")
@@ -95,6 +104,8 @@ def billing_checkout_handler(ctx: RequestContext) -> dict:
     cancel_url = (body.get("cancel_url") or "").strip()
     if not success_url or not cancel_url:
         return _json_response(400, {"error": "success_url and cancel_url are required."})
+    if not (_allowed_redirect(success_url) and _allowed_redirect(cancel_url)):
+        return _json_response(400, {"error": "success_url and cancel_url must be on the 9host app."})
 
     import stripe
 
@@ -171,6 +182,8 @@ def billing_portal_handler(ctx: RequestContext) -> dict:
     return_url = (body.get("return_url") or "").strip()
     if not return_url:
         return _json_response(400, {"error": "return_url is required."})
+    if not _allowed_redirect(return_url):
+        return _json_response(400, {"error": "return_url must be on the 9host app."})
 
     import stripe
 

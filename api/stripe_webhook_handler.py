@@ -11,6 +11,7 @@ import os
 from datetime import datetime, timezone
 
 import boto3
+from botocore.exceptions import ClientError
 
 from dynamodb_helpers import get_tenant_item
 from stripe_helpers import _get_stripe_config, get_stripe_api_key, get_stripe_webhook_secret
@@ -53,7 +54,24 @@ def _tier_from_price_id(price_id: str) -> str:
     return "FREE"
 
 
-def _handle_subscription_event(subscription: dict, table) -> None:
+def _update_tenant(table, tenant_slug: str, expr: str, values: dict, created: int | None = None) -> None:
+    """SEC-22: never recreate a deleted tenant; with ``created``, skip events older than the
+    last one applied (Stripe doesn't guarantee delivery order)."""
+    cond = "attribute_exists(pk)"
+    if created is not None:
+        cond += " AND (attribute_not_exists(stripe_event_created) OR stripe_event_created <= :ec)"
+        expr = expr.replace("SET ", "SET stripe_event_created = :ec, ", 1)
+        values = {**values, ":ec": int(created)}
+    try:
+        table.update_item(Key=get_tenant_item(tenant_slug), UpdateExpression=expr,
+                          ConditionExpression=cond, ExpressionAttributeValues=values)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            raise
+        logger.info("stripe webhook: skipped stale event or missing tenant %s", tenant_slug)
+
+
+def _handle_subscription_event(subscription: dict, table, created: int | None = None) -> None:
     """
     Update tenant from subscription. metadata.tenant_slug required.
     """
@@ -88,11 +106,7 @@ def _handle_subscription_event(subscription: dict, table) -> None:
             updates.append("stripe_subscription_id = :subid")
             values[":subid"] = sub_id
 
-        table.update_item(
-            Key=get_tenant_item(tenant_slug),
-            UpdateExpression="SET " + ", ".join(updates),
-            ExpressionAttributeValues=values,
-        )
+        _update_tenant(table, tenant_slug, "SET " + ", ".join(updates), values, created)
     else:
         # Before downgrading, check if tenant is VIP (Bug #6b)
         resp = table.get_item(Key=get_tenant_item(tenant_slug))
@@ -100,11 +114,8 @@ def _handle_subscription_event(subscription: dict, table) -> None:
         if tenant and (tenant.get("tier") or "FREE").upper() == "VIP":
             return
 
-        table.update_item(
-            Key=get_tenant_item(tenant_slug),
-            UpdateExpression="SET tier = :tier, updated_at = :u REMOVE stripe_subscription_id",
-            ExpressionAttributeValues={":tier": "FREE", ":u": now},
-        )
+        _update_tenant(table, tenant_slug, "SET tier = :tier, updated_at = :u REMOVE stripe_subscription_id",
+                       {":tier": "FREE", ":u": now}, created)
 
 
 def _handle_checkout_completed(session: dict, table) -> None:
@@ -125,17 +136,10 @@ def _handle_checkout_completed(session: dict, table) -> None:
         return
 
     now = datetime.now(timezone.utc).isoformat()
-    table.update_item(
-        Key=get_tenant_item(tenant_slug),
-        UpdateExpression="SET stripe_customer_id = :cid, updated_at = :u",
-        ExpressionAttributeValues={":cid": customer_id, ":u": now},
-    )
+    _update_tenant(table, tenant_slug, "SET stripe_customer_id = :cid, updated_at = :u", {":cid": customer_id, ":u": now})
     if subscription_id:
-        table.update_item(
-            Key=get_tenant_item(tenant_slug),
-            UpdateExpression="SET stripe_subscription_id = :subid, updated_at = :u",
-            ExpressionAttributeValues={":subid": subscription_id, ":u": now},
-        )
+        _update_tenant(table, tenant_slug, "SET stripe_subscription_id = :subid, updated_at = :u",
+                       {":subid": subscription_id, ":u": now})
 
 
 def stripe_webhook_handler(event: dict, context: dict) -> dict:
@@ -192,8 +196,8 @@ def stripe_webhook_handler(event: dict, context: dict) -> dict:
         "customer.subscription.created",
         "customer.subscription.updated",
     ):
-        _handle_subscription_event(obj, table)
+        _handle_subscription_event(obj, table, evt.get("created"))
     elif event_type == "customer.subscription.deleted":
-        _handle_subscription_event(obj, table)
+        _handle_subscription_event(obj, table, evt.get("created"))
 
     return _json_response(200, {"received": True})
