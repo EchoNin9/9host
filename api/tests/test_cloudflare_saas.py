@@ -108,6 +108,7 @@ def kvs(monkeypatch):
     def delete_host_mapping(hostname):
         calls.append(("delete", hostname))
         store.pop(hostname, None)
+        return True
 
     monkeypatch.setattr(site_storage, "put_host_mapping", put_host_mapping, raising=False)
     monkeypatch.setattr(site_storage, "delete_host_mapping", delete_host_mapping, raising=False)
@@ -532,3 +533,16 @@ class TestDomainLifecycle:
 
     def test_unauthenticated(self, env):
         assert _call("GET", "/api/tenant/domains", "tenanta", token=False)[0] == 401
+
+
+class TestDeletionFailures:
+    """SEC-21: a failed Cloudflare/KVS delete keeps the row so a retry can finish."""
+
+    def test_kvs_delete_failure_keeps_row_then_retry_succeeds(self, env, monkeypatch):
+        _create_verified(env)
+        monkeypatch.setattr(site_storage, "delete_host_mapping", lambda h: False, raising=False)
+        code, body = _call("DELETE", "/api/tenant/domains/myband.com", "tenanta")
+        assert code == 502 and _row(env.table, "tenanta", "myband.com") is not None
+        monkeypatch.setattr(site_storage, "delete_host_mapping", lambda h: True, raising=False)
+        assert _call("DELETE", "/api/tenant/domains/myband.com", "tenanta")[0] == 204  # CF delete idempotent
+        assert _row(env.table, "tenanta", "myband.com") is None

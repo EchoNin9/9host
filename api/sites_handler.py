@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 import site_storage
 from cloudflare_saas import CloudflareAPIError
 from cloudns_helpers import add_site_cname, delete_site_cname
-from custom_domain_handler import domain_hosts, remove_domain
+from custom_domain_handler import remove_domain
 from blocks import RenderContext, render_doc
 from publish_handler import MANAGE_ROLES as PUBLISH_ROLES, _base_domain, load_site
 from request_context import RequestContext, respond
@@ -243,9 +243,8 @@ def _delete_site(store, tenant_slug: str, site_id: str) -> dict:
             continue
         try:
             remove_domain(store.table, row)  # Cloudflare hostname + KVS key + row
-        except CloudflareAPIError:
-            for host in domain_hosts(row):
-                site_storage.delete_host_mapping(host)  # row kept for retry
+        except CloudflareAPIError as e:  # SEC-21: stop; nothing orphaned, the delete is retryable
+            return respond(e.http_status, e.to_response_body())
     site_storage.default_storage().delete_files(tenant_slug, site_id)  # before rows: a failure stays retryable
     store.delete_site_cascade(tenant_slug, site_id)
     slug = site.get("slug", "")

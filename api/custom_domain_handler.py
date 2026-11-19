@@ -248,7 +248,8 @@ def refresh_domain_status(table, item: dict, *, raise_errors: bool = False) -> d
 def remove_domain(table, item: dict) -> None:
     """Delete the Cloudflare hostnames, the KVS keys and the DynamoDB row.
 
-    Raises CloudflareAPIError if Cloudflare deletion fails (row kept for retry).
+    Raises CloudflareAPIError if Cloudflare or KVS deletion fails; the row is kept so a retry
+    finishes the job (SEC-21: no orphaned hostname, no stale route to this tenant).
     """
     import site_storage
 
@@ -256,6 +257,6 @@ def remove_domain(table, item: dict) -> None:
         cf_id = (item.get(key) or "").strip()
         if cf_id:
             get_custom_domain_port().delete_hostname(cf_id)
-    for host in domain_hosts(item):
-        site_storage.delete_host_mapping(host)  # best-effort, never raises
+    if not all([site_storage.delete_host_mapping(h) for h in domain_hosts(item)]):
+        raise CloudflareAPIError("Could not remove the domain's routing. Try again.", http_status=502)
     table.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})

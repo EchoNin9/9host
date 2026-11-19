@@ -46,7 +46,7 @@ def api(dynamodb_table, rsa_key, monkeypatch):
     monkeypatch.delenv("SITE_HOSTS_KVS_ARN", raising=False)
 
     removed: list[str] = []
-    monkeypatch.setattr(site_storage, "delete_host_mapping", removed.append)
+    monkeypatch.setattr(site_storage, "delete_host_mapping", lambda h: removed.append(h) or True)
     storage = site_storage.InMemorySiteStorage()
     monkeypatch.setattr(site_storage, "default_storage", lambda: storage)
 

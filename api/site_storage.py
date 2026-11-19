@@ -107,15 +107,18 @@ def put_host_mapping(hostname: str, tenant_slug: str, site_id: str) -> bool:
     return True
 
 
-def delete_host_mapping(hostname: str) -> None:
-    """Remove a hostname from HostMappingKVS. Idempotent and best-effort."""
+def delete_host_mapping(hostname: str) -> bool:
+    """Remove a hostname from HostMappingKVS. Idempotent; never raises.
+    Returns False only when the delete failed (SEC-21: callers keep their row to retry)."""
     key = normalize_hostname(hostname)
     if not key:
-        return
+        return True
     try:
         _kvs_write(key, None)
     except Exception:
         logger.exception("KVS delete_host_mapping failed for %s", key)
+        return False
+    return True
 
 
 def list_host_mappings() -> list[dict]:
