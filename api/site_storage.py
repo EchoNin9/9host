@@ -170,6 +170,11 @@ def default_storage() -> SiteStoragePort:
     return S3SiteStorageAdapter(boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1")))
 
 
+def media_storage() -> SiteStoragePort:
+    """The 9host-media bucket (same {tenant}/{site}/ layout), for delete_files on site/tenant delete (SEC-28)."""
+    return S3SiteStorageAdapter(boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1")), "9host-media")
+
+
 class _SiteStorageBase:
     # --- primitives (per backend) ---
     def _put(self, key: str, body: bytes, content_type: str, cache_control: str | None = None) -> None:

@@ -384,6 +384,7 @@ def delete_tenant_handler(ctx: RequestContext, tenant_slug: str) -> dict:
         if site.get("slug"):
             site_storage.delete_host_mapping(f"{site['slug']}.{_base_domain()}")
     site_storage.default_storage().delete_files(tenant_slug)  # before rows: a failure stays retryable
+    site_storage.media_storage().delete_files(tenant_slug)  # SEC-28: uploads go with the tenant
     store.delete_tenant_cascade(tenant_slug)
     return respond(204)
 

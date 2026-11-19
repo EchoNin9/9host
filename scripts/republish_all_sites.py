@@ -6,10 +6,12 @@ Finds all sites with status=published and a template_id, then
 re-publishes each by invoking the publish handler's core logic directly.
 This picks up any template CSS/HTML rendering changes.
 
+Dry run by default (SEC-29); --apply publishes. Inputs come from publish_handler._compile_inputs,
+exactly like the API (tenant tier features, pinned template tokens, SITE_META-aware site row).
+
 Usage:
-  python scripts/republish_all_sites.py --table 9host-main
-  python scripts/republish_all_sites.py --table 9host-main --dry-run
-  python scripts/republish_all_sites.py --table 9host-main --tenant my-tenant
+  python scripts/republish_all_sites.py --table 9host-main                      # list only
+  python scripts/republish_all_sites.py --table 9host-main --tenant my-tenant --apply
 """
 
 import argparse
@@ -22,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "api"))
 
 import boto3
 
-from dynamodb_helpers import pk_tenant, get_template_item
+from dynamodb_helpers import pk_tenant
 
 
 def _find_published_sites(table, tenant_slug: str | None = None):
@@ -75,12 +77,13 @@ def _find_published_sites(table, tenant_slug: str | None = None):
 
 
 def republish(table_name: str, region: str, tenant_slug: str | None, dry_run: bool):
-    from publish_handler import _publish_site
+    from publish_handler import _compile_inputs, _publish_site
+    from tenant_store import DynamoDBTenantStore
 
     dynamodb = boto3.resource("dynamodb", region_name=region)
     table = dynamodb.Table(table_name)
+    store = DynamoDBTenantStore(table)
     s3_client = boto3.client("s3", region_name=region)
-    media_base = os.environ.get("CLOUDFRONT_MEDIA_URL", "/media/")
 
     sites = _find_published_sites(table, tenant_slug)
     if not sites:
@@ -92,7 +95,7 @@ def republish(table_name: str, region: str, tenant_slug: str | None, dry_run: bo
         print(f"  [{s['tenant_slug']}] {s['name']} ({s['site_id']}) — template: {s['template_id']}")
 
     if dry_run:
-        print("\n--dry-run: No changes made.")
+        print("\nDry run: no changes made. Re-run with --apply to publish.")
         return
 
     print()
@@ -104,24 +107,16 @@ def republish(table_name: str, region: str, tenant_slug: str | None, dry_run: bo
         site_id = s["site_id"]
         label = f"[{tenant}] {s['name']}"
 
-        # Fetch site item
-        site_key = {"pk": pk_tenant(tenant), "sk": f"SITE#{site_id}"}
-        site_item = table.get_item(Key=site_key).get("Item")
+        site_item = store.get_site(tenant, site_id)
         if not site_item:
             print(f"  SKIP {label} — site record not found")
             failed += 1
             continue
 
-        # Fetch template
-        template_item = table.get_item(Key=get_template_item(s["template_id"])).get("Item")
-        if not template_item:
-            print(f"  SKIP {label} — template '{s['template_id']}' not found")
-            failed += 1
-            continue
-
         try:
+            template_item, features, media_base = _compile_inputs(store, tenant, site_item)
             result = _publish_site(
-                table, s3_client, tenant, site_id, site_item, template_item, media_base
+                table, s3_client, tenant, site_id, site_item, template_item, media_base, resolved_features=features
             )
             v = result.get("version", "?")
             fc = result.get("files_count", "?")
@@ -139,10 +134,10 @@ def main() -> int:
     parser.add_argument("--table", default=os.environ.get("DYNAMODB_TABLE", "9host-main"))
     parser.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"))
     parser.add_argument("--tenant", default=None, help="Limit to a specific tenant slug")
-    parser.add_argument("--dry-run", action="store_true", help="List sites without publishing")
+    parser.add_argument("--apply", action="store_true", help="Actually publish (default: list only)")
     args = parser.parse_args()
 
-    republish(args.table, args.region, args.tenant, args.dry_run)
+    republish(args.table, args.region, args.tenant, not args.apply)
     return 0
 
 

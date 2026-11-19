@@ -246,6 +246,7 @@ def _delete_site(store, tenant_slug: str, site_id: str) -> dict:
         except CloudflareAPIError as e:  # SEC-21: stop; nothing orphaned, the delete is retryable
             return respond(e.http_status, e.to_response_body())
     site_storage.default_storage().delete_files(tenant_slug, site_id)  # before rows: a failure stays retryable
+    site_storage.media_storage().delete_files(tenant_slug, site_id)  # SEC-28: uploads go with the site
     store.delete_site_cascade(tenant_slug, site_id)
     slug = site.get("slug", "")
     if slug:

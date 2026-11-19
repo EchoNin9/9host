@@ -938,3 +938,14 @@ def test_site_update_calls_cloudns_only_on_slug_change(api, monkeypatch):
     assert calls == []
     assert call("PUT", f"/api/tenant/sites/{site_id}", owner(api), body={"slug": "dnsy2"})[0] == 200
     assert calls == ["dnsy2"]
+
+
+def test_site_delete_removes_its_media_only(api):
+    """SEC-28: uploads under {tenant}/{site}/ in 9host-media go with the site."""
+    s3 = boto3.client("s3", region_name="us-east-1")
+    gone, kept = create_site(api, slug="gone"), create_site(api, slug="kept")
+    s3.put_object(Bucket="9host-media", Key=f"acme/{gone}/a.png", Body=b"x")
+    s3.put_object(Bucket="9host-media", Key=f"acme/{kept}/b.png", Body=b"x")
+    assert call("DELETE", f"/api/tenant/sites/{gone}", owner(api))[0] == 204
+    keys = [o["Key"] for o in s3.list_objects_v2(Bucket="9host-media").get("Contents", [])]
+    assert keys == [f"acme/{kept}/b.png"]
