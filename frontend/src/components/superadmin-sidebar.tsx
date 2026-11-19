@@ -2,6 +2,7 @@
 
 import { Link, useNavigate } from "react-router-dom"
 import { signOut } from "aws-amplify/auth"
+import { impersonationStorageSet } from "@/contexts/impersonation-context"
 import { Building2, LayoutDashboard, LayoutGrid, Layers, RadioTower, UserRound } from "lucide-react"
 
 import { useAuth } from "@/hooks/use-auth"
@@ -33,6 +34,7 @@ function SuperadminSidebar() {
   const handleSignOut = async () => {
     try {
       await signOut()
+      impersonationStorageSet(null) // SEC-20
       navigate("/login")
     } catch (error) {
       console.error("Error signing out: ", error)

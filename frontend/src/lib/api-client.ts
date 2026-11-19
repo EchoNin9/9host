@@ -3,7 +3,7 @@
  *
  * - Token selection is explicit by auth mode and never crosses over:
  *     "tuser"   → localStorage["9host_site_token"] (site-login JWT) only
- *     "cognito" → Amplify session access token, cached in localStorage["9host_cognito_token"]
+ *     "cognito" → Amplify session access token (not cached by us: SEC-20, sign-out must end it)
  * - Tenant scope (X-Tenant-Slug) and superadmin impersonation (X-Impersonate-Tenant)
  *   are bound to a client instance via `apiClient.forTenant(slug, { impersonate })`
  *   and attached per request. There is no module-level impersonation state.
@@ -55,14 +55,13 @@ export function getAuthMode(): AuthMode {
 }
 
 async function readCognitoToken(): Promise<string | null> {
+  storageSet(COGNITO_TOKEN_KEY, null) // SEC-20: drop the copy older builds cached
   try {
     const { fetchAuthSession } = await import("aws-amplify/auth")
     const session = await fetchAuthSession()
-    const token = session.tokens?.accessToken?.toString() ?? null
-    storageSet(COGNITO_TOKEN_KEY, token)
-    return token
+    return session.tokens?.accessToken?.toString() ?? null
   } catch {
-    return storageGet(COGNITO_TOKEN_KEY)
+    return null
   }
 }
 

@@ -56,14 +56,21 @@ describe("token selection by auth mode", () => {
     expect(fetchAuthSession).not.toHaveBeenCalled()
   })
 
-  it("Cognito session sends the Cognito token and caches it under 9host_cognito_token", async () => {
+  it("Cognito session sends the Cognito token and never caches it (SEC-20)", async () => {
+    localStorage.setItem(COGNITO_TOKEN_KEY, "stale-from-old-build")
     cognitoSession("cognito-jwt")
 
     expect(getAuthMode()).toBe("cognito")
     await apiClient.request("/api/tenants")
 
     expect(headersOf(0).Authorization).toBe("Bearer cognito-jwt")
-    expect(localStorage.getItem(COGNITO_TOKEN_KEY)).toBe("cognito-jwt")
+    expect(localStorage.getItem(COGNITO_TOKEN_KEY)).toBeNull()
+  })
+
+  it("a failed Cognito session read is unauthenticated, not a cached token (SEC-20)", async () => {
+    localStorage.setItem(COGNITO_TOKEN_KEY, "cached-cognito")
+    fetchAuthSession.mockRejectedValueOnce(new Error("signed out"))
+    expect(await getToken("cognito")).toBeNull()
   })
 
   it("never falls through from one mode to the other", async () => {

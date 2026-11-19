@@ -2,6 +2,7 @@
 
 import { Link, useNavigate } from "react-router-dom"
 import { signOut } from "aws-amplify/auth"
+import { impersonationStorageSet } from "@/contexts/impersonation-context"
 import {
   BarChart3,
   Globe,
@@ -36,6 +37,7 @@ function TenantAdminSidebar() {
         clearSiteToken()
       } else {
         await signOut()
+        impersonationStorageSet(null) // SEC-20
       }
       navigate("/login")
     } catch (error) {
