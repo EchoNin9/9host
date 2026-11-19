@@ -15,6 +15,8 @@ import boto3
 from reserved_slugs import is_reserved_slug, reserved_slug_error
 from request_context import RequestContext
 from tenant_store import DynamoDBTenantStore
+
+MAX_TENANTS_PER_USER = 5  # SEC-11
 from dynamodb_helpers import (
     get_tenant_item,
     gsi1pk_user,
@@ -192,16 +194,22 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     email, user_name = _get_user_email_name(event, region)
 
+    # SEC-11: cap self-serve tenants per user (tenants they administer).
+    owned = [i for i in table.query(**query_tenants_for_user(sub)).get("Items", []) if i.get("role") == "admin"]
+    if len(owned) >= MAX_TENANTS_PER_USER:
+        return _json_response(403, {"error": f"You can create at most {MAX_TENANTS_PER_USER} tenants."})
+
     # Create tenant (Task 1.88: storage_used_bytes default 0). Self-serve: tier = FREE only.
     store = DynamoDBTenantStore(table)
-    store.put_tenant(slug, {  # byEntity GSI keys included (T-17)
+    if not store.create_tenant(slug, {  # byEntity GSI keys included (T-17); conditional (SEC-15)
         "name": name,
         "tier": "FREE",
         "owner_sub": sub,
         "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
-    })
+    }):
+        return _json_response(409, {"error": f"Tenant already exists: {slug}"})
     store.mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership

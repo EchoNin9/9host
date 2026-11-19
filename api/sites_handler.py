@@ -24,7 +24,7 @@ from request_context import RequestContext, respond
 from reserved_slugs import is_reserved_slug, reserved_slug_error
 from template_schema import presets_from_store
 from tenant_store import DynamoDBTenantStore
-from tier_config import tier_rank
+from tier_config import max_sites, tier_rank
 
 SITE_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
 BASE_PATH = "/api/tenant/sites"
@@ -119,6 +119,10 @@ def _create_site(store, tenant_slug: str, body: dict) -> dict:
         return respond(400, reserved_slug_error(slug))
     if _slug_taken(store, slug):
         return respond(409, {"error": "Slug is already taken.", "slug": slug})
+    tier = ((store.get_tenant(tenant_slug) or {}).get("tier") or "FREE").upper()
+    cap = max_sites(tier)
+    if cap is not None and len(store.list_sites(tenant_slug)) >= cap:  # SEC-11
+        return respond(403, {"error": f"{tier.title()} tier allows {cap} sites.", "upgrade_required": True})
     template = None
     if template_id:
         template, err = _template_or_error(store, tenant_slug, template_id, allow_deprecated=False)
@@ -221,7 +225,7 @@ def _update_site(store, tenant_slug: str, site_id: str, body: dict) -> dict:
         site_storage.delete_host_mapping(f"{old_slug}.{_base_domain()}")
         if new_slug and site.get("published_version") is not None:
             site_storage.put_host_mapping(f"{new_slug}.{_base_domain()}", tenant_slug, site_id)
-    if new_slug:
+    if new_slug and new_slug != old_slug:  # SEC-11: ClouDNS only on an actual slug change
         add_site_cname(new_slug)
     head = applied or (store.get_template(site["template_id"]) if site.get("template_id") else None)
     out = {"site": _site_to_response(site, head)}

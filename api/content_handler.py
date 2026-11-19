@@ -5,7 +5,8 @@ Content CRUD API (Task 1.95) — GET/POST/PUT/DELETE
 Reads require tenant membership; writes require admin/manager or a custom role with
 the 'sites' permission (T-15; an impersonating
 superadmin is "admin", Bug #5). All rows go through TenantStore. MEDIA create/delete adjusts
-tenant storage via TenantStore.adjust_storage_bytes (floor at 0, Bug #4).
+tenant storage via TenantStore.adjust_storage_bytes (floor at 0, Bug #4); bytes are added when
+the upload URL is issued (SEC-09, upload_handler), not when the media row is created.
 """
 
 import json
@@ -217,9 +218,7 @@ def content_handler(ctx: RequestContext) -> dict:
         item, err = _new_item(store, tenant_slug, site_id, entity, ctx.json_body(), s3)
         if err:
             return err
-        item = store.put_content(tenant_slug, site_id, ctype, item)
-        if entity == "media" and item.get("size_bytes"):
-            store.adjust_storage_bytes(tenant_slug, item["size_bytes"])
+        item = store.put_content(tenant_slug, site_id, ctype, item)  # media bytes were reserved at upload-url (SEC-09)
         return respond(201, {key: out(item)})
     if not item_id or method not in ("GET", "PUT", "DELETE"):
         return respond(405, {"error": "Method not allowed."})

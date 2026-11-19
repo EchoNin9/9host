@@ -27,6 +27,7 @@ from dynamodb_helpers import (
     gsi1sk_tenant_profile,
     gsi3pk_entity_user,
     gsi3sk_user,
+    is_site_slug_entry,
     pk_tenant,
     query_by_site_slug,
     sk_user_profile,
@@ -131,7 +132,7 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
 
     # Reserve tenant slugs from site slugs: reject if slug is taken by a site
     slug_resp = table.query(**query_by_site_slug(slug))
-    if slug_resp.get("Items"):
+    if any(is_site_slug_entry(i) for i in slug_resp.get("Items", [])):
         return _json_response(409, {"error": f"Slug '{slug}' is already in use by a site."})
 
     now = datetime.now(timezone.utc).isoformat()
@@ -140,14 +141,15 @@ def create_tenant_handler(ctx: RequestContext) -> dict:
 
     # Create tenant (Task 1.88: storage_used_bytes default 0)
     store = DynamoDBTenantStore(table)
-    store.put_tenant(slug, {  # byEntity GSI keys included (T-17)
+    if not store.create_tenant(slug, {  # byEntity GSI keys included (T-17); conditional (SEC-15)
         "name": name,
         "tier": tier,
         "owner_sub": sub,
         "storage_used_bytes": 0,
         "created_at": now,
         "updated_at": now,
-    })
+    }):
+        return _json_response(409, {"error": f"Tenant already exists: {slug}"})
     store.mark_site_meta_migrated(slug)  # no legacy SITE# rows to backfill
 
     # Create user profile (creator as admin) and membership

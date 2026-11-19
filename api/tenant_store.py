@@ -74,6 +74,7 @@ class TenantStore(Protocol):
     def get_tenant(self, tenant_slug: str) -> dict | None: ...
     def update_tenant(self, tenant_slug: str, updates: dict) -> dict: ...
     def adjust_storage_bytes(self, tenant_slug: str, delta_bytes: int) -> int: ...
+    def reserve_storage_bytes(self, tenant_slug: str, n: int, quota: int) -> bool: ...
 
     # Sites (fixes Bug #3: never scans PAGE/POST/EVENT/MEDIA items)
     def list_sites(self, tenant_slug: str) -> list[dict]: ...
@@ -244,6 +245,11 @@ class _StoreBase:
         body = {k: v for k, v in _strip(tenant).items() if k != "slug"}
         self._put({**body, "pk": pk_tenant(tenant_slug), "sk": sk_tenant(), **entity_keys_tenant(tenant_slug)})
         return {**body, "slug": tenant_slug}
+
+    def create_tenant(self, tenant_slug: str, tenant: dict) -> bool:
+        """SEC-15: like put_tenant, but False (nothing written) if the slug was taken meanwhile."""
+        body = {k: v for k, v in _strip(tenant).items() if k != "slug"}
+        return self._put_if_absent({**body, "pk": pk_tenant(tenant_slug), "sk": sk_tenant(), **entity_keys_tenant(tenant_slug)})
 
     # Superadmin cross-tenant lists (explicit bypass; byEntity GSI, no Scan once backfilled)
     def backfill_by_entity(self, dry_run: bool = False) -> dict:
@@ -656,6 +662,21 @@ class DynamoDBTenantStore(_StoreBase):
             raise
         return {**_strip(resp["Attributes"]), "slug": tenant_slug}
 
+    def reserve_storage_bytes(self, tenant_slug: str, n: int, quota: int) -> bool:
+        """SEC-09: atomically add ``n`` to storage_used_bytes unless that would exceed ``quota``."""
+        try:
+            self.table.update_item(
+                Key={"pk": pk_tenant(tenant_slug), "sk": sk_tenant()},
+                UpdateExpression="ADD storage_used_bytes :n",
+                ConditionExpression="attribute_exists(pk) AND (attribute_not_exists(storage_used_bytes) OR storage_used_bytes <= :max)",
+                ExpressionAttributeValues={":n": int(n), ":max": int(quota) - int(n)},
+            )
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                return False
+            raise
+
     def adjust_storage_bytes(self, tenant_slug: str, delta_bytes: int) -> int:
         key = {"pk": pk_tenant(tenant_slug), "sk": sk_tenant()}
         delta = int(delta_bytes)
@@ -775,6 +796,13 @@ class InMemoryTenantStore(_StoreBase):
         if updates:
             item.update({**updates, **entity_keys_tenant(tenant_slug)})  # mirror DynamoDB self-heal
         return {**_strip(item), "slug": tenant_slug}
+
+    def reserve_storage_bytes(self, tenant_slug: str, n: int, quota: int) -> bool:
+        item = self.items.get((pk_tenant(tenant_slug), sk_tenant()))
+        if not item or int(item.get("storage_used_bytes") or 0) + n > quota:
+            return False
+        item["storage_used_bytes"] = int(item.get("storage_used_bytes") or 0) + n
+        return True
 
     def adjust_storage_bytes(self, tenant_slug: str, delta_bytes: int) -> int:
         pk, sk = pk_tenant(tenant_slug), sk_tenant()

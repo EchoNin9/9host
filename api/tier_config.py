@@ -80,7 +80,6 @@ def tiers_with_pro_features() -> tuple[str, ...]:
 
 
 # Per-tier upload limits (bytes) — Task 1.88. MVP: 10 MB per file for all tiers.
-# Cumulative quota enforcement deferred to post-MVP.
 UPLOAD_LIMIT_BYTES = {
     "FREE": 10 * 1024 * 1024,      # 10 MB
     "PRO": 10 * 1024 * 1024,       # 10 MB
@@ -93,3 +92,20 @@ def upload_limit_bytes(tier: str) -> int:
     """Max bytes per single upload for tier. Used for pre-signed POST content-length-range."""
     t = (tier or "FREE").upper()
     return UPLOAD_LIMIT_BYTES.get(t, 10 * 1024 * 1024)
+
+
+# SEC-09: cumulative media storage per tenant, reserved when an upload URL is issued.
+_MB = 1024 * 1024
+STORAGE_QUOTA_BYTES = {"FREE": 100 * _MB, "PRO": 1024 * _MB, "BUSINESS": 5 * 1024 * _MB, "VIP": 20 * 1024 * _MB}
+
+
+def storage_quota_bytes(tier: str) -> int:
+    return STORAGE_QUOTA_BYTES.get((tier or "FREE").upper(), STORAGE_QUOTA_BYTES["FREE"])
+
+
+# SEC-11: sites per tenant by tier (None = unlimited).
+MAX_SITES = {"FREE": 3, "PRO": 10, "BUSINESS": 50, "VIP": None}
+
+
+def max_sites(tier: str) -> int | None:
+    return MAX_SITES.get((tier or "FREE").upper(), MAX_SITES["FREE"])

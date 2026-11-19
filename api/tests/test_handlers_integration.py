@@ -9,6 +9,7 @@ the admin/tenant CRUD unification, host-mapping hygiene, /api/admin/edge-kvs and
 sanitized 500 boundary (Bug #8).
 """
 
+import base64
 import json
 import time
 
@@ -325,9 +326,11 @@ def test_media_storage_accounting_floor_at_zero(api):
     tok = owner(api)
     site_id = create_site(api)
     s3 = boto3.client("s3", region_name="us-east-1")
-    s3.put_object(Bucket="9host-media", Key=f"acme/{site_id}/big.jpg", Body=b"x" * 500)
-    code, body = call("POST", f"/api/tenant/sites/{site_id}/media", tok, body={"s3_key": f"acme/{site_id}/big.jpg"})
-    assert code == 201 and _storage(api) == 500
+    code, up = call("POST", f"/api/tenant/sites/{site_id}/upload-url", tok, body={"content_length": 500, "filename": "big.jpg"})
+    assert code == 200 and _storage(api) == 500  # reserved at issuance (SEC-09)
+    s3.put_object(Bucket="9host-media", Key=up["key"], Body=b"x" * 500)
+    code, body = call("POST", f"/api/tenant/sites/{site_id}/media", tok, body={"s3_key": up["key"]})
+    assert code == 201 and _storage(api) == 500  # not counted twice
     media_id = body["media"]["id"]
 
     api.table.update_item(
@@ -337,6 +340,25 @@ def test_media_storage_accounting_floor_at_zero(api):
     assert call("DELETE", f"/api/tenant/sites/{site_id}/media/{media_id}", tok) == (204, None)
     assert _storage(api) == 0
     assert "Contents" not in s3.list_objects_v2(Bucket="9host-media")
+
+
+def test_upload_url_enforces_storage_quota(api):
+    """SEC-09: claimed bytes are reserved against the tier quota; the POST is capped at the claim."""
+    from tier_config import storage_quota_bytes
+
+    tok = owner(api)
+    site_id = create_site(api)
+    tier = api.table.get_item(Key={"pk": "TENANT#acme", "sk": "TENANT"})["Item"].get("tier", "FREE")
+    quota = storage_quota_bytes(tier)
+    api.table.update_item(Key={"pk": "TENANT#acme", "sk": "TENANT"}, UpdateExpression="SET storage_used_bytes = :v",
+                          ExpressionAttributeValues={":v": quota - 1000})
+    code, up = call("POST", f"/api/tenant/sites/{site_id}/upload-url", tok, body={"content_length": 1000, "filename": "a.png"})
+    assert code == 200 and _storage(api) == quota
+    policy = json.loads(base64.b64decode(up["fields"]["policy"]))
+    assert ["content-length-range", 0, 1000] in policy["conditions"]
+    code, body = call("POST", f"/api/tenant/sites/{site_id}/upload-url", tok, body={"content_length": 1, "filename": "b.png"})
+    assert code == 413 and "quota" in body["error"]
+    assert _storage(api) == quota
 
 
 def test_media_rejects_foreign_s3_key(api):
@@ -864,3 +886,55 @@ def test_sec31_password_over_72_bytes_rejected(api):
     code, _ = call("POST", "/api/tenant/tusers", owner(api),
                    body={"username": "long", "password": "x" * 73, "role": "member"})
     assert code == 400
+
+
+# ---------------------------------------------------------------------------
+# SEC-11 / SEC-15: creation caps, conditional tenant create, ClouDNS only on slug change
+# ---------------------------------------------------------------------------
+
+
+def test_site_cap_per_tier(api):
+    from tier_config import max_sites
+
+    api.table.update_item(Key={"pk": "TENANT#acme", "sk": "TENANT"}, UpdateExpression="SET tier = :t",
+                          ExpressionAttributeValues={":t": "FREE"})
+    for i in range(max_sites("FREE")):
+        create_site(api, slug=f"cap{i}")
+    code, body = call("POST", "/api/tenant/sites", owner(api), body={"name": "One more", "slug": "capx"})
+    assert code == 403 and body["upgrade_required"] is True
+
+
+def test_tenant_cap_per_user(api):
+    from tenants_handler import MAX_TENANTS_PER_USER
+
+    tok = cognito(api.key, "serial-founder")
+    for i in range(MAX_TENANTS_PER_USER):
+        assert call("POST", "/api/tenants", tok, tenant=None, body={"slug": f"serial{i}"})[0] == 201
+    code, body = call("POST", "/api/tenants", tok, tenant=None, body={"slug": "serialx"})
+    assert code == 403 and "at most" in body["error"]
+
+
+def test_tenant_create_race_loses_cleanly(api, monkeypatch):
+    """SEC-15: a racer that passed the existence check can't overwrite the winner's tenant row."""
+    import tenants_handler
+
+    assert call("POST", "/api/tenants", cognito(api.key, "winner"), tenant=None, body={"slug": "raced"})[0] == 201
+    # Simulate the race: the pre-check looks at a row that doesn't exist.
+    monkeypatch.setattr(tenants_handler, "get_tenant_item", lambda slug: {"pk": "TENANT#nobody-zz", "sk": "TENANT"})
+    code, _ = call("POST", "/api/tenants", cognito(api.key, "loser"), tenant=None, body={"slug": "raced"})
+    assert code == 409
+    assert api.table.get_item(Key={"pk": "TENANT#raced", "sk": "TENANT"})["Item"]["owner_sub"] == "winner"
+    assert "Item" not in api.table.get_item(Key={"pk": "TENANT#raced", "sk": "USER#loser#PROFILE"})
+
+
+def test_site_update_calls_cloudns_only_on_slug_change(api, monkeypatch):
+    import sites_handler
+
+    calls = []
+    monkeypatch.setattr(sites_handler, "add_site_cname", lambda slug: calls.append(slug))
+    site_id = create_site(api, slug="dnsy")
+    calls.clear()
+    assert call("PUT", f"/api/tenant/sites/{site_id}", owner(api), body={"name": "Renamed"})[0] == 200
+    assert calls == []
+    assert call("PUT", f"/api/tenant/sites/{site_id}", owner(api), body={"slug": "dnsy2"})[0] == 200
+    assert calls == ["dnsy2"]

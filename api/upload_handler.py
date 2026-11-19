@@ -2,7 +2,8 @@
 Upload pre-signed POST (Task 1.89).
 
 POST /api/tenant/sites/{site_id}/upload-url — S3 presigned POST with a content-length-range
-condition (per-tier per-file limit). Admin/manager or a custom
+condition (per-tier per-file limit). SEC-09: the claimed size is reserved against the tenant's
+storage quota here (the POST can't exceed it), so uploads never recorded as media still count. Admin/manager or a custom
 role with the 'sites' permission (T-15).
 """
 
@@ -14,7 +15,7 @@ import boto3
 
 from request_context import RequestContext, respond
 from tenant_store import DynamoDBTenantStore
-from tier_config import upload_limit_bytes
+from tier_config import storage_quota_bytes, upload_limit_bytes
 
 S3_MEDIA_BUCKET = "9host-media"
 UPLOAD_ROLES = ("admin", "manager")
@@ -44,7 +45,8 @@ def upload_url_handler(ctx: RequestContext) -> dict:
     store = DynamoDBTenantStore()
     if not store.get_site(tenant_slug, site_id):
         return respond(404, {"error": "Site not found."})
-    limit = upload_limit_bytes(((store.get_tenant(tenant_slug) or {}).get("tier") or "FREE").upper())
+    tier = ((store.get_tenant(tenant_slug) or {}).get("tier") or "FREE").upper()
+    limit = upload_limit_bytes(tier)
 
     body = ctx.json_body()
     if not body:
@@ -64,9 +66,13 @@ def upload_url_handler(ctx: RequestContext) -> dict:
     if not filename:
         return respond(400, {"error": "filename required."})
 
+    quota = storage_quota_bytes(tier)
+    if not store.reserve_storage_bytes(tenant_slug, content_length, quota):
+        return respond(413, {"error": f"Storage quota reached ({quota // (1024*1024)} MB). Delete media to free space."})
+
     key = f"{tenant_slug}/{site_id}/{str(uuid.uuid4())[:8]}-{_safe_filename(filename)}"
     s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-1"))
     presigned = s3.generate_presigned_post(
-        Bucket=S3_MEDIA_BUCKET, Key=key, Conditions=[["content-length-range", 0, limit]], ExpiresIn=3600,
+        Bucket=S3_MEDIA_BUCKET, Key=key, Conditions=[["content-length-range", 0, content_length]], ExpiresIn=3600,
     )
     return respond(200, {"url": presigned["url"], "method": "POST", "fields": presigned["fields"], "key": key})
