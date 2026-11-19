@@ -161,6 +161,12 @@ class TestCognitoLocalJwks:
         rc.authenticate(make_event(tok))
         assert seams["jwks"] == 2
 
+    def test_client_id_must_match_configured_app_client(self, rsa_key, seams, monkeypatch):
+        """SEC-17: with COGNITO_CLIENT_ID set, tokens from other app clients are rejected."""
+        monkeypatch.setenv("COGNITO_CLIENT_ID", "client-abc")
+        assert rc.authenticate(make_event(cognito_token(rsa_key))) is not None
+        assert rc.authenticate(make_event(cognito_token(rsa_key, client_id="other-client"))) is None
+
     def test_superadmin_group_claim(self, rsa_key):
         p = rc.authenticate(make_event(cognito_token(rsa_key, groups=["SuperAdmin"])))
         assert p.is_superadmin is True
@@ -301,6 +307,15 @@ class TestImpersonation:
         )
         assert resp["statusCode"] == 404
         assert json.loads(resp["body"]) == {"error": "Tenant not found"}
+
+    def test_impersonation_is_audit_logged(self, rsa_key, dynamodb_table, caplog):
+        """SEC-18: one structured line per impersonated request."""
+        dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO"})
+        tok = cognito_token(rsa_key, sub="super-1", groups=["superadmin"])
+        rc.build_request_context(make_event(tok, {"x-impersonate-tenant": "acme"}), table=dynamodb_table)
+        line = next(r.getMessage() for r in caplog.records if "superadmin_impersonation" in r.getMessage())
+        rec = json.loads(line[len("audit: "):])
+        assert rec["sub"] == "super-1" and rec["tenant"] == "acme"
 
     def test_impersonation_reuses_loaded_tenant_item(self, rsa_key, dynamodb_table):
         dynamodb_table.put_item(Item={"pk": "TENANT#acme", "sk": "TENANT", "tier": "PRO"})

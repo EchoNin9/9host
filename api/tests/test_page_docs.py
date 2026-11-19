@@ -203,3 +203,14 @@ def test_richtext_save_rewraps_existing_doc(api):
     assert call("POST", _pages(site_id), tok, body={"path": "plain", "body": "<p>x</p>"})[0] == 201
     assert call("PUT", f"{_pages(site_id)}/plain", tok, body={"body": "<p>y</p>"})[0] == 200
     assert "doc" not in _stored(api, site_id, "plain")  # no doc to keep in sync
+
+
+def test_legacy_richtext_doc_is_sanitized_at_save(api):
+    """SEC-19: a client-sent legacy:true block can't store script HTML for the editor canvas."""
+    site_id = create_site(api)
+    doc = {"schema": 1, "root": {"props": {}}, "content": [
+        {"type": "RichText", "props": {"html": "<img src=x onerror=alert(1)><p>ok</p>", "legacy": True}}]}
+    assert call("POST", _pages(site_id), owner(api), body={"path": "x", "doc": doc})[0] == 201
+    stored = json.loads(_stored(api, site_id, "x")["doc"])
+    html = stored["content"][0]["props"]["html"]
+    assert "onerror" not in html and "<p>ok</p>" in html

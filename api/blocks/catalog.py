@@ -76,8 +76,9 @@ def _hero(p, rctx):
 
 
 def _richtext_post(p, path):
-    if not p["legacy"]:
-        p["html"] = sanitize_html(p["html"])
+    # SEC-19: legacy blocks too — the admin editor canvas renders doc HTML same-origin, and the
+    # legacy compile re-sanitizes at render, so output is unchanged (sanitize is idempotent).
+    p["html"] = sanitize_html(p["html"])
     return p
 
 

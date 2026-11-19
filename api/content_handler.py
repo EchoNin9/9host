@@ -261,7 +261,7 @@ def content_handler(ctx: RequestContext) -> dict:
     elif entity == "pages" and "body" in body and "doc" in item:
         # Rich-text save on a page with a doc: re-wrap the new body, or a blocks site would
         # keep publishing the stale doc (T-31f).
-        item["doc"] = json.dumps(legacy_doc(item.get("body") or ""), separators=(",", ":"),
+        item["doc"] = json.dumps(legacy_doc(sanitize_html(item.get("body") or "")), separators=(",", ":"),  # SEC-19
                                  ensure_ascii=False, sort_keys=True)
     item["updated_at"] = _now()
     store.put_content(tenant_slug, site_id, ctype, item)

@@ -159,6 +159,7 @@ resource "aws_lambda_function" "api" {
       DYNAMODB_TABLE          = aws_dynamodb_table.main.name
       DOMAINS                 = join(",", var.domains)
       USER_POOL_ID            = aws_cognito_user_pool.main.id
+      COGNITO_CLIENT_ID       = aws_cognito_user_pool_client.frontend.id # SEC-17
       STRIPE_SECRET_ARN       = aws_secretsmanager_secret.stripe.arn
       JWT_SECRET_ARN          = aws_secretsmanager_secret.jwt_signing.arn
       CLOUDFRONT_SITES_DOMAIN = aws_cloudfront_distribution.sites.domain_name

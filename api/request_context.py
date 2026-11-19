@@ -310,6 +310,10 @@ def _verify_cognito_local(token: str, user_pool_id: str, region: str) -> dict | 
         return None
     if claims.get("token_use") != "access":
         return None
+    client_id = os.environ.get("COGNITO_CLIENT_ID")
+    if client_id and claims.get("client_id") != client_id:  # SEC-17: only our app client's tokens
+        logger.info("request_context: cognito token from another app client rejected")
+        return None
     return claims
 
 
@@ -416,6 +420,12 @@ def build_request_context(event: dict, table=None) -> RequestContext:
         tenant_item = _load_tenant_item(table, impersonate)
         if not tenant_item:
             raise HttpError(404, "Tenant not found")
+        http = (event.get("requestContext") or {}).get("http") or {}
+        logger.warning("audit: %s", json.dumps({  # SEC-18: every impersonated request
+            "event": "superadmin_impersonation", "sub": principal.identifier, "tenant": impersonate,
+            "method": http.get("method"), "path": event.get("rawPath"),
+            "request_id": (event.get("requestContext") or {}).get("requestId"),
+        }))
         return RequestContext(
             event=event,
             principal=principal,
